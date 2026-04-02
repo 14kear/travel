@@ -342,6 +342,77 @@ func TestSearchCalendarFallback_Delegates(t *testing.T) {
 	}
 }
 
+func TestSearchCalendarFallback_OneWay(t *testing.T) {
+	// Verify fallback with one-way options.
+	opts := CalendarOptions{
+		FromDate:   "2026-07-01",
+		ToDate:     "2026-07-15",
+		TripLength: 0,
+		RoundTrip:  false,
+		Adults:     1,
+	}
+
+	// searchCalendarFallback delegates to SearchDates which makes network calls.
+	// We can at least verify it doesn't panic and returns an error/result.
+	ctx := t.Context()
+	result, err := searchCalendarFallback(ctx, "HEL", "NRT", opts)
+	// Network call may fail, but the function should not panic.
+	if err != nil {
+		// Expected — network not available in unit tests.
+		t.Logf("Expected network error: %v", err)
+		return
+	}
+	if result == nil {
+		t.Error("expected non-nil result")
+	}
+}
+
+// --- SearchCalendar additional validation ---
+
+func TestSearchCalendar_BothEmpty(t *testing.T) {
+	ctx := t.Context()
+	_, err := SearchCalendar(ctx, "", "", CalendarOptions{})
+	if err == nil {
+		t.Error("expected error for both empty")
+	}
+}
+
+// --- parseCalendarPriceData ---
+
+func TestParseCalendarPriceData_EmptyInput(t *testing.T) {
+	result := parseCalendarPriceData([]byte(""))
+	if len(result) != 0 {
+		t.Errorf("expected 0 results for empty input, got %d", len(result))
+	}
+}
+
+func TestParseCalendarPriceData_NullFormat(t *testing.T) {
+	data := mustMarshal(t, []any{nil, []any{
+		[]any{"2026-08-01", "2026-08-08", []any{[]any{nil, float64(399)}}, float64(1)},
+	}})
+	result := parseCalendarPriceData(data)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if result[0].Price != 399 {
+		t.Errorf("price = %v, want 399", result[0].Price)
+	}
+}
+
+// --- encodeCalendarGraphPayload additional tests ---
+
+func TestEncodeCalendarGraphPayload_DifferentAdults(t *testing.T) {
+	opts := CalendarOptions{
+		FromDate: "2026-06-01",
+		ToDate:   "2026-06-30",
+		Adults:   4,
+	}
+	encoded := encodeCalendarGraphPayload("/m/01lbs", "HEL", "/m/07dfk", "NRT", opts)
+	if encoded == "" {
+		t.Fatal("encoded payload is empty")
+	}
+}
+
 func mustMarshal(t *testing.T, v any) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)

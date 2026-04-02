@@ -656,6 +656,9 @@ func writeJSON(w io.Writer, v any) error {
 
 // Run starts the MCP server on stdin/stdout. This is the main entry point
 // for the stdio transport.
+//
+// Coverage exclusion: blocking stdio entry point.
+// ServeStdio (which Run calls) is tested via buffer I/O in server_test.go.
 func Run() error {
 	s := NewServer()
 	log.SetOutput(io.Discard) // Suppress log output on stdio transport.

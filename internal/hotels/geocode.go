@@ -61,6 +61,10 @@ func ResolveLocation(ctx context.Context, query string) (lat, lon float64, err e
 }
 
 // nominatimLookup performs the actual HTTP call to Nominatim.
+//
+// Coverage exclusion: HTTP call to external Nominatim API.
+// Tested indirectly via destinations/info_test.go with URL override and
+// hotels/search_extra_test.go with cache-based mock.
 func nominatimLookup(ctx context.Context, query string) (float64, float64, error) {
 	u, _ := url.Parse(nominatimURL)
 	q := u.Query()

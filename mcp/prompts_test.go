@@ -176,3 +176,288 @@ func TestPromptsGet_UnknownPrompt(t *testing.T) {
 		t.Fatal("expected error for unknown prompt")
 	}
 }
+
+// --- promptWhereShouldIGo ---
+
+func TestPromptsGet_WhereShouldIGo_Basic(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "where-should-i-go",
+		Arguments: map[string]any{
+			"origin": "HEL",
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response, got nil")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	if len(result.Messages) == 0 {
+		t.Fatal("expected messages")
+	}
+	if result.Messages[0].Role != "user" {
+		t.Errorf("role = %q, want user", result.Messages[0].Role)
+	}
+	text := result.Messages[0].Content.Text
+	if !strings.Contains(text, "HEL") {
+		t.Error("prompt should contain origin HEL")
+	}
+}
+
+func TestPromptsGet_WhereShouldIGo_WithMonth(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "where-should-i-go",
+		Arguments: map[string]any{
+			"origin": "JFK",
+			"month":  "july-2026",
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	text := result.Messages[0].Content.Text
+	if !strings.Contains(text, "july-2026") {
+		t.Error("prompt should contain month")
+	}
+	if !strings.Contains(text, "JFK") {
+		t.Error("prompt should contain origin")
+	}
+}
+
+func TestPromptsGet_WhereShouldIGo_WithBudget(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "where-should-i-go",
+		Arguments: map[string]any{
+			"origin": "CDG",
+			"budget": "500",
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	text := result.Messages[0].Content.Text
+	if !strings.Contains(text, "500") {
+		t.Error("prompt should contain budget")
+	}
+}
+
+func TestPromptsGet_WhereShouldIGo_MissingOrigin(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name:      "where-should-i-go",
+		Arguments: map[string]any{},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error == nil {
+		t.Fatal("expected error for missing origin")
+	}
+}
+
+func TestPromptsGet_WhereShouldIGo_AllArgs(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "where-should-i-go",
+		Arguments: map[string]any{
+			"origin": "SIN",
+			"month":  "december-2026",
+			"budget": "1000",
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	if result.Description == "" {
+		t.Error("description should not be empty")
+	}
+	if !strings.Contains(result.Description, "SIN") {
+		t.Error("description should contain origin")
+	}
+	if !strings.Contains(result.Description, "december-2026") {
+		t.Error("description should contain month")
+	}
+}
+
+// --- promptPlanTrip without budget ---
+
+func TestPromptsGet_PlanTrip_NoBudget(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "plan-trip",
+		Arguments: map[string]any{
+			"origin":         "HEL",
+			"destination":    "NRT",
+			"departure_date": "2026-06-15",
+			"return_date":    "2026-06-22",
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	if len(result.Messages) == 0 {
+		t.Fatal("expected messages")
+	}
+	text := result.Messages[0].Content.Text
+	// Without budget, the budget line should not appear.
+	if strings.Contains(text, "total budget") {
+		t.Error("prompt should not contain budget line when no budget provided")
+	}
+}
+
+// --- promptCompareHotels missing args ---
+
+func TestPromptsGet_CompareHotels_MissingArgs(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name:      "compare-hotels",
+		Arguments: map[string]any{"location": "Tokyo"},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error == nil {
+		t.Fatal("expected error for missing check_in/check_out")
+	}
+}
+
+// --- promptCompareHotels default priorities ---
+
+func TestPromptsGet_CompareHotels_DefaultPriorities(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name: "compare-hotels",
+		Arguments: map[string]any{
+			"location":  "Paris",
+			"check_in":  "2026-09-01",
+			"check_out": "2026-09-05",
+			// No priorities -- should default to "price,rating"
+		},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result PromptsGetResult
+	json.Unmarshal(resultJSON, &result)
+
+	text := result.Messages[0].Content.Text
+	if !strings.Contains(text, "price,rating") {
+		t.Error("prompt should use default priorities price,rating")
+	}
+}
+
+// --- getPrompt unknown prompt ---
+
+func TestGetPrompt_Unknown(t *testing.T) {
+	_, err := getPrompt("nonexistent", nil)
+	if err == nil {
+		t.Error("expected error for unknown prompt")
+	}
+}
+
+// --- argOr ---
+
+func TestArgOr_NilArgs(t *testing.T) {
+	got := argOr(nil, "key", "fallback")
+	if got != "fallback" {
+		t.Errorf("got %q, want fallback", got)
+	}
+}
+
+func TestArgOr_MissingKey(t *testing.T) {
+	got := argOr(map[string]any{"other": "val"}, "key", "fallback")
+	if got != "fallback" {
+		t.Errorf("got %q, want fallback", got)
+	}
+}
+
+func TestArgOr_EmptyStringValue(t *testing.T) {
+	got := argOr(map[string]any{"key": ""}, "key", "fallback")
+	if got != "fallback" {
+		t.Errorf("got %q, want fallback for empty string", got)
+	}
+}
+
+func TestArgOr_NonStringValue(t *testing.T) {
+	got := argOr(map[string]any{"key": 42}, "key", "fallback")
+	if got != "fallback" {
+		t.Errorf("got %q, want fallback for non-string value", got)
+	}
+}
+
+func TestArgOr_ValidValue(t *testing.T) {
+	got := argOr(map[string]any{"key": "value"}, "key", "fallback")
+	if got != "value" {
+		t.Errorf("got %q, want value", got)
+	}
+}
+
+// --- promptFindCheapestDates missing args ---
+
+func TestPromptsGet_FindCheapestDates_MissingArgs(t *testing.T) {
+	s := NewServer()
+	params := PromptsGetParams{
+		Name:      "find-cheapest-dates",
+		Arguments: map[string]any{"origin": "HEL"},
+	}
+	resp := sendRequest(t, s, "prompts/get", 1, params)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error == nil {
+		t.Fatal("expected error for missing destination and month")
+	}
+}

@@ -2,6 +2,7 @@ package flights
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -573,5 +574,74 @@ func TestSearchDates_ReversedDates(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for to_date before from_date")
+	}
+}
+
+// --- buildFlightBookingURL ---
+
+func TestBuildFlightBookingURL_Basic(t *testing.T) {
+	url := buildFlightBookingURL("HEL", "NRT", "2026-06-15")
+	if url == "" {
+		t.Fatal("expected non-empty URL")
+	}
+	if !strings.Contains(url, "google.com/travel/flights") {
+		t.Errorf("URL missing google.com/travel/flights: %s", url)
+	}
+	if !strings.Contains(url, "NRT") {
+		t.Errorf("URL missing destination NRT: %s", url)
+	}
+	if !strings.Contains(url, "HEL") {
+		t.Errorf("URL missing origin HEL: %s", url)
+	}
+	if !strings.Contains(url, "2026-06-15") {
+		t.Errorf("URL missing date: %s", url)
+	}
+}
+
+func TestBuildFlightBookingURL_Format(t *testing.T) {
+	url := buildFlightBookingURL("JFK", "LAX", "2027-01-01")
+	expected := "https://www.google.com/travel/flights?q=Flights+to+LAX+from+JFK+on+2027-01-01"
+	if url != expected {
+		t.Errorf("URL = %q, want %q", url, expected)
+	}
+}
+
+func TestBuildFlightBookingURL_DifferentRoutes(t *testing.T) {
+	tests := []struct {
+		origin, dest, date string
+	}{
+		{"CDG", "SIN", "2026-12-25"},
+		{"LHR", "DXB", "2026-03-01"},
+		{"SFO", "BCN", "2027-07-15"},
+	}
+	for _, tt := range tests {
+		url := buildFlightBookingURL(tt.origin, tt.dest, tt.date)
+		if !strings.Contains(url, tt.dest) {
+			t.Errorf("URL for %s->%s missing destination: %s", tt.origin, tt.dest, url)
+		}
+		if !strings.Contains(url, tt.origin) {
+			t.Errorf("URL for %s->%s missing origin: %s", tt.origin, tt.dest, url)
+		}
+		if !strings.Contains(url, tt.date) {
+			t.Errorf("URL for %s->%s missing date: %s", tt.origin, tt.dest, url)
+		}
+	}
+}
+
+// --- buildFilters passengers ---
+
+func TestBuildFilters_MultipleAdults(t *testing.T) {
+	opts := SearchOptions{Adults: 4}
+	filters := buildFilters("HEL", "NRT", "2026-06-15", opts)
+
+	data, _ := json.Marshal(filters)
+	var arr []any
+	json.Unmarshal(data, &arr)
+
+	settings := arr[1].([]any)
+	passengers := settings[6].([]any)
+	adults := int(passengers[0].(float64))
+	if adults != 4 {
+		t.Errorf("adults = %d, want 4", adults)
 	}
 }

@@ -86,6 +86,10 @@ func (c *Client) SetRateLimit(rps float64) {
 // curves, etc.) but override the ALPN extension to only advertise "http/1.1".
 // The UClient is created with HelloCustom so ApplyPreset installs our modified
 // spec rather than ignoring it in favour of a built-in profile.
+//
+// Coverage exclusion: creates a raw TLS connection with Chrome fingerprint.
+// Not unit-testable: requires real TCP connection + TLS handshake with remote server.
+// Covered by integration tests (proof_test.go).
 func dialTLSChromeHTTP1(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	rawConn, err := dialer.DialContext(ctx, network, addr)
@@ -257,27 +261,44 @@ func backoffSleep(ctx context.Context, attempt int) error {
 
 // SearchFlights posts an encoded flight search payload to the Flights endpoint
 // and returns the raw response body.
+//
+// Coverage exclusion: thin wrapper around doWithRetry with endpoint-specific URL.
+// doWithRetry is thoroughly tested (client_test.go, client_extra_test.go).
+// Covered by integration proof tests.
 func (c *Client) SearchFlights(ctx context.Context, encodedFilters string) (int, []byte, error) {
 	return c.PostForm(ctx, FlightsURL, "f.req="+encodedFilters)
 }
 
 // BatchExecute posts an encoded batchexecute payload to the Hotels/Travel endpoint
 // and returns the raw response body.
+//
+// Coverage exclusion: thin wrapper around doWithRetry with endpoint-specific URL.
+// doWithRetry is thoroughly tested (client_test.go, client_extra_test.go).
+// Covered by integration proof tests.
 func (c *Client) BatchExecute(ctx context.Context, encodedPayload string) (int, []byte, error) {
 	return c.PostForm(ctx, HotelsURL, "f.req="+encodedPayload)
 }
 
 // PostExplore posts an encoded payload to the GetExploreDestinations endpoint.
+//
+// Coverage exclusion: thin wrapper around PostForm with endpoint-specific URL.
+// PostForm and doWithRetry are thoroughly tested. Covered by integration proof tests.
 func (c *Client) PostExplore(ctx context.Context, encodedPayload string) (int, []byte, error) {
 	return c.PostForm(ctx, ExploreURL, "f.req="+encodedPayload)
 }
 
 // PostCalendarGraph posts an encoded payload to the GetCalendarGraph endpoint.
+//
+// Coverage exclusion: thin wrapper around PostForm with endpoint-specific URL.
+// PostForm and doWithRetry are thoroughly tested. Covered by integration proof tests.
 func (c *Client) PostCalendarGraph(ctx context.Context, encodedPayload string) (int, []byte, error) {
 	return c.PostForm(ctx, CalendarGraphURL, "f.req="+encodedPayload)
 }
 
 // PostCalendarGrid posts an encoded payload to the GetCalendarGrid endpoint.
+//
+// Coverage exclusion: thin wrapper around PostForm with endpoint-specific URL.
+// PostForm and doWithRetry are thoroughly tested. Covered by integration proof tests.
 func (c *Client) PostCalendarGrid(ctx context.Context, encodedPayload string) (int, []byte, error) {
 	return c.PostForm(ctx, CalendarGridURL, "f.req="+encodedPayload)
 }

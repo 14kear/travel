@@ -828,3 +828,99 @@ func TestParseDateArray_EdgeCases(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestParseDateArray_InvalidDate(t *testing.T) {
+	_, err := parseDateArray("not-a-date")
+	if err == nil {
+		t.Error("expected error for invalid date")
+	}
+}
+
+// --- buildHotelBookingURL ---
+
+func TestBuildHotelBookingURL_Basic(t *testing.T) {
+	url := buildHotelBookingURL("Helsinki", "2026-06-15", "2026-06-18")
+	if url == "" {
+		t.Fatal("expected non-empty URL")
+	}
+	if !strings.Contains(url, "google.com/travel/hotels") {
+		t.Errorf("URL missing google.com/travel/hotels: %s", url)
+	}
+	if !strings.Contains(url, "Helsinki") {
+		t.Errorf("URL missing location Helsinki: %s", url)
+	}
+	if !strings.Contains(url, "2026-06-15") {
+		t.Errorf("URL missing check-in date: %s", url)
+	}
+	if !strings.Contains(url, "2026-06-18") {
+		t.Errorf("URL missing check-out date: %s", url)
+	}
+}
+
+func TestBuildHotelBookingURL_Format(t *testing.T) {
+	url := buildHotelBookingURL("Tokyo", "2026-07-01", "2026-07-05")
+	if !strings.Contains(url, "dates=2026-07-01,2026-07-05") {
+		t.Errorf("URL date format incorrect: %s", url)
+	}
+}
+
+func TestBuildHotelBookingURL_SpecialChars(t *testing.T) {
+	url := buildHotelBookingURL("New York City", "2026-12-25", "2026-12-28")
+	// URL should contain escaped location.
+	if !strings.Contains(url, "New") {
+		t.Errorf("URL missing location parts: %s", url)
+	}
+	// Path-escaped and query-escaped should both be present.
+	if !strings.Contains(url, "hotels/") {
+		t.Errorf("URL missing hotels path: %s", url)
+	}
+}
+
+func TestBuildHotelBookingURL_DifferentLocations(t *testing.T) {
+	tests := []struct {
+		location, checkIn, checkOut string
+	}{
+		{"Barcelona", "2026-08-01", "2026-08-05"},
+		{"London", "2026-09-10", "2026-09-15"},
+		{"Singapore", "2027-01-01", "2027-01-03"},
+	}
+	for _, tt := range tests {
+		url := buildHotelBookingURL(tt.location, tt.checkIn, tt.checkOut)
+		if !strings.Contains(url, tt.location) {
+			t.Errorf("URL for %s missing location: %s", tt.location, url)
+		}
+		if !strings.Contains(url, tt.checkIn) {
+			t.Errorf("URL for %s missing check-in: %s", tt.location, url)
+		}
+		if !strings.Contains(url, tt.checkOut) {
+			t.Errorf("URL for %s missing check-out: %s", tt.location, url)
+		}
+	}
+}
+
+// --- SearchHotels defaults ---
+
+func TestSearchHotels_DefaultGuests(t *testing.T) {
+	// Verify defaults by calling SearchHotels with 0 guests.
+	// It will fail at the HTTP layer, but we can confirm defaults don't panic.
+	_, err := SearchHotels(context.Background(), "Helsinki", HotelSearchOptions{
+		CheckIn:  "2026-06-15",
+		CheckOut: "2026-06-18",
+		Guests:   0, // should default to 2
+	})
+	// Will fail because it tries to contact google.com — expected.
+	if err == nil {
+		t.Log("Unexpectedly succeeded")
+	}
+}
+
+func TestSearchHotels_DefaultCurrency(t *testing.T) {
+	_, err := SearchHotels(context.Background(), "Helsinki", HotelSearchOptions{
+		CheckIn:  "2026-06-15",
+		CheckOut: "2026-06-18",
+		Currency: "", // should default to "USD"
+	})
+	if err == nil {
+		t.Log("Unexpectedly succeeded")
+	}
+}

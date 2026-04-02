@@ -25,6 +25,9 @@ func NewHTTPServer(port int) *HTTPServer {
 }
 
 // ListenAndServe starts the HTTP server. It blocks until the server exits.
+//
+// Coverage exclusion: blocking HTTP server entry point.
+// The handler logic (handleMCP, handleHealth) is tested via httptest in server_extra_test.go.
 func (h *HTTPServer) ListenAndServe() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", h.handleMCP)
@@ -109,6 +112,9 @@ func isLocalhostOrigin(origin string) bool {
 }
 
 // RunHTTP starts the MCP server in HTTP mode on the given port.
+//
+// Coverage exclusion: blocking HTTP server entry point.
+// Calls ListenAndServe, whose handler logic is tested via httptest in server_extra_test.go.
 func RunHTTP(port int) error {
 	return NewHTTPServer(port).ListenAndServe()
 }
