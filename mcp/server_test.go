@@ -36,14 +36,31 @@ func sendRequest(t *testing.T, s *Server, method string, id any, params any) *Re
 		t.Fatalf("ServeStdio: %v", err)
 	}
 
-	line := strings.TrimSpace(out.String())
-	if line == "" {
-		return nil
+	// May contain notifications before the response. Find the response line.
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		var resp Response
+		if err := json.Unmarshal([]byte(line), &resp); err != nil {
+			continue
+		}
+		// A response has an ID or an error (not a notification).
+		if resp.ID != nil || resp.Error != nil {
+			return &resp
+		}
 	}
 
+	// If no response found, check the last line.
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if last == "" {
+		return nil
+	}
 	var resp Response
-	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		t.Fatalf("unmarshal response %q: %v", line, err)
+	if err := json.Unmarshal([]byte(last), &resp); err != nil {
+		t.Fatalf("unmarshal response %q: %v", last, err)
 	}
 	return &resp
 }
@@ -74,11 +91,14 @@ func TestInitialize(t *testing.T) {
 	if result.ProtocolVersion != protocolVersion {
 		t.Errorf("protocol version: got %q, want %q", result.ProtocolVersion, protocolVersion)
 	}
+	if result.ProtocolVersion != "2025-11-25" {
+		t.Errorf("protocol version should be 2025-11-25, got %q", result.ProtocolVersion)
+	}
 	if result.ServerInfo.Name != "trvl" {
 		t.Errorf("server name: got %q, want %q", result.ServerInfo.Name, "trvl")
 	}
-	if result.ServerInfo.Version != "0.1.0" {
-		t.Errorf("server version: got %q, want %q", result.ServerInfo.Version, "0.1.0")
+	if result.ServerInfo.Version != "0.2.0" {
+		t.Errorf("server version: got %q, want %q", result.ServerInfo.Version, "0.2.0")
 	}
 	if result.Capabilities.Tools == nil {
 		t.Error("expected tools capability to be set")
@@ -173,15 +193,6 @@ func TestToolsCallSearchFlights(t *testing.T) {
 	}
 	if result.Content[0].Type != "text" {
 		t.Errorf("content type: got %q, want %q", result.Content[0].Type, "text")
-	}
-
-	// Stub returns "not yet implemented" — verify it's valid JSON.
-	var stub map[string]any
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &stub); err != nil {
-		t.Fatalf("content is not valid JSON: %v", err)
-	}
-	if stub["success"] != false {
-		t.Errorf("expected success=false, got %v", stub["success"])
 	}
 }
 
@@ -336,26 +347,29 @@ func TestMultipleRequests(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 response lines, got %d: %q", len(lines), out.String())
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 response lines, got %d: %q", len(lines), out.String())
 	}
 
-	// Verify first response is initialize.
-	var resp1 Response
-	if err := json.Unmarshal([]byte(lines[0]), &resp1); err != nil {
-		t.Fatalf("unmarshal resp1: %v", err)
+	// Find the response with id=1 and id=2.
+	var found1, found2 bool
+	for _, line := range lines {
+		var resp Response
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &resp); err != nil {
+			continue
+		}
+		if resp.ID == float64(1) {
+			found1 = true
+		}
+		if resp.ID == float64(2) {
+			found2 = true
+		}
 	}
-	if resp1.ID != float64(1) {
-		t.Errorf("resp1 id: got %v, want 1", resp1.ID)
+	if !found1 {
+		t.Error("missing response for id=1")
 	}
-
-	// Verify second response is tools/list.
-	var resp2 Response
-	if err := json.Unmarshal([]byte(lines[1]), &resp2); err != nil {
-		t.Fatalf("unmarshal resp2: %v", err)
-	}
-	if resp2.ID != float64(2) {
-		t.Errorf("resp2 id: got %v, want 2", resp2.ID)
+	if !found2 {
+		t.Error("missing response for id=2")
 	}
 }
 
@@ -374,12 +388,22 @@ func TestEmptyLinesIgnored(t *testing.T) {
 		t.Fatalf("ServeStdio: %v", err)
 	}
 
-	line := strings.TrimSpace(out.String())
-	var resp Response
-	if err := json.Unmarshal([]byte(line), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	// Find the response line (skip any notification lines).
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var foundResp bool
+	for _, line := range lines {
+		var resp Response
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &resp); err != nil {
+			continue
+		}
+		if resp.ID != nil {
+			foundResp = true
+			if resp.Error != nil {
+				t.Errorf("unexpected error: %+v", resp.Error)
+			}
+		}
 	}
-	if resp.Error != nil {
-		t.Errorf("unexpected error: %+v", resp.Error)
+	if !foundResp {
+		t.Error("expected a response with an ID")
 	}
 }

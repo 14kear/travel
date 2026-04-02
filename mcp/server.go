@@ -5,7 +5,11 @@
 //   - HTTP:  JSON-RPC messages via POST /mcp
 //
 // The server exposes four tools: search_flights, search_dates, search_hotels,
-// and hotel_prices. Each tool dispatches to the corresponding handler in tools.go.
+// and hotel_prices. It also provides prompts and resources.
+//
+// Protocol version: 2025-11-25
+// Key features: structured output, elicitation, content annotations,
+// progress notifications, and logging.
 package mcp
 
 import (
@@ -15,12 +19,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
+	"sync/atomic"
 )
 
 const (
-	serverName    = "trvl"
-	serverVersion = "0.1.0"
-	protocolVersion = "2024-11-05"
+	serverName      = "trvl"
+	serverVersion   = "0.2.0"
+	protocolVersion = "2025-11-25"
 )
 
 // --- JSON-RPC types ---
@@ -49,6 +55,37 @@ type Error struct {
 
 // --- MCP protocol types ---
 
+// InitializeParams holds the client's initialize request parameters.
+type InitializeParams struct {
+	ProtocolVersion string             `json:"protocolVersion"`
+	Capabilities    ClientCapabilities `json:"capabilities"`
+	ClientInfo      ClientInfo         `json:"clientInfo"`
+}
+
+// ClientInfo describes the client identity.
+type ClientInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// ClientCapabilities describes what the client supports.
+type ClientCapabilities struct {
+	Elicitation *ElicitationCapability `json:"elicitation,omitempty"`
+	Sampling    *SamplingCapability    `json:"sampling,omitempty"`
+	Roots       *RootsCapability       `json:"roots,omitempty"`
+}
+
+// ElicitationCapability indicates the client supports elicitation/create.
+type ElicitationCapability struct{}
+
+// SamplingCapability indicates the client supports sampling/createMessage.
+type SamplingCapability struct{}
+
+// RootsCapability indicates the client supports roots/list.
+type RootsCapability struct {
+	ListChanged bool `json:"listChanged,omitempty"`
+}
+
 // InitializeResult is the response to the initialize method.
 type InitializeResult struct {
 	ProtocolVersion string       `json:"protocolVersion"`
@@ -58,7 +95,10 @@ type InitializeResult struct {
 
 // Capabilities describes the server's MCP capabilities.
 type Capabilities struct {
-	Tools *ToolsCapability `json:"tools,omitempty"`
+	Tools     *ToolsCapability     `json:"tools,omitempty"`
+	Prompts   *PromptsCapability   `json:"prompts,omitempty"`
+	Resources *ResourcesCapability `json:"resources,omitempty"`
+	Logging   *LoggingCapability   `json:"logging,omitempty"`
 }
 
 // ToolsCapability indicates the server supports tool listing and calling.
@@ -66,11 +106,27 @@ type ToolsCapability struct {
 	ListChanged bool `json:"listChanged"`
 }
 
+// PromptsCapability indicates the server supports prompt listing and retrieval.
+type PromptsCapability struct {
+	ListChanged bool `json:"listChanged"`
+}
+
+// ResourcesCapability indicates the server supports resource listing and reading.
+type ResourcesCapability struct {
+	Subscribe   bool `json:"subscribe"`
+	ListChanged bool `json:"listChanged"`
+}
+
+// LoggingCapability indicates the server supports logging notifications.
+type LoggingCapability struct{}
+
 // ServerInfo describes the server identity.
 type ServerInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
+
+// --- Tools types ---
 
 // ToolsListResult is the response to tools/list.
 type ToolsListResult struct {
@@ -79,9 +135,20 @@ type ToolsListResult struct {
 
 // ToolDef describes a single tool for tools/list.
 type ToolDef struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	InputSchema InputSchema `json:"inputSchema"`
+	Name         string           `json:"name"`
+	Title        string           `json:"title,omitempty"`
+	Description  string           `json:"description"`
+	InputSchema  InputSchema      `json:"inputSchema"`
+	OutputSchema interface{}      `json:"outputSchema,omitempty"`
+	Annotations  *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations provides metadata hints about a tool's behavior.
+type ToolAnnotations struct {
+	Title          string `json:"title,omitempty"`
+	ReadOnlyHint   bool   `json:"readOnlyHint,omitempty"`
+	IdempotentHint bool   `json:"idempotentHint,omitempty"`
+	OpenWorldHint  bool   `json:"openWorldHint,omitempty"`
 }
 
 // InputSchema is a JSON Schema describing the tool's input parameters.
@@ -105,26 +172,186 @@ type ToolCallParams struct {
 
 // ToolCallResult is the response to tools/call.
 type ToolCallResult struct {
-	Content []ContentBlock `json:"content"`
-	IsError bool           `json:"isError,omitempty"`
+	Content           []ContentBlock `json:"content"`
+	StructuredContent interface{}    `json:"structuredContent,omitempty"`
+	IsError           bool           `json:"isError,omitempty"`
 }
 
 // ContentBlock is a single content block in a tool result.
 type ContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type        string             `json:"type"`
+	Text        string             `json:"text,omitempty"`
+	Annotations *ContentAnnotation `json:"annotations,omitempty"`
+}
+
+// ContentAnnotation provides hints about a content block's audience and priority.
+type ContentAnnotation struct {
+	Audience []string `json:"audience,omitempty"` // "user", "assistant"
+	Priority float64  `json:"priority,omitempty"` // 0.0 - 1.0
+}
+
+// --- Elicitation types ---
+
+// ElicitFunc asks the client a question and returns the user's response.
+// If the client does not support elicitation (or we are in HTTP mode), this
+// will be nil and tool handlers should proceed with defaults.
+type ElicitFunc func(message string, schema map[string]interface{}) (map[string]interface{}, error)
+
+// ElicitationRequest is the JSON-RPC request sent to the client.
+type ElicitationRequest struct {
+	JSONRPC string               `json:"jsonrpc"`
+	ID      any                  `json:"id"`
+	Method  string               `json:"method"`
+	Params  ElicitationReqParams `json:"params"`
+}
+
+// ElicitationReqParams is the params for elicitation/create.
+type ElicitationReqParams struct {
+	Message         string      `json:"message"`
+	RequestedSchema interface{} `json:"requestedSchema"`
+}
+
+// ElicitationResponse is the client's response to an elicitation request.
+type ElicitationResponse struct {
+	JSONRPC string              `json:"jsonrpc"`
+	ID      any                 `json:"id,omitempty"`
+	Result  ElicitationResult   `json:"result"`
+	Error   *Error              `json:"error,omitempty"`
+}
+
+// ElicitationResult is the result of an elicitation/create response.
+type ElicitationResult struct {
+	Action  string                 `json:"action"` // "accept", "decline", "cancel"
+	Content map[string]interface{} `json:"content,omitempty"`
+}
+
+// --- Progress notification types ---
+
+// ProgressNotification is sent during long-running operations.
+type ProgressNotification struct {
+	JSONRPC string         `json:"jsonrpc"`
+	Method  string         `json:"method"`
+	Params  ProgressParams `json:"params"`
+}
+
+// ProgressParams describes progress of an operation.
+type ProgressParams struct {
+	ProgressToken string  `json:"progressToken"`
+	Progress      float64 `json:"progress"`
+	Total         float64 `json:"total"`
+	Message       string  `json:"message,omitempty"`
+}
+
+// --- Logging notification types ---
+
+// LogNotification is a server-to-client log message.
+type LogNotification struct {
+	JSONRPC string    `json:"jsonrpc"`
+	Method  string    `json:"method"`
+	Params  LogParams `json:"params"`
+}
+
+// LogParams describes a log message.
+type LogParams struct {
+	Level  string `json:"level"`  // "debug", "info", "warning", "error"
+	Logger string `json:"logger"` // logger name (e.g., "trvl")
+	Data   string `json:"data"`   // log message
+}
+
+// --- Prompts types ---
+
+// PromptsListResult is the response to prompts/list.
+type PromptsListResult struct {
+	Prompts []PromptDef `json:"prompts"`
+}
+
+// PromptDef describes a prompt template.
+type PromptDef struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes a single prompt argument.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Required    bool   `json:"required"`
+}
+
+// PromptsGetParams is the params object for prompts/get.
+type PromptsGetParams struct {
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
+// PromptsGetResult is the response to prompts/get.
+type PromptsGetResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// PromptMessage is a single message in a prompt result.
+type PromptMessage struct {
+	Role    string       `json:"role"`
+	Content ContentBlock `json:"content"`
+}
+
+// --- Resources types ---
+
+// ResourcesListResult is the response to resources/list.
+type ResourcesListResult struct {
+	Resources []ResourceDef `json:"resources"`
+}
+
+// ResourceDef describes a single resource.
+type ResourceDef struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourcesReadParams is the params object for resources/read.
+type ResourcesReadParams struct {
+	URI string `json:"uri"`
+}
+
+// ResourcesReadResult is the response to resources/read.
+type ResourcesReadResult struct {
+	Contents []ResourceContent `json:"contents"`
+}
+
+// ResourceContent is a single content block in a resource read result.
+type ResourceContent struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
 }
 
 // --- Server ---
 
 // Server handles MCP JSON-RPC requests.
 type Server struct {
-	tools []ToolDef
-	handlers map[string]ToolHandler
+	tools              []ToolDef
+	handlers           map[string]ToolHandler
+	prompts            []PromptDef
+	resources          []ResourceDef
+	clientCapabilities ClientCapabilities
+
+	// Notification writer, set during ServeStdio for server-to-client messages.
+	notifyWriter io.Writer
+	notifyMu     sync.Mutex
+
+	// For elicitation: reader and writer set during ServeStdio.
+	elicitReader *bufio.Scanner
+	elicitID     atomic.Int64
 }
 
-// ToolHandler processes a tool call and returns the result text.
-type ToolHandler func(args map[string]any) (string, error)
+// ToolHandler processes a tool call and returns content blocks, optional
+// structured content, and an error.
+// The elicit parameter may be nil if the client does not support elicitation.
+type ToolHandler func(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error)
 
 // NewServer creates a new MCP server with the standard trvl tools registered.
 func NewServer() *Server {
@@ -132,7 +359,100 @@ func NewServer() *Server {
 		handlers: make(map[string]ToolHandler),
 	}
 	registerTools(s)
+	registerPrompts(s)
+	registerResources(s)
 	return s
+}
+
+// SendNotification writes a JSON-RPC notification to the client (server->client).
+func (s *Server) SendNotification(method string, params interface{}) error {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+
+	if s.notifyWriter == nil {
+		return nil // No writer available (HTTP mode or not started).
+	}
+
+	notif := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+	}
+	return writeJSON(s.notifyWriter, notif)
+}
+
+// SendProgress sends a progress notification to the client.
+func (s *Server) SendProgress(token string, progress, total float64, message string) {
+	_ = s.SendNotification("notifications/progress", ProgressParams{
+		ProgressToken: token,
+		Progress:      progress,
+		Total:         total,
+		Message:       message,
+	})
+}
+
+// SendLog sends a log notification to the client.
+func (s *Server) SendLog(level, message string) {
+	_ = s.SendNotification("notifications/message", LogParams{
+		Level:  level,
+		Logger: "trvl",
+		Data:   message,
+	})
+}
+
+// makeElicitFunc creates an ElicitFunc that uses the stdio transport to
+// send an elicitation/create request and read the client's response.
+func (s *Server) makeElicitFunc() ElicitFunc {
+	if s.clientCapabilities.Elicitation == nil {
+		return nil
+	}
+	if s.notifyWriter == nil || s.elicitReader == nil {
+		return nil
+	}
+
+	return func(message string, schema map[string]interface{}) (map[string]interface{}, error) {
+		id := s.elicitID.Add(1)
+		req := ElicitationRequest{
+			JSONRPC: "2.0",
+			ID:      id,
+			Method:  "elicitation/create",
+			Params: ElicitationReqParams{
+				Message:         message,
+				RequestedSchema: schema,
+			},
+		}
+
+		s.notifyMu.Lock()
+		err := writeJSON(s.notifyWriter, req)
+		s.notifyMu.Unlock()
+		if err != nil {
+			return nil, fmt.Errorf("send elicitation request: %w", err)
+		}
+
+		// Read the response from the client. In the stdio transport, the
+		// next line from stdin should be the elicitation response.
+		if !s.elicitReader.Scan() {
+			if err := s.elicitReader.Err(); err != nil {
+				return nil, fmt.Errorf("read elicitation response: %w", err)
+			}
+			return nil, fmt.Errorf("read elicitation response: unexpected EOF")
+		}
+
+		var resp ElicitationResponse
+		if err := json.Unmarshal(s.elicitReader.Bytes(), &resp); err != nil {
+			return nil, fmt.Errorf("parse elicitation response: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, fmt.Errorf("elicitation error: %s", resp.Error.Message)
+		}
+
+		if resp.Result.Action != "accept" {
+			return nil, nil // User declined or cancelled.
+		}
+
+		return resp.Result.Content, nil
+	}
 }
 
 // HandleRequest processes a single JSON-RPC request and returns the response.
@@ -141,12 +461,19 @@ func (s *Server) HandleRequest(req *Request) *Response {
 	case "initialize":
 		return s.handleInitialize(req)
 	case "notifications/initialized":
-		// Client notification — no response needed (but we return nil to signal that).
 		return nil
 	case "tools/list":
 		return s.handleToolsList(req)
 	case "tools/call":
 		return s.handleToolsCall(req)
+	case "prompts/list":
+		return s.handlePromptsList(req)
+	case "prompts/get":
+		return s.handlePromptsGet(req)
+	case "resources/list":
+		return s.handleResourcesList(req)
+	case "resources/read":
+		return s.handleResourcesRead(req)
 	default:
 		return &Response{
 			JSONRPC: "2.0",
@@ -157,13 +484,24 @@ func (s *Server) HandleRequest(req *Request) *Response {
 }
 
 func (s *Server) handleInitialize(req *Request) *Response {
+	// Parse client capabilities from the initialize request.
+	if req.Params != nil {
+		var params InitializeParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.clientCapabilities = params.Capabilities
+		}
+	}
+
 	return &Response{
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result: InitializeResult{
 			ProtocolVersion: protocolVersion,
 			Capabilities: Capabilities{
-				Tools: &ToolsCapability{ListChanged: false},
+				Tools:     &ToolsCapability{ListChanged: false},
+				Prompts:   &PromptsCapability{ListChanged: false},
+				Resources: &ResourcesCapability{Subscribe: false, ListChanged: false},
+				Logging:   &LoggingCapability{},
 			},
 			ServerInfo: ServerInfo{
 				Name:    serverName,
@@ -200,7 +538,13 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 		}
 	}
 
-	text, err := handler(params.Arguments)
+	// Log the tool call.
+	s.SendLog("info", fmt.Sprintf("Calling tool: %s", params.Name))
+
+	// Build elicit function based on client capabilities.
+	elicit := s.makeElicitFunc()
+
+	content, structured, err := handler(params.Arguments, elicit)
 	if err != nil {
 		return &Response{
 			JSONRPC: "2.0",
@@ -216,8 +560,77 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result: ToolCallResult{
-			Content: []ContentBlock{{Type: "text", Text: text}},
+			Content:           content,
+			StructuredContent: structured,
 		},
+	}
+}
+
+func (s *Server) handlePromptsList(req *Request) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  PromptsListResult{Prompts: s.prompts},
+	}
+}
+
+func (s *Server) handlePromptsGet(req *Request) *Response {
+	var params PromptsGetParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return &Response{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &Error{Code: -32602, Message: fmt.Sprintf("invalid params: %v", err)},
+		}
+	}
+
+	result, err := getPrompt(params.Name, params.Arguments)
+	if err != nil {
+		return &Response{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &Error{Code: -32602, Message: err.Error()},
+		}
+	}
+
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  result,
+	}
+}
+
+func (s *Server) handleResourcesList(req *Request) *Response {
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  ResourcesListResult{Resources: s.resources},
+	}
+}
+
+func (s *Server) handleResourcesRead(req *Request) *Response {
+	var params ResourcesReadParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return &Response{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &Error{Code: -32602, Message: fmt.Sprintf("invalid params: %v", err)},
+		}
+	}
+
+	result, err := readResource(params.URI)
+	if err != nil {
+		return &Response{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &Error{Code: -32002, Message: err.Error()},
+		}
+	}
+
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  result,
 	}
 }
 
@@ -227,6 +640,10 @@ func (s *Server) ServeStdio(in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	// Allow up to 1MB per line for large tool call results.
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	// Set up notification writer and elicitation reader for server->client.
+	s.notifyWriter = out
+	s.elicitReader = scanner
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -248,7 +665,7 @@ func (s *Server) ServeStdio(in io.Reader, out io.Writer) error {
 
 		resp := s.HandleRequest(&req)
 		if resp == nil {
-			// Notification — no response.
+			// Notification -- no response.
 			continue
 		}
 		if err := writeJSON(out, resp); err != nil {

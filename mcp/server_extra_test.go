@@ -191,8 +191,8 @@ func TestHTTPHandler_Health(t *testing.T) {
 	if result["server"] != "trvl" {
 		t.Errorf("server = %q, want trvl", result["server"])
 	}
-	if result["version"] != "0.1.0" {
-		t.Errorf("version = %q, want 0.1.0", result["version"])
+	if result["version"] != "0.2.0" {
+		t.Errorf("version = %q, want 0.2.0", result["version"])
 	}
 }
 
@@ -298,13 +298,14 @@ func TestHTTPHandler_LargePayload(t *testing.T) {
 
 func TestAllToolHandlers(t *testing.T) {
 	handlers := []struct {
-		name string
-		args map[string]any
+		name      string
+		args      map[string]any
+		mayError  bool // true if the handler may return an error (e.g., fake hotel ID)
 	}{
-		{"search_flights", map[string]any{"origin": "HEL", "destination": "NRT", "departure_date": "2026-06-15"}},
-		{"search_dates", map[string]any{"origin": "HEL", "destination": "NRT", "start_date": "2026-06-01", "end_date": "2026-06-30"}},
-		{"search_hotels", map[string]any{"location": "Helsinki", "check_in": "2026-06-15", "check_out": "2026-06-18"}},
-		{"hotel_prices", map[string]any{"hotel_id": "/g/abc", "check_in": "2026-06-15", "check_out": "2026-06-18"}},
+		{"search_flights", map[string]any{"origin": "HEL", "destination": "NRT", "departure_date": "2026-06-15"}, false},
+		{"search_dates", map[string]any{"origin": "HEL", "destination": "NRT", "start_date": "2026-06-01", "end_date": "2026-06-30"}, false},
+		{"search_hotels", map[string]any{"location": "Helsinki", "check_in": "2026-06-15", "check_out": "2026-06-18"}, false},
+		{"hotel_prices", map[string]any{"hotel_id": "/g/abc", "check_in": "2026-06-15", "check_out": "2026-06-18"}, true},
 	}
 
 	for _, tt := range handlers {
@@ -315,15 +316,38 @@ func TestAllToolHandlers(t *testing.T) {
 				t.Fatalf("handler not found for %s", tt.name)
 			}
 
-			result, err := handler(tt.args)
+			content, structured, err := handler(tt.args, nil)
 			if err != nil {
+				if tt.mayError {
+					// Expected: fake hotel ID may fail with real API.
+					return
+				}
 				t.Fatalf("handler error: %v", err)
 			}
 
-			// Result should be valid JSON.
-			var parsed map[string]any
-			if err := json.Unmarshal([]byte(result), &parsed); err != nil {
-				t.Fatalf("result not valid JSON: %v", err)
+			if len(content) == 0 {
+				t.Fatal("expected content blocks")
+			}
+
+			// First content block should be the summary (for user).
+			if content[0].Type != "text" {
+				t.Errorf("first content block type = %q, want text", content[0].Type)
+			}
+			if content[0].Annotations == nil {
+				t.Error("first content block should have annotations")
+			}
+
+			// Second content block should be JSON (for assistant).
+			if len(content) >= 2 {
+				var parsed map[string]any
+				if err := json.Unmarshal([]byte(content[1].Text), &parsed); err != nil {
+					t.Fatalf("second content block is not valid JSON: %v", err)
+				}
+			}
+
+			// Structured content should be non-nil.
+			if structured == nil {
+				t.Error("expected structured content to be non-nil")
 			}
 		})
 	}
@@ -336,12 +360,10 @@ func TestAllToolHandlers_NilArgs(t *testing.T) {
 	for _, name := range tools {
 		t.Run(name, func(t *testing.T) {
 			handler := s.handlers[name]
-			result, err := handler(nil)
-			if err != nil {
-				t.Fatalf("handler error: %v", err)
-			}
-			if result == "" {
-				t.Error("expected non-empty result")
+			// All handlers should return an error for nil args (missing required fields).
+			_, _, err := handler(nil, nil)
+			if err == nil {
+				t.Error("expected error for nil args")
 			}
 		})
 	}
@@ -377,15 +399,43 @@ func TestToolDefinitions(t *testing.T) {
 	}
 }
 
-// --- marshalResult ---
+// --- marshalResult (via buildAnnotatedContentBlocks) ---
 
-func TestMarshalResult_ValidInput(t *testing.T) {
-	result, err := marshalResult(map[string]string{"key": "value"})
+func TestBuildAnnotatedContentBlocks(t *testing.T) {
+	blocks, err := buildAnnotatedContentBlocks("Test summary", map[string]string{"key": "value"})
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	if !strings.Contains(result, "key") {
-		t.Error("missing key in result")
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d", len(blocks))
+	}
+
+	// Summary block.
+	if blocks[0].Text != "Test summary" {
+		t.Errorf("summary = %q", blocks[0].Text)
+	}
+	if blocks[0].Annotations == nil {
+		t.Fatal("summary should have annotations")
+	}
+	if blocks[0].Annotations.Priority != 1.0 {
+		t.Errorf("summary priority = %f, want 1.0", blocks[0].Annotations.Priority)
+	}
+	if len(blocks[0].Annotations.Audience) == 0 || blocks[0].Annotations.Audience[0] != "user" {
+		t.Errorf("summary audience = %v, want [user]", blocks[0].Annotations.Audience)
+	}
+
+	// JSON block.
+	if !strings.Contains(blocks[1].Text, "key") {
+		t.Error("JSON block should contain key")
+	}
+	if blocks[1].Annotations == nil {
+		t.Fatal("JSON block should have annotations")
+	}
+	if blocks[1].Annotations.Priority != 0.5 {
+		t.Errorf("JSON priority = %f, want 0.5", blocks[1].Annotations.Priority)
+	}
+	if len(blocks[1].Annotations.Audience) == 0 || blocks[1].Annotations.Audience[0] != "assistant" {
+		t.Errorf("JSON audience = %v, want [assistant]", blocks[1].Annotations.Audience)
 	}
 }
 
@@ -484,7 +534,7 @@ func TestNewHTTPServer(t *testing.T) {
 	}
 }
 
-// --- HandleRequest unknown method ---
+// --- HandleRequest all methods ---
 
 func TestHandleRequest_AllMethods(t *testing.T) {
 	s := NewServer()
@@ -526,5 +576,374 @@ func TestHandleRequest_AllMethods(t *testing.T) {
 				t.Errorf("unexpected error: %+v", resp.Error)
 			}
 		})
+	}
+}
+
+// --- Protocol version 2025-11-25 features ---
+
+func TestProtocolVersion(t *testing.T) {
+	if protocolVersion != "2025-11-25" {
+		t.Errorf("protocol version = %q, want 2025-11-25", protocolVersion)
+	}
+}
+
+func TestInitializeCapabilities(t *testing.T) {
+	s := NewServer()
+	resp := sendRequest(t, s, "initialize", 1, nil)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result InitializeResult
+	if err := json.Unmarshal(resultJSON, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if result.Capabilities.Tools == nil {
+		t.Error("tools capability should be set")
+	}
+	if result.Capabilities.Prompts == nil {
+		t.Error("prompts capability should be set")
+	}
+	if result.Capabilities.Resources == nil {
+		t.Error("resources capability should be set")
+	}
+	if result.Capabilities.Logging == nil {
+		t.Error("logging capability should be set")
+	}
+	if result.ProtocolVersion != "2025-11-25" {
+		t.Errorf("protocol version = %q, want 2025-11-25", result.ProtocolVersion)
+	}
+}
+
+func TestToolAnnotations(t *testing.T) {
+	s := NewServer()
+	for _, tool := range s.tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			if tool.Annotations == nil {
+				t.Fatal("annotations should be set")
+			}
+			if tool.Annotations.Title == "" {
+				t.Error("title should be set")
+			}
+			if !tool.Annotations.ReadOnlyHint {
+				t.Error("readOnlyHint should be true")
+			}
+			if !tool.Annotations.IdempotentHint {
+				t.Error("idempotentHint should be true")
+			}
+		})
+	}
+}
+
+func TestToolOutputSchema(t *testing.T) {
+	s := NewServer()
+	for _, tool := range s.tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			if tool.OutputSchema == nil {
+				t.Fatal("outputSchema should be set")
+			}
+			// Should be a valid JSON-serializable object.
+			data, err := json.Marshal(tool.OutputSchema)
+			if err != nil {
+				t.Fatalf("marshal outputSchema: %v", err)
+			}
+			var schema map[string]interface{}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatalf("outputSchema is not a valid JSON object: %v", err)
+			}
+			if schema["type"] != "object" {
+				t.Errorf("outputSchema type = %v, want object", schema["type"])
+			}
+		})
+	}
+}
+
+func TestToolTitle(t *testing.T) {
+	s := NewServer()
+	for _, tool := range s.tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			if tool.Title == "" {
+				t.Error("tool-level title should be set")
+			}
+		})
+	}
+}
+
+func TestStructuredContent(t *testing.T) {
+	s := NewServer()
+
+	// Call a tool via HandleRequest and verify structuredContent is present.
+	params := ToolCallParams{
+		Name: "search_flights",
+		Arguments: map[string]any{
+			"origin":         "HEL",
+			"destination":    "NRT",
+			"departure_date": "2026-06-15",
+		},
+	}
+	raw, _ := json.Marshal(params)
+	req := &Request{
+		JSONRPC: "2.0",
+		ID:      float64(1),
+		Method:  "tools/call",
+		Params:  raw,
+	}
+
+	resp := s.HandleRequest(req)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result ToolCallResult
+	if err := json.Unmarshal(resultJSON, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Content should have annotated blocks.
+	if len(result.Content) < 2 {
+		t.Fatalf("expected at least 2 content blocks, got %d", len(result.Content))
+	}
+
+	// Structured content should be present.
+	if result.StructuredContent == nil {
+		t.Error("structuredContent should be present")
+	}
+}
+
+func TestContentAnnotations(t *testing.T) {
+	s := NewServer()
+
+	params := ToolCallParams{
+		Name: "search_flights",
+		Arguments: map[string]any{
+			"origin":         "HEL",
+			"destination":    "NRT",
+			"departure_date": "2026-06-15",
+		},
+	}
+	raw, _ := json.Marshal(params)
+	req := &Request{
+		JSONRPC: "2.0",
+		ID:      float64(1),
+		Method:  "tools/call",
+		Params:  raw,
+	}
+
+	resp := s.HandleRequest(req)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+
+	resultJSON, _ := json.Marshal(resp.Result)
+	var result ToolCallResult
+	json.Unmarshal(resultJSON, &result)
+
+	if len(result.Content) < 2 {
+		t.Fatal("expected at least 2 content blocks")
+	}
+
+	// First block: user audience, high priority.
+	first := result.Content[0]
+	if first.Annotations == nil {
+		t.Fatal("first block should have annotations")
+	}
+	if len(first.Annotations.Audience) == 0 || first.Annotations.Audience[0] != "user" {
+		t.Errorf("first block audience = %v, want [user]", first.Annotations.Audience)
+	}
+	if first.Annotations.Priority != 1.0 {
+		t.Errorf("first block priority = %f, want 1.0", first.Annotations.Priority)
+	}
+
+	// Second block: assistant audience, lower priority.
+	second := result.Content[1]
+	if second.Annotations == nil {
+		t.Fatal("second block should have annotations")
+	}
+	if len(second.Annotations.Audience) == 0 || second.Annotations.Audience[0] != "assistant" {
+		t.Errorf("second block audience = %v, want [assistant]", second.Annotations.Audience)
+	}
+	if second.Annotations.Priority != 0.5 {
+		t.Errorf("second block priority = %f, want 0.5", second.Annotations.Priority)
+	}
+}
+
+func TestInitializeTracksClientCapabilities(t *testing.T) {
+	s := NewServer()
+
+	// Send initialize with elicitation capability.
+	initParams := InitializeParams{
+		ProtocolVersion: "2025-11-25",
+		Capabilities: ClientCapabilities{
+			Elicitation: &ElicitationCapability{},
+		},
+		ClientInfo: ClientInfo{Name: "test-client", Version: "1.0"},
+	}
+	raw, _ := json.Marshal(initParams)
+	req := &Request{
+		JSONRPC: "2.0",
+		ID:      float64(1),
+		Method:  "initialize",
+		Params:  raw,
+	}
+
+	resp := s.HandleRequest(req)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("error: %+v", resp.Error)
+	}
+
+	// Verify client capabilities were stored.
+	if s.clientCapabilities.Elicitation == nil {
+		t.Error("expected elicitation capability to be stored")
+	}
+}
+
+func TestSendLog(t *testing.T) {
+	s := NewServer()
+	var buf bytes.Buffer
+	s.notifyWriter = &buf
+
+	s.SendLog("info", "test message")
+
+	line := strings.TrimSpace(buf.String())
+	if line == "" {
+		t.Fatal("expected log notification")
+	}
+
+	var notif map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &notif); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if notif["method"] != "notifications/message" {
+		t.Errorf("method = %v, want notifications/message", notif["method"])
+	}
+	params, ok := notif["params"].(map[string]interface{})
+	if !ok {
+		t.Fatal("params should be an object")
+	}
+	if params["level"] != "info" {
+		t.Errorf("level = %v, want info", params["level"])
+	}
+	if params["data"] != "test message" {
+		t.Errorf("data = %v, want test message", params["data"])
+	}
+	if params["logger"] != "trvl" {
+		t.Errorf("logger = %v, want trvl", params["logger"])
+	}
+}
+
+func TestSendProgress(t *testing.T) {
+	s := NewServer()
+	var buf bytes.Buffer
+	s.notifyWriter = &buf
+
+	s.SendProgress("token-1", 0.5, 1.0, "Searching...")
+
+	line := strings.TrimSpace(buf.String())
+	if line == "" {
+		t.Fatal("expected progress notification")
+	}
+
+	var notif map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &notif); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if notif["method"] != "notifications/progress" {
+		t.Errorf("method = %v, want notifications/progress", notif["method"])
+	}
+	params, ok := notif["params"].(map[string]interface{})
+	if !ok {
+		t.Fatal("params should be an object")
+	}
+	if params["progressToken"] != "token-1" {
+		t.Errorf("progressToken = %v", params["progressToken"])
+	}
+	if params["progress"] != 0.5 {
+		t.Errorf("progress = %v", params["progress"])
+	}
+	if params["message"] != "Searching..." {
+		t.Errorf("message = %v", params["message"])
+	}
+}
+
+func TestSendNotification_NilWriter(t *testing.T) {
+	s := NewServer()
+	// Should not panic or error when no writer is set.
+	err := s.SendNotification("notifications/message", LogParams{Level: "info", Logger: "trvl", Data: "test"})
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestMakeElicitFunc_NilWithoutCapability(t *testing.T) {
+	s := NewServer()
+	// Client does not declare elicitation capability.
+	fn := s.makeElicitFunc()
+	if fn != nil {
+		t.Error("expected nil ElicitFunc when client has no elicitation capability")
+	}
+}
+
+func TestMakeElicitFunc_NilWithoutWriter(t *testing.T) {
+	s := NewServer()
+	s.clientCapabilities.Elicitation = &ElicitationCapability{}
+	// No writer set.
+	fn := s.makeElicitFunc()
+	if fn != nil {
+		t.Error("expected nil ElicitFunc when no writer is set")
+	}
+}
+
+// --- Elicitation schema builders ---
+
+func TestFlightElicitationSchema(t *testing.T) {
+	schema := flightElicitationSchema("HEL", "NRT")
+	if schema == nil {
+		t.Fatal("expected non-nil schema")
+	}
+	if schema["type"] != "object" {
+		t.Errorf("type = %v, want object", schema["type"])
+	}
+	props, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("properties should be a map")
+	}
+	if _, ok := props["departure_date"]; !ok {
+		t.Error("missing departure_date property")
+	}
+	required, ok := schema["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a string slice")
+	}
+	if len(required) != 1 || required[0] != "departure_date" {
+		t.Errorf("required = %v, want [departure_date]", required)
+	}
+}
+
+func TestHotelElicitationSchema(t *testing.T) {
+	schema := hotelElicitationSchema(24, "Helsinki")
+	if schema == nil {
+		t.Fatal("expected non-nil schema")
+	}
+	props, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("properties should be a map")
+	}
+	if _, ok := props["min_stars"]; !ok {
+		t.Error("missing min_stars property")
+	}
+	if _, ok := props["max_price"]; !ok {
+		t.Error("missing max_price property")
+	}
+	if _, ok := props["sort_by"]; !ok {
+		t.Error("missing sort_by property")
 	}
 }
