@@ -95,7 +95,7 @@ auth:
 
 metadata:
   category: travel
-  tags: [travel, hotels, google-hotels, accommodation, free, no-api-key]
+  tags: [travel, hotels, google-hotels, accommodation, free, no-api-key, lodging, resort, hostel, apartment, vacation-rental, stay, star-rating, reviews]
   cost_category: free
   execution_time: medium
   read_only: true

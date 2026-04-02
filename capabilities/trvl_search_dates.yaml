@@ -81,7 +81,7 @@ auth:
 
 metadata:
   category: travel
-  tags: [travel, flights, google-flights, dates, flexible, free, no-api-key]
+  tags: [travel, flights, google-flights, dates, flexible, free, no-api-key, cheapest, budget, price-calendar, fare-finder, when-to-fly]
   cost_category: free
   execution_time: medium
   read_only: true

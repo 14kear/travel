@@ -1,100 +1,103 @@
-# trvl
+# trvl — Google Flights + Hotels from your terminal
 
-Search flights and hotels from your terminal. Free, no API keys, real-time data from Google.
+> **Free. No API keys. Real-time prices. One binary.**
 
+```bash
+$ trvl flights HEL NRT 2026-06-15
+
+Found 86 flights (one_way)
+
+| Price    | Duration | Stops   | Route                    | Airline               | Departs          |
++----------+----------+---------+--------------------------+-----------------------+------------------+
+| EUR 603  | 24h 20m  | 2 stops | HEL -> CPH -> AUH -> NRT | Scandinavian Airlines | 2026-06-15T06:10 |
+| EUR 656  | 24h 10m  | 2 stops | HEL -> CPH -> AUH -> NRT | Finnair               | 2026-06-15T06:20 |
+| EUR 875  | 31h 20m  | 1 stop  | HEL -> IST -> NRT        | Turkish Airlines      | 2026-06-15T19:35 |
 ```
-trvl flights HEL NRT 2026-06-15
-trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18
+
+```bash
+$ trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18
+
+Found 20 hotels:
+
+| Name                              | Stars | Rating | Reviews | Price   |
++-----------------------------------+-------+--------+---------+---------+
+| HOTEL MYSTAYS PREMIER Omori       | 4     | 4.1    | 2059    | 150 EUR |
+| Hotel JAL City Tokyo Toyosu       | 4     | 4.2    | 1080    | 150 EUR |
+| Koko Hotel Tsukiji Ginza          | 4     | 3.9    | 650     | 89 EUR  |
 ```
 
-## What is this?
+## Why trvl?
 
-`trvl` is a single Go binary that provides programmatic access to Google Flights and Google Hotels data through reverse engineering of Google's internal APIs. No scraping, no browser automation, no API keys.
+Google Flights and Hotels have no public API. Your options are $50+/mo SERP proxies or fragile Selenium scrapers.
 
-**Inspired by [fli](https://github.com/punitarani/fli)** by Punit Arani, which pioneered this approach for Google Flights in Python. `trvl` extends it to hotels and reimplements both in Go for single-binary distribution.
+`trvl` talks directly to Google's internal protocol — the same one the website uses. No scraping, no headless browsers, no API keys, no monthly fees. Just real-time travel data in a 15MB binary.
+
+**Inspired by [fli](https://github.com/punitarani/fli)** by Punit Arani, which pioneered this for flights in Python. `trvl` extends it to hotels and ships as a single Go binary.
 
 ## Install
 
 ```bash
-# From source
 go install github.com/MikkoParkkola/trvl/cmd/trvl@latest
-
-# Or build locally
-git clone https://github.com/MikkoParkkola/trvl.git
-cd trvl
-make build
-# Binary at ./bin/trvl
 ```
 
-## Usage
+Or grab a binary from [Releases](https://github.com/MikkoParkkola/trvl/releases).
 
-### Flight Search
+Or build from source:
 
 ```bash
-# One-way
-trvl flights HEL NRT 2026-06-15
-
-# Round-trip
-trvl flights HEL BCN 2026-07-01 --return 2026-07-08
-
-# Business class, nonstop only
-trvl flights JFK LHR 2026-07-01 --cabin business --stops nonstop
-
-# JSON output (for scripts/pipelines)
-trvl flights HEL NRT 2026-06-15 --format json
+git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
 ```
 
-### Find Cheapest Dates
+## Flights
 
 ```bash
-# Cheapest day to fly in June
-trvl dates HEL NRT --from 2026-06-01 --to 2026-06-30
-
-# Round-trip, 7-day trips
-trvl dates HEL BCN --from 2026-07-01 --to 2026-08-31 --duration 7 --round-trip
+trvl flights JFK LHR 2026-07-01                              # One-way
+trvl flights HEL BCN 2026-07-01 --return 2026-07-08          # Round-trip
+trvl flights JFK LHR 2026-07-01 --cabin business --stops nonstop  # Filters
+trvl flights HEL NRT 2026-06-15 --format json                # JSON output
+trvl flights HEL NRT 2026-06-15 --sort duration              # Sort by duration
+trvl flights HEL NRT 2026-06-15 --airline AY,SK              # Filter airlines
 ```
 
-### Hotel Search
+**Filters**: `--cabin` (economy/premium_economy/business/first), `--stops` (any/nonstop/one_stop/two_plus), `--sort` (cheapest/duration/departure/arrival), `--airline` (comma-separated IATA codes)
+
+## Cheapest Dates
 
 ```bash
-# Search hotels
+trvl dates HEL NRT --from 2026-06-01 --to 2026-06-30                     # One-way
+trvl dates HEL BCN --from 2026-07-01 --to 2026-08-31 --duration 7 --round-trip  # Round-trip
+```
+
+Searches each date in parallel (3 concurrent) and returns the cheapest price per day. Great for flexible travel planning.
+
+## Hotels
+
+```bash
 trvl hotels "Helsinki" --checkin 2026-06-15 --checkout 2026-06-18
-
-# Filter by stars, sort by rating
 trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18 --stars 4 --sort rating
-
-# JSON output
 trvl hotels "Paris" --checkin 2026-07-01 --checkout 2026-07-05 --format json
 ```
 
-### Hotel Price Comparison
+**Filters**: `--stars` (minimum 1-5), `--guests` (default 2), `--sort` (price/rating), `--currency` (USD/EUR/etc.)
+
+## Hotel Price Comparison
 
 ```bash
-# Get prices from multiple booking providers
 trvl prices "<hotel_id>" --checkin 2026-06-15 --checkout 2026-06-18
 ```
 
-The `hotel_id` comes from `trvl hotels` search results.
+Compares prices across Booking.com, Hotels.com, Expedia, and other providers. `hotel_id` comes from hotel search results.
 
-### MCP Server (AI Agent Integration)
+## MCP Server — AI Agent Integration
+
+`trvl` ships a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server (v2025-11-25) for seamless AI assistant integration.
 
 ```bash
-# stdio mode (for Claude Code, Cursor, etc.)
-trvl mcp
-
-# HTTP mode (for gateway/remote access)
-trvl mcp --http --port 8000
+trvl mcp              # stdio (Claude Code, Cursor, Windsurf, etc.)
+trvl mcp --http       # HTTP transport (gateway, remote access)
 ```
 
-Implements [MCP 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/) with:
-- 4 tools: `search_flights`, `search_dates`, `search_hotels`, `hotel_prices`
-- 3 prompts: `plan-trip`, `find-cheapest-dates`, `compare-hotels`
-- 3 resources: airport codes, flight help, hotel help
-- Elicitation support for interactive search refinement
-- Structured content with audience annotations
-- Progressive disclosure suggestions
-
-#### Claude Code Integration
+### Claude Code / Claude Desktop
 
 ```json
 {
@@ -107,52 +110,68 @@ Implements [MCP 2025-11-25](https://modelcontextprotocol.io/specification/2025-1
 }
 ```
 
-#### mcp-gateway Integration
+### MCP Features
+
+| Feature | Details |
+|---------|---------|
+| **Tools** | `search_flights`, `search_dates`, `search_hotels`, `hotel_prices` |
+| **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels` |
+| **Resources** | Airport codes (50 major), flight/hotel help guides |
+| **Elicitation** | Interactive forms for search refinement (dates, cabin, stars) |
+| **Structured content** | Typed JSON (`structuredContent`) + human summary with audience annotations |
+| **Progressive disclosure** | Suggestions for follow-up searches (round-trip, nonstop, flexible dates) |
+| **Output schemas** | Full JSON Schema validation for all tool responses |
+
+### mcp-gateway
 
 ```yaml
 backends:
   trvl:
     transport: stdio
     command: trvl mcp
-    description: "Travel search - flights and hotels via Google"
 ```
 
 ## How It Works
 
-Google's travel search uses an internal gRPC-over-HTTP protocol called "batchexecute". `trvl` speaks this protocol directly:
+Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batchexecute**. `trvl` speaks this protocol natively:
 
-1. **Chrome TLS fingerprint** via [utls](https://github.com/refraction-networking/utls) to pass Google's bot detection
-2. **Flight search** via `FlightsFrontendService/GetShoppingResults` endpoint
-3. **Hotel search** via `TravelFrontendUi` page parsing with embedded `AF_initDataCallback` data
-4. **Hotel prices** via `TravelFrontendUi/data/batchexecute` with rpcid `yY52ce`
-5. **Rate limiting** at 10 req/s with exponential backoff retry on 429/5xx
+1. **Chrome TLS fingerprint** — [utls](https://github.com/refraction-networking/utls) impersonates Chrome's exact TLS ClientHello to pass bot detection
+2. **Flights** — `FlightsFrontendService/GetShoppingResults` with encoded filter arrays
+3. **Hotels** — `TravelFrontendUi` embedded JSON parsing from `AF_initDataCallback` blocks
+4. **Hotel prices** — `TravelFrontendUi/data/batchexecute` with rpcid `yY52ce`
+5. **Rate limiting** — 10 req/s token bucket with exponential backoff (1s/2s/4s) on 429/5xx
 
-## Features
+No Selenium. No Puppeteer. No browser. Just HTTP.
 
-- **Zero dependencies** at runtime. Single static binary, no API keys, no config files
-- **Real-time data** from Google Flights and Google Hotels
-- **Flights**: one-way, round-trip, cabin class, stop filter, airline filter, sort options
-- **Hotels**: search by city/location, star rating filter, price sorting, geocoding via Nominatim
-- **Cheapest dates**: find the best day to fly across a date range (concurrent search, 3x faster)
-- **MCP server**: full MCP 2025-11-25 protocol for AI agent integration
-- **JSON output**: `--format json` on all commands for scripting
-- **Table output**: aligned columns for terminal display (default)
-- **14MB binary**: cross-compiles for Linux/macOS, AMD64/ARM64
+## Features at a Glance
+
+| | |
+|---|---|
+| **Binary** | Single static 15MB binary. Zero runtime dependencies. |
+| **Data** | Real-time from Google Flights + Google Hotels |
+| **Auth** | None required. No API keys, no accounts, no tokens. |
+| **Output** | Pretty tables (default) or JSON (`--format json`) |
+| **MCP** | Full v2025-11-25 with elicitation, structured content, prompts |
+| **Platforms** | Linux, macOS (amd64, arm64) |
+| **Language** | Go 1.24+, pure Go, no CGO |
+| **Tests** | 325 test functions, race-detector clean |
+| **License** | MIT |
 
 ## Attribution
 
-This project builds on the work of:
-- [fli](https://github.com/punitarani/fli) by Punit Arani — Google Flights Python library, primary inspiration
-- [utls](https://github.com/refraction-networking/utls) — Go TLS fingerprint impersonation
-- [icecreamsoft](https://icecreamsoft.hashnode.dev/building-a-web-app-for-travel-search) — Google Hotels batchexecute documentation
-- [SerpAPI docs](https://serpapi.com/google-hotels-api) — Hotel parameter documentation
+This project stands on the shoulders of:
+
+- **[fli](https://github.com/punitarani/fli)** by Punit Arani — the original Google Flights reverse-engineering library. `trvl`'s flight search is a direct Go reimplementation of fli's approach.
+- **[utls](https://github.com/refraction-networking/utls)** by Refraction Networking — Chrome TLS fingerprint impersonation
+- **[icecreamsoft](https://icecreamsoft.hashnode.dev/building-a-web-app-for-travel-search)** — Google Hotels batchexecute documentation
+- **[SerpAPI](https://serpapi.com/google-hotels-api)** — Hotel parameter reference documentation
 
 ## Legal
 
-This tool accesses Google's public-facing internal APIs for personal use. It does not bypass authentication, scrape protected content, or violate rate limits. Same approach as [fli](https://github.com/punitarani/fli) (1K+ GitHub stars, actively maintained).
+`trvl` accesses Google's public-facing internal APIs. It does not bypass authentication, access protected content, or circumvent rate limits. This is the same approach used by [fli](https://github.com/punitarani/fli) (1K+ GitHub stars, actively maintained, MIT licensed).
 
-Use responsibly. Respect Google's rate limits.
+Use responsibly. Respect rate limits.
 
 ## License
 
-MIT
+[MIT](LICENSE)

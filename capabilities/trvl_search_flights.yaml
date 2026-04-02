@@ -113,7 +113,7 @@ auth:
 
 metadata:
   category: travel
-  tags: [travel, flights, google-flights, free, no-api-key]
+  tags: [travel, flights, google-flights, free, no-api-key, airline, booking, airfare, one-way, round-trip, nonstop, economy, business, first-class]
   cost_category: free
   execution_time: medium
   read_only: true
