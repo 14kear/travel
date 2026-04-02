@@ -654,13 +654,8 @@ func TestToolAnnotations(t *testing.T) {
 
 func TestToolOutputSchema(t *testing.T) {
 	s := NewServer()
-	// New tools added in v0.2 pending output schema definition
-	skipSchema := map[string]bool{"weekend_getaway": true, "suggest_dates": true, "optimize_multi_city": true}
 	for _, tool := range s.tools {
 		t.Run(tool.Name, func(t *testing.T) {
-			if skipSchema[tool.Name] {
-				t.Skipf("output schema pending for %s", tool.Name)
-			}
 			if tool.OutputSchema == nil {
 				t.Fatal("outputSchema should be set")
 			}

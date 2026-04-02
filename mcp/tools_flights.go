@@ -499,6 +499,49 @@ func flightSuggestions(result *models.FlightSearchResult, origin, dest, date str
 
 // --- Suggest Dates tool ---
 
+// suggestDatesOutputSchema returns the JSON Schema for SmartDateResult.
+func suggestDatesOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success":     map[string]interface{}{"type": "boolean"},
+			"origin":      map[string]interface{}{"type": "string"},
+			"destination": map[string]interface{}{"type": "string"},
+			"cheapest_dates": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"date":        map[string]interface{}{"type": "string"},
+						"day_of_week": map[string]interface{}{"type": "string"},
+						"price":       map[string]interface{}{"type": "number"},
+						"currency":    map[string]interface{}{"type": "string"},
+						"return_date": map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"date", "price", "currency"},
+				},
+			},
+			"average_price": map[string]interface{}{"type": "number"},
+			"currency":      map[string]interface{}{"type": "string"},
+			"insights": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"type":        map[string]interface{}{"type": "string"},
+						"description": map[string]interface{}{"type": "string"},
+						"date":        map[string]interface{}{"type": "string"},
+						"price":       map[string]interface{}{"type": "number"},
+						"savings":     map[string]interface{}{"type": "number"},
+					},
+				},
+			},
+			"error": map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success"},
+	}
+}
+
 func suggestDatesTool() ToolDef {
 	return ToolDef{
 		Name:        "suggest_dates",
@@ -516,6 +559,7 @@ func suggestDatesTool() ToolDef {
 			},
 			Required: []string{"origin", "destination", "target_date"},
 		},
+		OutputSchema: suggestDatesOutputSchema(),
 		Annotations: &ToolAnnotations{
 			Title:          "Smart Date Suggestions",
 			ReadOnlyHint:   true,
@@ -589,6 +633,41 @@ func suggestDatesSummary(result *trip.SmartDateResult, origin, dest string) stri
 
 // --- Optimize Multi-City tool ---
 
+// multiCityOutputSchema returns the JSON Schema for MultiCityResult.
+func multiCityOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success":      map[string]interface{}{"type": "boolean"},
+			"home_airport": map[string]interface{}{"type": "string"},
+			"optimal_order": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"type": "string"},
+			},
+			"segments": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"from":     map[string]interface{}{"type": "string"},
+						"to":       map[string]interface{}{"type": "string"},
+						"price":    map[string]interface{}{"type": "number"},
+						"currency": map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"from", "to", "price", "currency"},
+				},
+			},
+			"total_cost":          map[string]interface{}{"type": "number"},
+			"currency":            map[string]interface{}{"type": "string"},
+			"worst_cost":          map[string]interface{}{"type": "number"},
+			"savings":             map[string]interface{}{"type": "number"},
+			"permutations_checked": map[string]interface{}{"type": "integer"},
+			"error":               map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success"},
+	}
+}
+
 func optimizeMultiCityTool() ToolDef {
 	return ToolDef{
 		Name:        "optimize_multi_city",
@@ -604,6 +683,7 @@ func optimizeMultiCityTool() ToolDef {
 			},
 			Required: []string{"home_airport", "cities", "depart_date"},
 		},
+		OutputSchema: multiCityOutputSchema(),
 		Annotations: &ToolAnnotations{
 			Title:          "Multi-City Trip Optimizer",
 			ReadOnlyHint:   true,

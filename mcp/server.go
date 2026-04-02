@@ -4,8 +4,9 @@
 //   - stdio: JSON-RPC messages over stdin/stdout (one JSON object per line)
 //   - HTTP:  JSON-RPC messages via POST /mcp
 //
-// The server exposes four tools: search_flights, search_dates, search_hotels,
-// and hotel_prices. It also provides prompts and resources.
+// The server exposes nine tools: search_flights, search_dates, search_hotels,
+// hotel_prices, destination_info, calculate_trip_cost, weekend_getaway,
+// suggest_dates, and optimize_multi_city. It also provides prompts and resources.
 //
 // Protocol version: 2025-11-25
 // Key features: structured output, elicitation, content annotations,

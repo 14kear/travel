@@ -16,16 +16,24 @@ Transport: stdio
 Claude Code: claude mcp add trvl --transport stdio -- trvl mcp
 Claude Desktop: Add {"mcpServers":{"trvl":{"command":"trvl","args":["mcp"]}}} to config
 
-## Skill (install after MCP setup)
+## Skills (install after MCP setup)
 
-curl -fsSL https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/trvl.md -o ~/.claude/skills/trvl.md
+mkdir -p ~/.claude/skills
+for s in trvl travel-hacks travel-agent travel-agent-compact; do
+  curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
+done
 
-## MCP Tools
+## MCP Tools (9 total)
 
 - search_flights(origin, destination, departure_date, [return_date, cabin_class, max_stops, sort_by])
 - search_dates(origin, destination, start_date, end_date, [trip_duration, is_round_trip])
 - search_hotels(location, check_in, check_out, [guests, stars, sort])
-- hotel_prices(hotel_id, check_in, check_out)
+- hotel_prices(hotel_id, check_in, check_out, [currency])
+- destination_info(location, [travel_dates])
+- calculate_trip_cost(origin, destination, depart_date, return_date, [guests, currency])
+- weekend_getaway(origin, month, [max_budget, nights])
+- suggest_dates(origin, destination, target_date, [flex_days, round_trip, duration])
+- optimize_multi_city(home_airport, cities, depart_date, [return_date])
 
 ## MCP Prompts
 
@@ -33,13 +41,20 @@ curl -fsSL https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/ski
 - find-cheapest-dates(origin, destination, month)
 - compare-hotels(location, check_in, check_out, [priorities])
 
-## CLI
+## CLI (14 commands)
 
 trvl flights JFK LHR 2026-07-01
 trvl flights HEL BCN 2026-07-01 --return 2026-07-08 --cabin business
 trvl dates HEL NRT --from 2026-06-01 --to 2026-06-30
 trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18 --stars 4
 trvl prices "<hotel_id>" --checkin 2026-06-15 --checkout 2026-06-18
+trvl explore HEL --format json
+trvl grid HEL NRT --depart-from 2026-07-01 --depart-to 2026-07-07 --return-from 2026-07-08 --return-to 2026-07-14
+trvl destination "Tokyo" --dates 2026-06-15,2026-06-18
+trvl trip-cost HEL BCN --depart 2026-07-01 --return 2026-07-08 --guests 2
+trvl weekend HEL --month july-2026 --budget 500
+trvl suggest HEL BCN --around 2026-07-15 --flex 7
+trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21
 trvl mcp              # MCP stdio server
 trvl mcp --http       # MCP HTTP server
 

@@ -1,13 +1,21 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/MikkoParkkola/trvl)](https://goreportcard.com/report/github.com/MikkoParkkola/trvl)
+[![CI](https://github.com/MikkoParkkola/trvl/actions/workflows/ci.yaml/badge.svg)](https://github.com/MikkoParkkola/trvl/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/MikkoParkkola/trvl)](https://github.com/MikkoParkkola/trvl/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP](https://img.shields.io/badge/MCP-2025--11--25-blue)](https://modelcontextprotocol.io)
+
 # trvl — Travel MCP Server for AI Assistants
 
 > **Real-time Google Flights + Hotels data for your AI assistant. Free. No API keys. One binary.**
 
-Give your AI the power to search flights and hotels:
+Give your AI the power to plan complete trips:
 
 ```
 "Find me the cheapest nonstop flight from Helsinki to Barcelona in July"
+"Where can I go for a cheap weekend getaway from Helsinki next month?"
+"Plan a multi-city trip: Helsinki -> Barcelona -> Rome -> Paris, find the cheapest order"
+"What's the total cost for a week in Tokyo — flights, hotel, everything?"
 "Search 4-star hotels in Tokyo for next weekend under $200/night"
-"When is the cheapest time to fly JFK to London this summer?"
 ```
 
 trvl is an [MCP server](https://modelcontextprotocol.io/) that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights and Google Hotels data — no API keys, no monthly fees, no scraping.
@@ -71,33 +79,44 @@ claude mcp add trvl --transport stdio -- trvl mcp
 }
 ```
 
-### 3. (Optional) Install the Claude Code skill
+### 3. (Optional) Install Claude Code skills
 
-The repo includes a skill file at `.claude/skills/trvl.md` that teaches Claude how to use trvl optimally. If you cloned the repo, it loads automatically when working in the trvl directory. To install globally:
+The repo includes 4 skill files that teach Claude how to use trvl optimally. To install globally:
 
 ```bash
-cp .claude/skills/trvl.md ~/.claude/skills/trvl.md
+mkdir -p ~/.claude/skills
+for s in trvl travel-hacks travel-agent travel-agent-compact; do
+  curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
+done
 ```
 
-Now Claude knows about trvl in every project — just say "search flights" or "find hotels".
+Now Claude knows about trvl in every project — just say "search flights" or "plan a trip".
 
 ### 4. Ask your AI to search
 
-That's it. Your AI assistant now has 4 travel tools available. Just ask naturally:
+That's it. Your AI assistant now has 9 travel tools available. Just ask naturally:
 
 - *"Search flights from JFK to Tokyo on July 1st, business class"*
 - *"Find hotels in Paris for July 1-5, at least 4 stars"*
 - *"What's the cheapest day to fly Helsinki to Barcelona in August?"*
-- *"Compare hotel prices for the Hilton in London"*
+- *"Where can I fly cheaply from Helsinki this weekend?"*
+- *"How much would a week in Barcelona cost — flights and hotel?"*
+- *"When should I fly to London? Check dates around July 15th"*
+- *"Plan a trip: Helsinki -> Barcelona -> Rome -> Paris, cheapest routing"*
 
 ## MCP Tools
 
 | Tool | What it does | Example |
 |------|-------------|---------|
-| **search_flights** | Search flights on a specific date | HEL → NRT, 2026-06-15, business class, nonstop |
-| **search_dates** | Find cheapest day to fly across a date range | HEL → BCN, June-August 2026 |
+| **search_flights** | Search flights on a specific date | HEL -> NRT, 2026-06-15, business class, nonstop |
+| **search_dates** | Find cheapest day to fly across a date range | HEL -> BCN, June-August 2026 |
 | **search_hotels** | Search hotels in any city | Tokyo, June 15-18, 4+ stars |
 | **hotel_prices** | Compare prices across booking providers | Booking.com vs Expedia vs Hotels.com |
+| **destination_info** | Travel intelligence for any city | Tokyo: weather, safety, holidays, currency |
+| **calculate_trip_cost** | Estimate total trip cost (flights + hotel) | HEL -> BCN, Jul 1-8, 2 guests |
+| **weekend_getaway** | Find cheap weekend destinations | From HEL in July, budget EUR 500 |
+| **suggest_dates** | Smart date suggestions around a target date | HEL -> BCN around Jul 15, +/- 7 days |
+| **optimize_multi_city** | Find cheapest routing for multi-city trips | HEL -> BCN, ROM, PAR -> HEL |
 
 ### MCP Protocol Features (v2025-11-25)
 
@@ -105,9 +124,10 @@ That's it. Your AI assistant now has 4 travel tools available. Just ask naturall
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all tool responses |
+| **Output schemas** | Full JSON Schema validation for all 9 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides |
+| **Elicitation** | Interactive parameter collection when dates are missing |
 | **Progressive disclosure** | Suggestions for follow-up searches in every response |
 | **Booking links** | Direct Google Flights/Hotels links in results |
 
@@ -138,7 +158,7 @@ https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool:
+trvl also works as a standalone CLI tool with 14 commands:
 
 ### Flights
 
@@ -185,6 +205,52 @@ trvl hotels "Paris" --checkin 2026-07-01 --checkout 2026-07-05 --stars 4 --sort 
 trvl prices "<hotel_id>" --checkin 2026-06-15 --checkout 2026-06-18
 ```
 
+### Explore Destinations
+
+```bash
+trvl explore HEL                                   # Cheapest destinations from Helsinki
+trvl explore JFK --from 2026-07-01 --to 2026-07-14 # With dates
+```
+
+### Price Grid
+
+```bash
+trvl grid HEL NRT --depart-from 2026-07-01 --depart-to 2026-07-07 \
+                   --return-from 2026-07-08 --return-to 2026-07-14
+```
+
+### Destination Info
+
+```bash
+trvl destination "Tokyo"                           # Weather, safety, holidays, currency
+trvl destination "Barcelona" --dates 2026-07-01,2026-07-08
+```
+
+### Trip Cost
+
+```bash
+trvl trip-cost HEL BCN --depart 2026-07-01 --return 2026-07-08 --guests 2
+```
+
+### Weekend Getaway
+
+```bash
+trvl weekend HEL --month july-2026                 # Top 10 cheapest weekends
+trvl weekend HEL --month july-2026 --budget 500    # Under EUR 500 total
+```
+
+### Smart Date Suggestions
+
+```bash
+trvl suggest HEL BCN --around 2026-07-15 --flex 7  # Best dates +/- 7 days
+```
+
+### Multi-City Optimizer
+
+```bash
+trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21
+```
+
 ## How It Works
 
 Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batchexecute**. `trvl` speaks this protocol natively:
@@ -193,7 +259,9 @@ Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batch
 2. **Flights** — `FlightsFrontendService/GetShoppingResults` with encoded filter arrays
 3. **Hotels** — `TravelFrontendUi` embedded JSON parsing from `AF_initDataCallback` blocks
 4. **Hotel prices** — `TravelFrontendUi/data/batchexecute` with rpcid `yY52ce`
-5. **Rate limiting** — 10 req/s token bucket with exponential backoff on 429/5xx
+5. **Explore** — `GetExploreDestinations` for destination discovery
+6. **Destination info** — Parallel aggregation of 5 free APIs (Open-Meteo, REST Countries, Nager.Date, travel-advisory.info, ExchangeRate-API)
+7. **Rate limiting** — 10 req/s token bucket with exponential backoff on 429/5xx
 
 No Selenium. No Puppeteer. No browser. Just HTTP.
 
@@ -201,13 +269,16 @@ No Selenium. No Puppeteer. No browser. Just HTTP.
 
 | | |
 |---|---|
-| **Binary** | Single static 15MB. Zero runtime dependencies. |
-| **Data** | Real-time from Google Flights + Google Hotels |
+| **Binary** | Single static ~15MB. Zero runtime dependencies. |
+| **Data** | Real-time from Google Flights + Google Hotels + 5 free APIs |
 | **Auth** | None. No API keys, no accounts, no tokens. |
-| **MCP** | Full v2025-11-25 — tools, prompts, resources, structured content |
+| **MCP** | Full v2025-11-25 — 9 tools, 3 prompts, resources, structured content, elicitation |
+| **CLI** | 14 commands with table and JSON output |
+| **Skills** | 4 Claude Code skills (trvl, travel-hacks, travel-agent, travel-agent-compact) |
 | **Output** | Pretty tables (default) or JSON (`--format json`) |
 | **Platforms** | Linux, macOS (amd64, arm64) |
-| **Tests** | 325 functions, race-detector clean, 80%+ coverage |
+| **Code** | 81 Go files, ~21K LOC, 11 packages |
+| **Tests** | 600+ test functions, race-detector clean |
 | **License** | MIT |
 
 ## Attribution

@@ -42,32 +42,34 @@ If using Claude Desktop instead of Claude Code, add to `~/Library/Application Su
 }
 ```
 
-### Step 3: Install the skill (makes you smarter about travel searches)
+### Step 3: Install the skills (makes you smarter about travel searches)
 
 ```bash
 mkdir -p ~/.claude/skills
-curl -fsSL https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/trvl.md -o ~/.claude/skills/trvl.md
+for s in trvl travel-hacks travel-agent travel-agent-compact; do
+  curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
+done
 ```
 
-This skill file teaches you how to use trvl optimally whenever the user mentions flights, hotels, travel, or trips.
+These skill files teach you how to use trvl optimally whenever the user mentions flights, hotels, travel, or trips.
 
 ### Step 4: Verify
 
 ```bash
 trvl version
-# Expected: trvl v0.1.0 (or later)
+# Expected: trvl v0.2.0 (or later)
 
 trvl flights HEL LHR 2026-07-01 --format json | head -5
 # Expected: JSON with flight results
 ```
 
-Tell the user: "trvl is installed. I can now search flights and hotels for you. Just ask me to find flights or hotels anywhere in the world."
+Tell the user: "trvl is installed with 9 MCP tools and 4 skills. I can now search flights, hotels, destinations, plan trips, find weekend getaways, and optimize multi-city routes. Just ask me anything about travel."
 
 ---
 
 ## How To Use (after setup)
 
-You now have 4 MCP tools available. Use them when the user asks about travel:
+You now have 9 MCP tools available. Use them when the user asks about travel:
 
 ### search_flights — Find flights between airports
 ```json
@@ -96,6 +98,46 @@ Optional: `guests` (number), `stars` (1-5 minimum), `sort` ("price" | "rating"),
 {"hotel_id": "<from search_hotels>", "check_in": "2026-06-15", "check_out": "2026-06-18"}
 ```
 
+### destination_info — Travel intelligence for any city
+```json
+{"location": "Tokyo"}
+```
+Optional: `travel_dates` ("2026-06-15,2026-06-18" — comma-separated check-in,check-out)
+
+Returns: weather forecast, country info (capital, languages, currencies), public holidays during travel dates, safety advisory (1-5 scale), currency exchange rates vs EUR, timezone.
+
+### calculate_trip_cost — Estimate total trip cost
+```json
+{"origin": "HEL", "destination": "BCN", "depart_date": "2026-07-01", "return_date": "2026-07-08"}
+```
+Optional: `guests` (number, default 1), `currency` ("EUR" | "USD" etc.)
+
+Returns: cheapest outbound flight + return flight + cheapest hotel per night, total cost, per-person cost, per-day cost.
+
+### weekend_getaway — Find cheap weekend destinations
+```json
+{"origin": "HEL", "month": "july-2026"}
+```
+Optional: `max_budget` (number in EUR, 0 = no limit), `nights` (default: 2)
+
+Returns: top 10 cheapest weekend destinations ranked by total estimated cost (round-trip flight + estimated hotel).
+
+### suggest_dates — Smart date suggestions around a target date
+```json
+{"origin": "HEL", "destination": "BCN", "target_date": "2026-07-15"}
+```
+Optional: `flex_days` (default: 7), `round_trip` (boolean), `duration` (days for round-trip, default: 7)
+
+Returns: 3 cheapest dates, weekday vs weekend analysis, savings insights, average price comparison.
+
+### optimize_multi_city — Find cheapest routing for multi-city trips
+```json
+{"home_airport": "HEL", "cities": "BCN,ROM,PAR", "depart_date": "2026-07-01"}
+```
+Optional: `return_date` ("2026-07-21")
+
+Returns: optimal visit order, per-segment prices, total cost, savings vs worst order. Tries all permutations (up to 6 cities).
+
 ### MCP Prompts (for complex workflows)
 - `plan-trip` — Full trip planning: flights + hotels + budget analysis
 - `find-cheapest-dates` — Month-wide price calendar for a route
@@ -107,6 +149,10 @@ Optional: `guests` (number), `stars` (1-5 minimum), `sort` ("price" | "rating"),
 - Results include `suggestions` — use these to offer follow-up searches
 - Prices reflect the user's IP geolocation currency
 - For trip planning: search flights first, then hotels at the destination
+- For budget trips: use `weekend_getaway` or `suggest_dates` to find the cheapest options
+- For multi-city: use `optimize_multi_city` to find the cheapest routing order
+- For full cost estimates: use `calculate_trip_cost` for flights + hotel totals
+- For destination research: use `destination_info` for weather, safety, holidays
 - Common IATA codes: HEL (Helsinki), JFK (New York), LHR (London), NRT (Tokyo), CDG (Paris), BCN (Barcelona), BKK (Bangkok), SIN (Singapore), DXB (Dubai), LAX (Los Angeles), FRA (Frankfurt), AMS (Amsterdam), ICN (Seoul)
 
 ## Troubleshooting

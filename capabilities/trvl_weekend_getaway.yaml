@@ -1,0 +1,95 @@
+fulcrum: "1.0"
+name: trvl_weekend_getaway
+description: >-
+  Find cheap weekend getaway destinations from an airport. Returns top 10
+  cheapest destinations ranked by total estimated cost (round-trip flight +
+  estimated hotel). Uses Google Flights explore API for destination discovery
+  and heuristic hotel pricing. No API key required.
+
+schema:
+  input:
+    type: object
+    properties:
+      origin:
+        type: string
+        description: Departure airport IATA code (e.g., HEL, JFK)
+      month:
+        type: string
+        description: "Month to search (e.g., july-2026, 2026-07)"
+      max_budget:
+        type: number
+        description: "Maximum total budget in EUR (0 = no limit)"
+      nights:
+        type: integer
+        description: "Number of nights (default: 2)"
+    required: [origin, month]
+  output:
+    type: object
+    properties:
+      success:
+        type: boolean
+      origin:
+        type: string
+      month:
+        type: string
+      nights:
+        type: integer
+      count:
+        type: integer
+      destinations:
+        type: array
+        items:
+          type: object
+          properties:
+            destination:
+              type: string
+            airport_code:
+              type: string
+            flight_price:
+              type: number
+            hotel_estimate:
+              type: number
+            total_estimate:
+              type: number
+            currency:
+              type: string
+            stops:
+              type: integer
+            airline_name:
+              type: string
+      error:
+        type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 30
+    config:
+      command: trvl
+      args:
+        - weekend
+        - "{origin}"
+        - "--month"
+        - "{month}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 600
+
+auth:
+  required: false
+
+metadata:
+  category: travel
+  tags: [travel, flights, weekend, getaway, budget, cheap, explore, destinations, google-flights, free, no-api-key]
+  cost_category: free
+  execution_time: medium
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Combines Google Flights explore API for cheapest destinations with heuristic
+    hotel price estimation. Returns top 10 destinations ranked by total cost.
+    No API key required.

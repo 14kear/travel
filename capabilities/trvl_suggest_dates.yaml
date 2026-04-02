@@ -1,0 +1,111 @@
+fulcrum: "1.0"
+name: trvl_suggest_dates
+description: >-
+  Analyze flight prices around a target date and suggest the cheapest travel
+  dates. Returns the 3 cheapest dates, weekday vs weekend price analysis, and
+  actionable savings insights. Uses Google Flights CalendarGraph API for fast
+  single-request price retrieval. No API key required.
+
+schema:
+  input:
+    type: object
+    properties:
+      origin:
+        type: string
+        description: Departure airport IATA code (e.g., HEL, JFK)
+      destination:
+        type: string
+        description: Arrival airport IATA code (e.g., BCN, LHR)
+      target_date:
+        type: string
+        description: Center date to search around (YYYY-MM-DD)
+      flex_days:
+        type: integer
+        description: "Days of flexibility around target date (default: 7)"
+      round_trip:
+        type: boolean
+        description: "Whether to search round-trip prices (default: false)"
+      duration:
+        type: integer
+        description: "Trip duration in days for round-trip (default: 7)"
+    required: [origin, destination, target_date]
+  output:
+    type: object
+    properties:
+      success:
+        type: boolean
+      origin:
+        type: string
+      destination:
+        type: string
+      cheapest_dates:
+        type: array
+        items:
+          type: object
+          properties:
+            date:
+              type: string
+            day_of_week:
+              type: string
+            price:
+              type: number
+            currency:
+              type: string
+            return_date:
+              type: string
+      average_price:
+        type: number
+      currency:
+        type: string
+      insights:
+        type: array
+        items:
+          type: object
+          properties:
+            type:
+              type: string
+            description:
+              type: string
+            date:
+              type: string
+            price:
+              type: number
+            savings:
+              type: number
+      error:
+        type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 30
+    config:
+      command: trvl
+      args:
+        - suggest
+        - "{origin}"
+        - "{destination}"
+        - "--around"
+        - "{target_date}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 600
+
+auth:
+  required: false
+
+metadata:
+  category: travel
+  tags: [travel, flights, dates, flexible, smart, suggestions, cheapest, google-flights, free, no-api-key, when-to-fly, savings]
+  cost_category: free
+  execution_time: medium
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Uses Google's CalendarGraph API for fast single-request price retrieval
+    across a date range, then analyzes patterns (weekday vs weekend, savings
+    vs target date). No API key required.

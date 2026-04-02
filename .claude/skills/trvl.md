@@ -89,19 +89,6 @@ Find cheapest dates to fly across a range. Uses CalendarGraph API for fast singl
 ```
 Optional: `trip_duration` (int days), `is_round_trip` (bool)
 
-### explore_destinations
-Discover cheapest flight destinations from an airport. Great for "where should I go?" queries.
-```json
-{"origin": "HEL"}
-```
-Optional: `start_date`, `end_date`, `trip_type` (round-trip/one-way), `max_stops` (-1=any, 0=nonstop)
-
-### search_price_grid
-Get a 2D price matrix of departure x return date combinations.
-```json
-{"origin": "HEL", "destination": "NRT", "depart_from": "2026-07-01", "depart_to": "2026-07-07", "return_from": "2026-07-08", "return_to": "2026-07-14"}
-```
-
 ### search_hotels
 Search hotels by location.
 ```json
@@ -115,6 +102,41 @@ Compare booking provider prices for a specific hotel.
 {"hotel_id": "<from search_hotels results>", "check_in": "2026-06-15", "check_out": "2026-06-18"}
 ```
 
+### destination_info
+Get travel intelligence for any city: weather, country info, holidays, safety, currency.
+```json
+{"location": "Tokyo"}
+```
+Optional: `travel_dates` ("2026-06-15,2026-06-18")
+
+### calculate_trip_cost
+Estimate total trip cost (flights + hotel).
+```json
+{"origin": "HEL", "destination": "BCN", "depart_date": "2026-07-01", "return_date": "2026-07-08"}
+```
+Optional: `guests` (int), `currency` (string)
+
+### weekend_getaway
+Find cheap weekend destinations from an airport.
+```json
+{"origin": "HEL", "month": "july-2026"}
+```
+Optional: `max_budget` (number in EUR), `nights` (int, default 2)
+
+### suggest_dates
+Smart date suggestions around a target date.
+```json
+{"origin": "HEL", "destination": "BCN", "target_date": "2026-07-15"}
+```
+Optional: `flex_days` (int, default 7), `round_trip` (bool), `duration` (int days)
+
+### optimize_multi_city
+Find cheapest routing for multi-city trips.
+```json
+{"home_airport": "HEL", "cities": "BCN,ROM,PAR", "depart_date": "2026-07-01"}
+```
+Optional: `return_date` (string)
+
 ## Via CLI (fallback)
 
 ```bash
@@ -124,6 +146,11 @@ trvl dates HEL NRT --from 2026-06-01 --to 2026-06-30 --format json
 trvl prices "<hotel_id>" --checkin 2026-06-15 --checkout 2026-06-18 --format json
 trvl explore HEL --format json
 trvl grid HEL NRT --depart-from 2026-07-01 --depart-to 2026-07-07 --return-from 2026-07-08 --return-to 2026-07-14 --format json
+trvl destination "Tokyo" --dates 2026-06-15,2026-06-18 --format json
+trvl trip-cost HEL BCN --depart 2026-07-01 --return 2026-07-08 --format json
+trvl weekend HEL --month july-2026 --format json
+trvl suggest HEL BCN --around 2026-07-15 --flex 7 --format json
+trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21 --format json
 ```
 
 ## Response Format

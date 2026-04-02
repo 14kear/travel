@@ -1,0 +1,97 @@
+fulcrum: "1.0"
+name: trvl_optimize_multi_city
+description: >-
+  Find the cheapest routing order for visiting multiple cities. Tries all
+  permutations (up to 6 cities) and returns the optimal visit order with
+  per-segment flight prices, total cost, and savings vs the worst order.
+  Uses Google Flights for real-time pricing. No API key required.
+
+schema:
+  input:
+    type: object
+    properties:
+      home_airport:
+        type: string
+        description: Home airport IATA code (e.g., HEL, JFK)
+      cities:
+        type: string
+        description: "Comma-separated list of city IATA codes to visit (e.g., BCN,ROM,PAR)"
+      depart_date:
+        type: string
+        description: Departure date (YYYY-MM-DD)
+      return_date:
+        type: string
+        description: Return date (YYYY-MM-DD, optional)
+    required: [home_airport, cities, depart_date]
+  output:
+    type: object
+    properties:
+      success:
+        type: boolean
+      home_airport:
+        type: string
+      optimal_order:
+        type: array
+        items:
+          type: string
+      segments:
+        type: array
+        items:
+          type: object
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+            price:
+              type: number
+            currency:
+              type: string
+      total_cost:
+        type: number
+      currency:
+        type: string
+      worst_cost:
+        type: number
+      savings:
+        type: number
+      permutations_checked:
+        type: integer
+      error:
+        type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 120
+    config:
+      command: trvl
+      args:
+        - multi-city
+        - "{home_airport}"
+        - "--visit"
+        - "{cities}"
+        - "--dates"
+        - "{depart_date}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 300
+
+auth:
+  required: false
+
+metadata:
+  category: travel
+  tags: [travel, flights, multi-city, routing, optimization, permutations, cheapest, google-flights, free, no-api-key, trip-planning]
+  cost_category: free
+  execution_time: long
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Fetches cheapest one-way flight prices for all city pairs, then tries all
+    N! permutations (max 720 for 6 cities) to find the optimal routing.
+    Price lookups are cached to minimize API calls. No API key required.

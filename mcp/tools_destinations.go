@@ -180,6 +180,39 @@ func destinationSummary(info *models.DestinationInfo) string {
 
 // --- Weekend Getaway tool ---
 
+// weekendGetawayOutputSchema returns the JSON Schema for WeekendResult.
+func weekendGetawayOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success": map[string]interface{}{"type": "boolean"},
+			"origin":  map[string]interface{}{"type": "string"},
+			"month":   map[string]interface{}{"type": "string"},
+			"nights":  map[string]interface{}{"type": "integer"},
+			"count":   map[string]interface{}{"type": "integer"},
+			"destinations": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"destination":    map[string]interface{}{"type": "string"},
+						"airport_code":   map[string]interface{}{"type": "string"},
+						"flight_price":   map[string]interface{}{"type": "number"},
+						"hotel_estimate": map[string]interface{}{"type": "number"},
+						"total_estimate": map[string]interface{}{"type": "number"},
+						"currency":       map[string]interface{}{"type": "string"},
+						"stops":          map[string]interface{}{"type": "integer"},
+						"airline_name":   map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"destination", "airport_code", "total_estimate", "currency"},
+				},
+			},
+			"error": map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success", "count"},
+	}
+}
+
 func weekendGetawayTool() ToolDef {
 	return ToolDef{
 		Name:        "weekend_getaway",
@@ -195,6 +228,7 @@ func weekendGetawayTool() ToolDef {
 			},
 			Required: []string{"origin", "month"},
 		},
+		OutputSchema: weekendGetawayOutputSchema(),
 		Annotations: &ToolAnnotations{
 			Title:          "Weekend Getaway Finder",
 			ReadOnlyHint:   true,
