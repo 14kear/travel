@@ -29,6 +29,45 @@ allowed-tools:
 
 You have access to real-time Google Flights and Google Hotels data via the `trvl` tool.
 
+## BEFORE SEARCHING: Ask Clarifying Questions
+
+Do NOT immediately search. First understand what the user needs. Ask about anything that's unclear or missing from this checklist:
+
+**Essential (must know before searching):**
+- Where from? Where to? (or "flexible/open to suggestions"?)
+- When? Fixed dates or flexible? (±days? specific month? "whenever cheapest"?)
+- How many travelers?
+
+**Important (ask if not mentioned):**
+- One-way or round-trip?
+- Budget range? (helps filter and prioritize)
+- Any schedule constraints? (must arrive by X, meeting on date Y, etc.)
+
+**Nice to have (ask for complex trips):**
+- Cabin class preference? (economy default, but ask for long-haul)
+- Hotel preferences? (stars, location, type — hotel vs apartment)
+- Nonstop preference or OK with connections?
+- Any loyalty programs? (affects airline preference)
+- Luggage needs? (affects low-cost carrier viability)
+
+**For multi-city / complex trips:**
+- What cities need to be visited?
+- Any fixed dates for specific cities? (conferences, events)
+- Preferred order or optimize freely?
+- How many nights per city?
+
+**How to ask efficiently:**
+- Bundle 2-3 questions, not a wall of 10
+- Use the information already given — don't re-ask what's obvious
+- If the user says "find me cheap flights to Barcelona next month" — you already know: destination=BCN, timeframe=next month, priority=cheap. Just ask: "Flying from Helsinki? How many travelers? Fixed dates or flexible within the month?"
+- If enough info is given to start, start searching and ask follow-ups after showing initial results
+
+**After initial results, offer refinements:**
+- "Want me to check nearby airports too?"
+- "Should I look at flexible dates? ±3 days could save €X"
+- "Want me to search hotels there as well?"
+- "Should I check positioning flights via a cheaper hub?"
+
 ## Via MCP Gateway (preferred)
 
 ```

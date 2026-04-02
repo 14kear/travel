@@ -27,6 +27,16 @@ allowed-tools:
 
 When the user asks for cheap flights, optimized trips, or travel deals, apply these strategies AUTOMATICALLY using trvl's MCP tools.
 
+## FIRST: Understand the Trip Before Optimizing
+
+Before running any optimization, make sure you understand:
+1. **What's fixed vs flexible?** — fixed dates = optimize price for those dates. Flexible = optimize dates too.
+2. **What are the constraints?** — "must be in Barcelona June 15-18" is different from "want to visit Barcelona sometime in summer"
+3. **What's the priority?** — cheapest possible? best value? minimum travel time? comfort?
+4. **How hacky are they willing to go?** — hidden city and throw-away returns carry risks. Some travelers are fine with it, others want conventional bookings only.
+
+Ask ONE focused question if critical info is missing, then start searching. Show initial results fast, then offer optimizations: "I found flights from €235. Want me to check nearby airports and flexible dates? That often saves 20-40%."
+
 ## Strategy 1: Nearby Airport Arbitrage (ALWAYS CHECK)
 
 Search from ALL airports within reasonable distance. Many cities have 2-5 airports with wildly different prices.
