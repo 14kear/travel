@@ -36,16 +36,63 @@ Google Flights and Hotels have no public API. Your options are $50+/mo SERP prox
 
 ## Install
 
+### One-liner (recommended)
+
+```bash
+# macOS / Linux — download latest binary
+curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+```
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew install MikkoParkkola/tap/trvl
+```
+
+### Go install
+
 ```bash
 go install github.com/MikkoParkkola/trvl/cmd/trvl@latest
 ```
 
-Or grab a binary from [Releases](https://github.com/MikkoParkkola/trvl/releases).
+### Download binary
 
-Or build from source:
+Grab a prebuilt binary from [**Releases**](https://github.com/MikkoParkkola/trvl/releases) — available for Linux and macOS (amd64 + arm64).
+
+### Build from source
 
 ```bash
-git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
+git clone https://github.com/MikkoParkkola/trvl.git
+cd trvl
+make build      # binary at ./bin/trvl
+```
+
+### Docker
+
+```bash
+docker run --rm ghcr.io/mikkoparkkola/trvl flights HEL NRT 2026-06-15
+```
+
+### As MCP server (Claude Code / Claude Desktop)
+
+No separate install needed — just point to the binary:
+
+```json
+{
+  "mcpServers": {
+    "trvl": {
+      "command": "trvl",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Verify installation
+
+```bash
+trvl version
+# trvl v0.1.0
 ```
 
 ## Flights
@@ -171,6 +218,15 @@ This project stands on the shoulders of:
 `trvl` accesses Google's public-facing internal APIs. It does not bypass authentication, access protected content, or circumvent rate limits. This is the same approach used by [fli](https://github.com/punitarani/fli) (1K+ GitHub stars, actively maintained, MIT licensed).
 
 Use responsibly. Respect rate limits.
+
+## For AI Assistants
+
+Point your AI assistant to one of these URLs for automatic setup:
+
+- **Quick reference**: `https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt`
+- **Full setup guide**: `https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md`
+
+These files contain everything an LLM needs to install trvl, configure the MCP server, and start searching flights and hotels.
 
 ## License
 

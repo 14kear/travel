@@ -1,0 +1,46 @@
+# trvl
+
+> Google Flights + Hotels from your terminal. Free, no API keys.
+
+trvl is a single Go binary that searches Google Flights and Google Hotels by speaking Google's internal batchexecute protocol directly. No scraping, no browser automation, no API keys.
+
+## Install
+
+curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+
+## MCP Server Setup (for AI assistants)
+
+Command: trvl mcp
+Transport: stdio
+
+Claude Code: claude mcp add trvl --transport stdio -- trvl mcp
+Claude Desktop: Add {"mcpServers":{"trvl":{"command":"trvl","args":["mcp"]}}} to config
+
+## MCP Tools
+
+- search_flights(origin, destination, departure_date, [return_date, cabin_class, max_stops, sort_by])
+- search_dates(origin, destination, start_date, end_date, [trip_duration, is_round_trip])
+- search_hotels(location, check_in, check_out, [guests, stars, sort])
+- hotel_prices(hotel_id, check_in, check_out)
+
+## MCP Prompts
+
+- plan-trip(origin, destination, departure_date, return_date, [budget])
+- find-cheapest-dates(origin, destination, month)
+- compare-hotels(location, check_in, check_out, [priorities])
+
+## CLI
+
+trvl flights JFK LHR 2026-07-01
+trvl flights HEL BCN 2026-07-01 --return 2026-07-08 --cabin business
+trvl dates HEL NRT --from 2026-06-01 --to 2026-06-30
+trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18 --stars 4
+trvl prices "<hotel_id>" --checkin 2026-06-15 --checkout 2026-06-18
+trvl mcp              # MCP stdio server
+trvl mcp --http       # MCP HTTP server
+
+## Detailed docs
+
+- Full README: https://github.com/MikkoParkkola/trvl/blob/main/README.md
+- Agent setup: https://github.com/MikkoParkkola/trvl/blob/main/AGENTS.md
+- Design doc: https://github.com/MikkoParkkola/trvl/blob/main/docs/DESIGN.md

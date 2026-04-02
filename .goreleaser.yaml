@@ -27,9 +27,6 @@ archives:
   - id: trvl
     format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: windows
-        format: zip
 
 checksum:
   name_template: "checksums.txt"
@@ -49,3 +46,73 @@ release:
   prerelease: auto
   draft: false
   name_template: "v{{ .Version }}"
+  header: |
+    ## trvl {{ .Version }}
+
+    Google Flights + Hotels from your terminal. Free, no API keys.
+
+    ### Install
+
+    ```bash
+    # One-liner
+    curl -fsSL https://github.com/MikkoParkkola/trvl/releases/download/v{{ .Version }}/trvl_{{ .Version }}_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+
+    # Homebrew
+    brew install MikkoParkkola/tap/trvl
+
+    # Go
+    go install github.com/MikkoParkkola/trvl/cmd/trvl@v{{ .Version }}
+    ```
+
+brews:
+  - ids:
+      - trvl
+    repository:
+      owner: MikkoParkkola
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: https://github.com/MikkoParkkola/trvl
+    description: "Google Flights + Hotels from your terminal. Free, no API keys, real-time prices."
+    license: MIT
+    install: |
+      bin.install "trvl"
+    test: |
+      system "#{bin}/trvl", "version"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=trvl"
+      - "--label=org.opencontainers.image.description=Google Flights + Hotels from your terminal"
+      - "--label=org.opencontainers.image.url=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.source=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+  - image_templates:
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
+    use: buildx
+    goarch: arm64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=trvl"
+      - "--label=org.opencontainers.image.description=Google Flights + Hotels from your terminal"
+      - "--label=org.opencontainers.image.url=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.source=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/mikkoparkkola/trvl:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/mikkoparkkola/trvl:latest"
+    image_templates:
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
+      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
