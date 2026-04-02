@@ -1,0 +1,11 @@
+{
+  "name": "trvl",
+  "version": "0.2.0",
+  "description": "AI Travel Agent — Google Flights + Hotels with 9 MCP tools, travel hacks, and trip optimization. Free, no API keys.",
+  "author": {
+    "name": "Mikko Parkkola",
+    "url": "https://github.com/MikkoParkkola"
+  },
+  "repository": "https://github.com/MikkoParkkola/trvl",
+  "license": "MIT"
+}

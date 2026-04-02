@@ -1,0 +1,13 @@
+{
+  "name": "trvl-marketplace",
+  "owner": {
+    "name": "Mikko Parkkola"
+  },
+  "plugins": [
+    {
+      "name": "trvl",
+      "source": "./",
+      "description": "AI Travel Agent — flights, hotels, destinations, travel hacks, trip optimization"
+    }
+  ]
+}
