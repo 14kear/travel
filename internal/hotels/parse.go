@@ -247,27 +247,71 @@ func parseOrganicHotel(entry []any, currency string) models.HotelResult {
 }
 
 // extractOrganicPrice extracts price and currency from an organic hotel's
-// price block. The format is: [null, [[price, 0], null, null, "currency", ...]]
+// price block.
+//
+// The price block at entry[6] has this structure:
+//
+//	[6][0] = null
+//	[6][1] = search-wide params: [[maxPrice, 0], null, null, "currency", dates, ...]
+//	[6][2] = actual per-hotel price: [null, ["€61", null, 60.72, null, 61], ...]
+//	[6][3] = identifier string
+//
+// The per-hotel price is at [6][2][1], which contains:
+//
+//	[0] = formatted price string (e.g. "€61")
+//	[1] = null
+//	[2] = exact float price (e.g. 60.720634)
+//	[3] = null
+//	[4] = rounded integer price (e.g. 61)
+//
+// We prefer the rounded integer price at [4], falling back to the float at [2].
+// Currency is extracted from [6][1][3].
 func extractOrganicPrice(raw any) (float64, string) {
 	arr, ok := raw.([]any)
 	if !ok || len(arr) < 2 {
 		return 0, ""
 	}
 
-	// Look for the inner price array.
+	// Extract currency from [6][1][3] (search-wide params).
+	var currency string
+	if len(arr) > 1 {
+		if searchParams, ok := arr[1].([]any); ok && len(searchParams) > 3 {
+			currency = safeString(searchParams[3])
+		}
+	}
+
+	// Extract per-hotel price from [6][2][1].
+	if len(arr) > 2 && arr[2] != nil {
+		if priceOuter, ok := arr[2].([]any); ok && len(priceOuter) > 1 && priceOuter[1] != nil {
+			if priceInfo, ok := priceOuter[1].([]any); ok {
+				// Try rounded integer at [4] first.
+				if len(priceInfo) > 4 {
+					if price, ok := priceInfo[4].(float64); ok && price > 0 {
+						return price, currency
+					}
+				}
+				// Fall back to exact float at [2].
+				if len(priceInfo) > 2 {
+					if price, ok := priceInfo[2].(float64); ok && price > 0 {
+						return price, currency
+					}
+				}
+			}
+		}
+	}
+
+	// Legacy fallback: look for [[price, 0], null, null, "currency", ...] in [6][1].
 	for _, item := range arr {
 		innerArr, ok := item.([]any)
 		if !ok || len(innerArr) < 4 {
 			continue
 		}
-
-		// Look for [[price, 0], null, null, "currency", ...]
 		if priceArr, ok := innerArr[0].([]any); ok && len(priceArr) >= 1 {
 			if price, ok := priceArr[0].(float64); ok && price > 0 {
-				// Currency is typically at position [3]
-				var currency string
 				if len(innerArr) > 3 {
-					currency = safeString(innerArr[3])
+					if cur := safeString(innerArr[3]); cur != "" {
+						currency = cur
+					}
 				}
 				return price, currency
 			}

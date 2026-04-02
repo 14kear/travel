@@ -3,11 +3,18 @@ package flights
 import (
 	"context"
 	"fmt"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
+
+// maxConcurrentDateSearches limits the number of parallel flight searches
+// when scanning a date range. This prevents overwhelming Google's API while
+// still providing ~3x speedup over sequential execution.
+const maxConcurrentDateSearches = 3
 
 // DateSearchOptions configures a date-range price search.
 type DateSearchOptions struct {
@@ -69,52 +76,96 @@ func SearchDates(ctx context.Context, origin, destination string, opts DateSearc
 	}
 
 	client := batchexec.NewClient()
-	var dates []models.DatePriceResult
 
+	// Collect all dates to search.
+	var searchDates []time.Time
 	for d := fromDate; !d.After(toDate); d = d.AddDate(0, 0, 1) {
-		dateStr := d.Format("2006-01-02")
-
-		searchOpts := SearchOptions{
-			Adults: opts.Adults,
-		}
-		if opts.RoundTrip && opts.Duration > 0 {
-			returnDate := d.AddDate(0, 0, opts.Duration)
-			searchOpts.ReturnDate = returnDate.Format("2006-01-02")
-		}
-
-		result, err := SearchFlightsWithClient(ctx, client, origin, destination, dateStr, searchOpts)
-		if err != nil {
-			// Skip dates that fail — might be too far in future, etc.
-			continue
-		}
-
-		if !result.Success || len(result.Flights) == 0 {
-			continue
-		}
-
-		// Find the cheapest flight for this date.
-		cheapest := result.Flights[0]
-		for _, f := range result.Flights[1:] {
-			if f.Price > 0 && f.Price < cheapest.Price {
-				cheapest = f
-			}
-		}
-
-		if cheapest.Price <= 0 {
-			continue
-		}
-
-		dp := models.DatePriceResult{
-			Date:     dateStr,
-			Price:    cheapest.Price,
-			Currency: cheapest.Currency,
-		}
-		if searchOpts.ReturnDate != "" {
-			dp.ReturnDate = searchOpts.ReturnDate
-		}
-
-		dates = append(dates, dp)
+		searchDates = append(searchDates, d)
 	}
+
+	// Search dates concurrently with bounded parallelism.
+	type dateResult struct {
+		dp  models.DatePriceResult
+		ok  bool
+		idx int // original index for stable ordering
+	}
+
+	results := make([]dateResult, len(searchDates))
+	sem := make(chan struct{}, maxConcurrentDateSearches)
+	var wg sync.WaitGroup
+
+	for i, d := range searchDates {
+		wg.Add(1)
+		go func(idx int, date time.Time) {
+			defer wg.Done()
+
+			// Acquire semaphore slot.
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Check if context is cancelled before starting.
+			if ctx.Err() != nil {
+				return
+			}
+
+			dateStr := date.Format("2006-01-02")
+
+			searchOpts := SearchOptions{
+				Adults: opts.Adults,
+			}
+			if opts.RoundTrip && opts.Duration > 0 {
+				returnDate := date.AddDate(0, 0, opts.Duration)
+				searchOpts.ReturnDate = returnDate.Format("2006-01-02")
+			}
+
+			result, err := SearchFlightsWithClient(ctx, client, origin, destination, dateStr, searchOpts)
+			if err != nil {
+				return
+			}
+
+			if !result.Success || len(result.Flights) == 0 {
+				return
+			}
+
+			// Find the cheapest flight for this date.
+			cheapest := result.Flights[0]
+			for _, f := range result.Flights[1:] {
+				if f.Price > 0 && f.Price < cheapest.Price {
+					cheapest = f
+				}
+			}
+
+			if cheapest.Price <= 0 {
+				return
+			}
+
+			dp := models.DatePriceResult{
+				Date:     dateStr,
+				Price:    cheapest.Price,
+				Currency: cheapest.Currency,
+			}
+			if searchOpts.ReturnDate != "" {
+				dp.ReturnDate = searchOpts.ReturnDate
+			}
+
+			results[idx] = dateResult{dp: dp, ok: true, idx: idx}
+		}(i, d)
+	}
+
+	wg.Wait()
+
+	// Collect successful results in date order.
+	var dates []models.DatePriceResult
+	for _, r := range results {
+		if r.ok {
+			dates = append(dates, r.dp)
+		}
+	}
+
+	// Sort by date (already in order from results array, but be explicit).
+	sort.Slice(dates, func(i, j int) bool {
+		return dates[i].Date < dates[j].Date
+	})
 
 	tripType := "one_way"
 	if opts.RoundTrip {

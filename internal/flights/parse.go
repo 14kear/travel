@@ -290,6 +290,10 @@ func isKnownCurrency(code string) bool {
 
 // formatDateTime combines a date array [year, month, day] and a time array
 // [hour, minute] into an ISO 8601 string "YYYY-MM-DDTHH:MM".
+//
+// Google sometimes omits the minute when it is zero, producing a single-element
+// array [hour] instead of [hour, 0]. We treat a 1-element time array as
+// [hour, 0] to avoid losing the time portion.
 func formatDateTime(dateRaw, timeRaw any) string {
 	dateArr, ok := dateRaw.([]any)
 	if !ok || len(dateArr) < 3 {
@@ -304,13 +308,16 @@ func formatDateTime(dateRaw, timeRaw any) string {
 	}
 
 	timeArr, ok := timeRaw.([]any)
-	if !ok || len(timeArr) < 2 {
-		// Date only, no time
+	if !ok || len(timeArr) < 1 {
+		// Date only, no time information at all.
 		return fmt.Sprintf("%04d-%02d-%02d", year, month, day)
 	}
 
 	hour := toInt(timeArr[0])
-	minute := toInt(timeArr[1])
+	minute := 0
+	if len(timeArr) >= 2 {
+		minute = toInt(timeArr[1])
+	}
 
 	return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d", year, month, day, hour, minute)
 }

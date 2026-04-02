@@ -232,10 +232,10 @@ func TestFormatDateTime(t *testing.T) {
 			"2026-06-15",
 		},
 		{
-			"date only - time too short",
+			"hour only - minute omitted (treated as :00)",
 			[]any{float64(2026), float64(6), float64(15)},
 			[]any{float64(10)},
-			"2026-06-15",
+			"2026-06-15T10:00",
 		},
 		{
 			"nil date",
