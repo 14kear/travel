@@ -3,21 +3,464 @@ package hotels
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
+// parseHotelsFromPage extracts hotel data from a Google Travel Hotels HTML page.
+//
+// The page contains AF_initDataCallback blocks with JSON data. Hotel data
+// is in the "ds:0" callback, nested deeply within map-keyed arrays.
+//
+// Two types of hotel entries exist:
+//
+// 1. Organic hotels at data[0][0][0][1][N][1]["397419284"][0]:
+//   - [1] = hotel name
+//   - [2][0] = [lat, lon]
+//   - [3] = ["X-star hotel", X]
+//   - [6] = price block
+//   - [7][0] = [rating, review_count]
+//   - [9] = Google Place ID
+//   - [11] = description array
+//
+// 2. Sponsored hotels at data[0][0][0][1][1][1]["300000000"][2]:
+//   - [0] = hotel name
+//   - [2] = price string (e.g. "PLN 420")
+//   - [4] = review count
+//   - [5] = rating (float)
+//   - [6] = provider name
+func parseHotelsFromPage(page string, currency string) ([]models.HotelResult, error) {
+	// Extract AF_initDataCallback data blocks from the HTML.
+	callbacks := extractCallbacks(page)
+	if len(callbacks) == 0 {
+		return nil, fmt.Errorf("no AF_initDataCallback blocks found in page")
+	}
+
+	// Find the largest callback (typically "ds:0") which contains hotel data.
+	var hotelData any
+	maxSize := 0
+	for _, cb := range callbacks {
+		data, _ := json.Marshal(cb)
+		if len(data) > maxSize {
+			maxSize = len(data)
+			hotelData = cb
+		}
+	}
+
+	if hotelData == nil {
+		return nil, fmt.Errorf("no parseable data callback found")
+	}
+
+	var hotels []models.HotelResult
+
+	// Extract organic hotel entries.
+	organic := extractOrganicHotels(hotelData, currency)
+	hotels = append(hotels, organic...)
+
+	// Extract sponsored/ad hotel entries.
+	sponsored := extractSponsoredHotels(hotelData, currency)
+	hotels = append(hotels, sponsored...)
+
+	if len(hotels) == 0 {
+		return nil, fmt.Errorf("no hotels found in response payload")
+	}
+
+	// Deduplicate by name (sponsored and organic can overlap).
+	hotels = deduplicateHotels(hotels)
+
+	return hotels, nil
+}
+
+// extractCallbacks extracts parsed JSON data from AF_initDataCallback blocks
+// in an HTML page. Returns a slice of parsed JSON values.
+func extractCallbacks(page string) []any {
+	var results []any
+	remaining := page
+
+	for {
+		idx := strings.Index(remaining, "AF_initDataCallback({")
+		if idx < 0 {
+			break
+		}
+		remaining = remaining[idx:]
+
+		// Find the "data:" field.
+		dataStart := strings.Index(remaining, "data:")
+		if dataStart < 0 || dataStart > 500 {
+			remaining = remaining[20:]
+			continue
+		}
+
+		dataStr := strings.TrimSpace(remaining[dataStart+5:])
+		if len(dataStr) == 0 || dataStr[0] != '[' {
+			remaining = remaining[20:]
+			continue
+		}
+
+		// Parse the JSON array.
+		dec := json.NewDecoder(strings.NewReader(dataStr))
+		var parsed any
+		if err := dec.Decode(&parsed); err == nil {
+			results = append(results, parsed)
+		}
+
+		remaining = remaining[20:]
+	}
+
+	return results
+}
+
+// extractOrganicHotels extracts organic (non-sponsored) hotel entries from
+// the parsed hotel data.
+//
+// Organic hotels live at: data[0][0][0][1][N][1]{numericKey}[0]
+// where N iterates over hotel indices and numericKey is typically "397419284".
+func extractOrganicHotels(data any, currency string) []models.HotelResult {
+	var hotels []models.HotelResult
+
+	// Navigate to data[0][0][0][1]
+	hotelList := navigateArray(data, 0, 0, 0, 1)
+	if hotelList == nil {
+		return nil
+	}
+
+	arr, ok := hotelList.([]any)
+	if !ok {
+		return nil
+	}
+
+	for _, entry := range arr {
+		entryArr, ok := entry.([]any)
+		if !ok || len(entryArr) < 2 {
+			continue
+		}
+
+		// entryArr[1] should be a map with a numeric key containing the hotel data.
+		mapVal, ok := entryArr[1].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		for key, val := range mapVal {
+			// Skip the sponsored hotels key (300000000).
+			if key == "300000000" {
+				continue
+			}
+
+			hotelArr, ok := val.([]any)
+			if !ok || len(hotelArr) == 0 {
+				continue
+			}
+
+			// The hotel data is at hotelArr[0].
+			hotelEntry, ok := hotelArr[0].([]any)
+			if !ok || len(hotelEntry) < 3 {
+				continue
+			}
+
+			hotel := parseOrganicHotel(hotelEntry, currency)
+			if hotel.Name != "" {
+				hotels = append(hotels, hotel)
+			}
+		}
+	}
+
+	return hotels
+}
+
+// parseOrganicHotel extracts hotel fields from an organic hotel entry array.
+func parseOrganicHotel(entry []any, currency string) models.HotelResult {
+	h := models.HotelResult{Currency: currency}
+
+	// [1] = hotel name
+	if len(entry) > 1 {
+		h.Name = safeString(entry[1])
+	}
+
+	// [2] = location info, [2][0] = [lat, lon]
+	if len(entry) > 2 {
+		if locArr, ok := entry[2].([]any); ok && len(locArr) > 0 {
+			if coords, ok := locArr[0].([]any); ok && len(coords) >= 2 {
+				if lat, ok := coords[0].(float64); ok {
+					h.Lat = lat
+				}
+				if lon, ok := coords[1].(float64); ok {
+					h.Lon = lon
+				}
+			}
+		}
+	}
+
+	// [3] = ["X-star hotel", X] star rating
+	if len(entry) > 3 {
+		if starArr, ok := entry[3].([]any); ok && len(starArr) >= 2 {
+			if stars, ok := starArr[1].(float64); ok {
+				h.Stars = int(stars)
+			}
+		}
+	}
+
+	// [6] = price block: [null, [[price, 0], null, null, "currency", ...]]
+	if len(entry) > 6 {
+		price, cur := extractOrganicPrice(entry[6])
+		if price > 0 {
+			h.Price = price
+		}
+		if cur != "" {
+			h.Currency = cur
+		}
+	}
+
+	// [7][0] = [rating, review_count]
+	if len(entry) > 7 {
+		if ratingArr, ok := entry[7].([]any); ok && len(ratingArr) > 0 {
+			if pair, ok := ratingArr[0].([]any); ok && len(pair) >= 2 {
+				if rating, ok := pair[0].(float64); ok {
+					h.Rating = rating
+				}
+				if reviews, ok := pair[1].(float64); ok {
+					h.ReviewCount = int(reviews)
+				}
+			}
+		}
+	}
+
+	// [9] = Google Place ID (hex entity ID)
+	if len(entry) > 9 {
+		if id := safeString(entry[9]); id != "" {
+			h.HotelID = id
+		}
+	}
+
+	// [11] = description array
+	if len(entry) > 11 {
+		if descArr, ok := entry[11].([]any); ok && len(descArr) > 0 {
+			if desc := safeString(descArr[0]); desc != "" {
+				h.Address = desc // Use description as address fallback
+			}
+		}
+	}
+
+	return h
+}
+
+// extractOrganicPrice extracts price and currency from an organic hotel's
+// price block. The format is: [null, [[price, 0], null, null, "currency", ...]]
+func extractOrganicPrice(raw any) (float64, string) {
+	arr, ok := raw.([]any)
+	if !ok || len(arr) < 2 {
+		return 0, ""
+	}
+
+	// Look for the inner price array.
+	for _, item := range arr {
+		innerArr, ok := item.([]any)
+		if !ok || len(innerArr) < 4 {
+			continue
+		}
+
+		// Look for [[price, 0], null, null, "currency", ...]
+		if priceArr, ok := innerArr[0].([]any); ok && len(priceArr) >= 1 {
+			if price, ok := priceArr[0].(float64); ok && price > 0 {
+				// Currency is typically at position [3]
+				var currency string
+				if len(innerArr) > 3 {
+					currency = safeString(innerArr[3])
+				}
+				return price, currency
+			}
+		}
+	}
+
+	return 0, ""
+}
+
+// extractSponsoredHotels extracts sponsored/ad hotel entries.
+//
+// Sponsored hotels live at: data[0][0][0][1][1][1]["300000000"][2]
+// Each entry: [name, link, price_string, [image], review_count, rating, provider, ...]
+func extractSponsoredHotels(data any, currency string) []models.HotelResult {
+	var hotels []models.HotelResult
+
+	// Navigate to data[0][0][0][1]
+	hotelList := navigateArray(data, 0, 0, 0, 1)
+	if hotelList == nil {
+		return nil
+	}
+
+	arr, ok := hotelList.([]any)
+	if !ok {
+		return nil
+	}
+
+	// Find the entry with the "300000000" key (sponsored).
+	for _, entry := range arr {
+		entryArr, ok := entry.([]any)
+		if !ok || len(entryArr) < 2 {
+			continue
+		}
+
+		mapVal, ok := entryArr[1].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		sponsoredData, ok := mapVal["300000000"]
+		if !ok {
+			continue
+		}
+
+		sponsoredArr, ok := sponsoredData.([]any)
+		if !ok || len(sponsoredArr) < 3 {
+			continue
+		}
+
+		// The hotel list is at sponsoredArr[2].
+		hotelEntries, ok := sponsoredArr[2].([]any)
+		if !ok {
+			continue
+		}
+
+		for _, rawHotel := range hotelEntries {
+			hotelArr, ok := rawHotel.([]any)
+			if !ok || len(hotelArr) < 6 {
+				continue
+			}
+
+			hotel := parseSponsoredHotel(hotelArr, currency)
+			if hotel.Name != "" {
+				hotels = append(hotels, hotel)
+			}
+		}
+	}
+
+	return hotels
+}
+
+// parseSponsoredHotel extracts hotel fields from a sponsored hotel entry.
+func parseSponsoredHotel(entry []any, currency string) models.HotelResult {
+	h := models.HotelResult{Currency: currency}
+
+	// [0] = hotel name
+	if len(entry) > 0 {
+		h.Name = safeString(entry[0])
+	}
+
+	// [2] = price string (e.g. "PLN 420", "USD 150")
+	if len(entry) > 2 {
+		if priceStr := safeString(entry[2]); priceStr != "" {
+			price, cur := parsePriceString(priceStr)
+			if price > 0 {
+				h.Price = price
+			}
+			if cur != "" {
+				h.Currency = cur
+			}
+		}
+	}
+
+	// [4] = review count
+	if len(entry) > 4 {
+		if reviews, ok := entry[4].(float64); ok {
+			h.ReviewCount = int(reviews)
+		}
+	}
+
+	// [5] = rating
+	if len(entry) > 5 {
+		if rating, ok := entry[5].(float64); ok {
+			h.Rating = rating
+		}
+	}
+
+	return h
+}
+
+// parsePriceString parses a price string like "PLN 420" or "USD 150.50".
+func parsePriceString(s string) (float64, string) {
+	s = strings.TrimSpace(s)
+	parts := strings.Fields(s)
+	if len(parts) < 2 {
+		return 0, ""
+	}
+
+	// Try currency first, then amount.
+	currency := parts[0]
+	amountStr := strings.ReplaceAll(parts[1], ",", "")
+	amount, err := strconv.ParseFloat(amountStr, 64)
+	if err != nil {
+		// Maybe the format is "420 PLN" (amount first).
+		amountStr = strings.ReplaceAll(parts[0], ",", "")
+		amount, err = strconv.ParseFloat(amountStr, 64)
+		if err != nil {
+			return 0, ""
+		}
+		currency = parts[1]
+	}
+
+	// Validate currency looks like a currency code (3 uppercase letters).
+	if len(currency) != 3 || currency != strings.ToUpper(currency) {
+		currency = ""
+	}
+
+	return amount, currency
+}
+
+// deduplicateHotels removes duplicate hotels by name, keeping the first
+// occurrence (organic hotels are added before sponsored, so they take priority).
+func deduplicateHotels(hotels []models.HotelResult) []models.HotelResult {
+	seen := make(map[string]bool)
+	result := make([]models.HotelResult, 0, len(hotels))
+	for _, h := range hotels {
+		key := strings.ToLower(h.Name)
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, h)
+		}
+	}
+	return result
+}
+
+// navigateArray safely navigates a nested array structure by indices.
+// Returns nil if any index is out of bounds or the value is not an array.
+func navigateArray(v any, indices ...int) any {
+	current := v
+	for _, idx := range indices {
+		arr, ok := current.([]any)
+		if !ok || idx >= len(arr) {
+			return nil
+		}
+		current = arr[idx]
+	}
+	return current
+}
+
+// safeString extracts a string from an any value, returning "" for non-strings.
+func safeString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// ParseHotelSearchResponse parses hotel search results from a decoded
+// batchexecute response. This is the legacy path used when batchexecute
+// responses are available. The Travel page scraping path (parseHotelsFromPage)
+// is preferred.
+func ParseHotelSearchResponse(entries []any, currency string) ([]models.HotelResult, error) {
+	// Try to extract the AtySUc payload first.
+	payload, err := extractBatchPayload(entries, "AtySUc")
+	if err != nil {
+		return parseHotelsFromRaw(entries, currency)
+	}
+
+	return parseHotelsFromPayload(payload, currency)
+}
+
 // extractBatchPayload extracts the inner JSON payload from a batchexecute
-// response entry. The batchexecute response format nests the actual data as
-// a JSON string inside the response array.
-//
-// The response structure is:
-//
-//	[["wrb.fr","<rpcid>","<JSON-stringified payload>", ...], ...]
-//
-// This function finds the first entry matching the given rpcid and returns
-// the parsed inner payload.
+// response entry.
 func extractBatchPayload(entries []any, rpcid string) (any, error) {
 	for _, entry := range entries {
 		arr, ok := entry.([]any)
@@ -25,18 +468,12 @@ func extractBatchPayload(entries []any, rpcid string) (any, error) {
 			continue
 		}
 
-		// Each entry in a batchexecute response is an array of response items.
 		for _, item := range arr {
 			itemArr, ok := item.([]any)
-			if !ok {
-				continue
-			}
-			if len(itemArr) < 3 {
+			if !ok || len(itemArr) < 3 {
 				continue
 			}
 
-			// Check if this item matches our rpcid.
-			// Format: ["wrb.fr", "<rpcid>", "<json-string>", ...]
 			id, ok := itemArr[1].(string)
 			if !ok || id != rpcid {
 				continue
@@ -56,7 +493,6 @@ func extractBatchPayload(entries []any, rpcid string) (any, error) {
 	}
 
 	// Fallback: try treating entries directly as the batch array.
-	// Sometimes DecodeBatchResponse returns the inner array directly.
 	for _, entry := range entries {
 		arr, ok := entry.([]any)
 		if !ok || len(arr) < 3 {
@@ -80,36 +516,15 @@ func extractBatchPayload(entries []any, rpcid string) (any, error) {
 	return nil, fmt.Errorf("no response found for rpcid %s", rpcid)
 }
 
-// ParseHotelSearchResponse parses hotel search results from a decoded
-// batchexecute response. It tries multiple known locations within the deeply
-// nested response structure to find hotel data.
-//
-// The response from AtySUc contains nested arrays. Hotels are typically found
-// within the result array at various depths depending on the query type.
-func ParseHotelSearchResponse(entries []any, currency string) ([]models.HotelResult, error) {
-	// Try to extract the AtySUc payload first.
-	payload, err := extractBatchPayload(entries, "AtySUc")
-	if err != nil {
-		// If we can't find it by rpcid, try parsing the raw entries directly.
-		// Sometimes the response is already the inner payload.
-		return parseHotelsFromRaw(entries, currency)
-	}
-
-	return parseHotelsFromPayload(payload, currency)
-}
-
 // parseHotelsFromPayload extracts hotels from the AtySUc response payload.
-// The payload is a deeply nested array structure. We search through it
-// recursively looking for arrays that match the hotel entry signature.
+// It searches the nested map/array structure for hotel entries.
 func parseHotelsFromPayload(payload any, currency string) ([]models.HotelResult, error) {
 	var hotels []models.HotelResult
 
-	// The hotel data is typically at payload[1] or payload[0][1] as a list
-	// of hotel entries. Each hotel entry is an array with specific structure.
-	// Since the exact nesting can vary, we use a heuristic search approach.
-	found := findHotelArrays(payload, 0)
+	// Search through the nested structure for hotel entries.
+	found := findHotelEntries(payload, 0)
 	for _, h := range found {
-		hotel := parseOneHotel(h, currency)
+		hotel := parseHotelFromMapEntry(h, currency)
 		if hotel.Name != "" {
 			hotels = append(hotels, hotel)
 		}
@@ -122,193 +537,68 @@ func parseHotelsFromPayload(payload any, currency string) ([]models.HotelResult,
 	return hotels, nil
 }
 
-// findHotelArrays recursively searches the response structure for arrays
-// that look like hotel entries. A hotel entry is an array where:
-//   - It contains a string (hotel name) at a low index
-//   - It contains what looks like a numeric rating
-//   - It contains what looks like a price
-//
-// maxDepth limits recursion to avoid infinite loops on self-referencing data.
-func findHotelArrays(v any, depth int) [][]any {
-	if depth > 8 {
+// findHotelEntries recursively searches for arrays that look like organic
+// hotel entries (27-element arrays with name at [1] and coordinates at [2]).
+func findHotelEntries(v any, depth int) [][]any {
+	if depth > 10 {
 		return nil
 	}
 
-	arr, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-
-	var results [][]any
-
-	// Check if this array itself looks like a list of hotel entries.
-	if looksLikeHotelList(arr) {
-		for _, item := range arr {
-			if hotelArr, ok := item.([]any); ok && looksLikeHotelEntry(hotelArr) {
-				results = append(results, hotelArr)
+	switch val := v.(type) {
+	case []any:
+		// Check if this looks like a hotel entry (name at [1], coords at [2]).
+		if len(val) > 10 && val[0] == nil {
+			if name, ok := val[1].(string); ok && len(name) > 2 {
+				if locArr, ok := val[2].([]any); ok && len(locArr) > 0 {
+					if coords, ok := locArr[0].([]any); ok && len(coords) == 2 {
+						if _, ok := coords[0].(float64); ok {
+							return [][]any{val}
+						}
+					}
+				}
 			}
 		}
-		if len(results) > 0 {
-			return results
+		// Recurse into sub-arrays.
+		var results [][]any
+		for _, item := range val {
+			found := findHotelEntries(item, depth+1)
+			results = append(results, found...)
 		}
-	}
+		return results
 
-	// Otherwise, recurse into sub-arrays.
-	for _, item := range arr {
-		if subArr, ok := item.([]any); ok {
-			found := findHotelArrays(subArr, depth+1)
-			if len(found) > 0 {
-				return found
-			}
+	case map[string]any:
+		var results [][]any
+		for _, mv := range val {
+			found := findHotelEntries(mv, depth+1)
+			results = append(results, found...)
 		}
+		return results
 	}
 
 	return nil
 }
 
-// looksLikeHotelList checks if an array looks like it contains hotel entries.
-// A hotel list has multiple elements, most of which are arrays.
-func looksLikeHotelList(arr []any) bool {
-	if len(arr) < 2 {
-		return false
-	}
-	arrayCount := 0
-	hotelCount := 0
-	for _, item := range arr {
-		if subArr, ok := item.([]any); ok {
-			arrayCount++
-			if looksLikeHotelEntry(subArr) {
-				hotelCount++
-			}
-		}
-	}
-	// At least 2 hotel-like entries makes it a likely hotel list.
-	return hotelCount >= 2
+// parseHotelFromMapEntry parses a hotel from the organic hotel array format.
+func parseHotelFromMapEntry(entry []any, currency string) models.HotelResult {
+	return parseOrganicHotel(entry, currency)
 }
 
-// looksLikeHotelEntry checks if an array has the signature of a hotel entry.
-// Hotel entries in Google's response typically have:
-//   - A string name early in the array
-//   - Nested arrays containing ratings, prices, coordinates
-//   - Length >= 10 (hotel entries are deeply structured)
-func looksLikeHotelEntry(arr []any) bool {
-	if len(arr) < 5 {
-		return false
-	}
-
-	// Look for a string that could be a hotel name in the first few elements.
-	hasName := false
-	for i := 0; i < minInt(5, len(arr)); i++ {
-		if s, ok := arr[i].(string); ok && len(s) > 2 && !strings.HasPrefix(s, "/") {
-			hasName = true
-			break
-		}
-	}
-
-	return hasName
-}
-
-// parseOneHotel extracts hotel fields from a single hotel entry array.
-// This uses defensive indexing since the exact positions may vary.
-func parseOneHotel(arr []any, currency string) models.HotelResult {
-	h := models.HotelResult{Currency: currency}
-
-	// Walk through the array looking for recognizable data types and patterns.
-	for i, v := range arr {
-		switch val := v.(type) {
-		case string:
-			if h.Name == "" && len(val) > 2 && !strings.HasPrefix(val, "/") && !strings.HasPrefix(val, "http") {
-				h.Name = val
-			} else if h.HotelID == "" && (strings.HasPrefix(val, "/g/") || strings.HasPrefix(val, "ChIJ") || strings.HasPrefix(val, "/m/")) {
-				h.HotelID = val
-			} else if h.Address == "" && len(val) > 10 && strings.Contains(val, ",") && i > 2 {
-				h.Address = val
-			}
-		case float64:
-			if val >= 1.0 && val <= 5.0 && h.Rating == 0 {
-				h.Rating = val
-			} else if val >= 1 && val <= 5 && val == float64(int(val)) && h.Stars == 0 && i > 3 {
-				h.Stars = int(val)
-			}
-		case []any:
-			// Nested array: check for coordinates [lat, lon], prices, amenities, etc.
-			extractNestedHotelData(val, &h, currency)
-		}
-	}
-
-	// If no explicit hotel ID was found, try deeper in nested arrays.
-	if h.HotelID == "" {
-		h.HotelID = findHotelID(arr)
-	}
-
-	return h
-}
-
-// extractNestedHotelData looks inside nested arrays for hotel data like
-// coordinates, prices, and amenities.
-func extractNestedHotelData(arr []any, h *models.HotelResult, currency string) {
-	if len(arr) == 0 {
-		return
-	}
-
-	// Check for coordinate pair: [float, float] where both are in lat/lon range.
-	if len(arr) == 2 {
-		lat, latOK := toFloat64(arr[0])
-		lon, lonOK := toFloat64(arr[1])
-		if latOK && lonOK && lat > -90 && lat < 90 && lon > -180 && lon < 180 {
-			if h.Lat == 0 && h.Lon == 0 {
-				h.Lat = lat
-				h.Lon = lon
+// parseHotelsFromRaw tries to extract hotels from raw decoded entries.
+func parseHotelsFromRaw(entries []any, currency string) ([]models.HotelResult, error) {
+	var hotels []models.HotelResult
+	for _, entry := range entries {
+		found := findHotelEntries(entry, 0)
+		for _, h := range found {
+			hotel := parseHotelFromMapEntry(h, currency)
+			if hotel.Name != "" {
+				hotels = append(hotels, hotel)
 			}
 		}
 	}
-
-	// Look for price-like values in sub-arrays.
-	for _, item := range arr {
-		switch val := item.(type) {
-		case float64:
-			if val > 10 && val < 100000 && h.Price == 0 {
-				h.Price = val
-			}
-		case string:
-			if h.HotelID == "" && (strings.HasPrefix(val, "/g/") || strings.HasPrefix(val, "ChIJ") || strings.HasPrefix(val, "/m/")) {
-				h.HotelID = val
-			}
-			// Currency codes are 3 uppercase letters.
-			if len(val) == 3 && val == strings.ToUpper(val) && h.Currency == "" {
-				h.Currency = val
-			}
-		case []any:
-			// Check for amenity strings list.
-			if allStrings(val) && len(val) > 2 {
-				amenities := toStringSlice(val)
-				if len(amenities) > 0 && h.Amenities == nil {
-					h.Amenities = amenities
-				}
-			}
-			// Recurse one more level for prices and IDs.
-			if h.Price == 0 || h.HotelID == "" {
-				extractNestedHotelData(val, h, currency)
-			}
-		}
+	if len(hotels) == 0 {
+		return nil, fmt.Errorf("no hotels found in raw response")
 	}
-}
-
-// findHotelID searches deeply in an array for a Google place/entity ID.
-func findHotelID(arr []any) string {
-	for _, v := range arr {
-		switch val := v.(type) {
-		case string:
-			if strings.HasPrefix(val, "/g/") || strings.HasPrefix(val, "ChIJ") || strings.HasPrefix(val, "/m/") {
-				return val
-			}
-		case []any:
-			if id := findHotelID(val); id != "" {
-				return id
-			}
-		}
-	}
-	return ""
+	return hotels, nil
 }
 
 // ParseHotelPriceResponse parses hotel price lookup results from a decoded
@@ -316,7 +606,6 @@ func findHotelID(arr []any) string {
 func ParseHotelPriceResponse(entries []any) ([]models.ProviderPrice, error) {
 	payload, err := extractBatchPayload(entries, "yY52ce")
 	if err != nil {
-		// Try parsing entries directly if rpcid extraction fails.
 		return parsePricesFromRaw(entries)
 	}
 
@@ -324,7 +613,6 @@ func ParseHotelPriceResponse(entries []any) ([]models.ProviderPrice, error) {
 }
 
 // parsePricesFromPayload extracts provider prices from the yY52ce response.
-// The response contains an array of booking providers with their prices.
 func parsePricesFromPayload(payload any) ([]models.ProviderPrice, error) {
 	var prices []models.ProviderPrice
 
@@ -357,7 +645,6 @@ func findPriceArrays(v any, depth int) [][]any {
 
 	var results [][]any
 
-	// Check if this array looks like a list of provider entries.
 	if looksLikePriceList(arr) {
 		for _, item := range arr {
 			if provArr, ok := item.([]any); ok && looksLikeProviderEntry(provArr) {
@@ -369,7 +656,6 @@ func findPriceArrays(v any, depth int) [][]any {
 		}
 	}
 
-	// Recurse.
 	for _, item := range arr {
 		if subArr, ok := item.([]any); ok {
 			found := findPriceArrays(subArr, depth+1)
@@ -382,7 +668,6 @@ func findPriceArrays(v any, depth int) [][]any {
 	return nil
 }
 
-// looksLikePriceList checks if an array looks like it contains provider entries.
 func looksLikePriceList(arr []any) bool {
 	if len(arr) < 1 {
 		return false
@@ -396,8 +681,6 @@ func looksLikePriceList(arr []any) bool {
 	return provCount >= 1
 }
 
-// looksLikeProviderEntry checks if an array matches the provider price signature.
-// Provider entries typically have a name string and a price number.
 func looksLikeProviderEntry(arr []any) bool {
 	if len(arr) < 2 {
 		return false
@@ -407,7 +690,6 @@ func looksLikeProviderEntry(arr []any) bool {
 	for _, v := range arr {
 		switch val := v.(type) {
 		case string:
-			// Provider names like "Booking.com", "Hotels.com", "Expedia", etc.
 			if len(val) > 2 && !strings.HasPrefix(val, "http") && !strings.HasPrefix(val, "/") {
 				hasName = true
 			}
@@ -420,7 +702,6 @@ func looksLikeProviderEntry(arr []any) bool {
 	return hasName && hasPrice
 }
 
-// parseOneProvider extracts provider name and price from a provider entry.
 func parseOneProvider(arr []any) models.ProviderPrice {
 	p := models.ProviderPrice{}
 	for _, v := range arr {
@@ -437,7 +718,6 @@ func parseOneProvider(arr []any) models.ProviderPrice {
 				p.Price = val
 			}
 		case []any:
-			// Recurse one level to find price/currency in sub-arrays.
 			for _, sub := range val {
 				switch sv := sub.(type) {
 				case float64:
@@ -455,26 +735,6 @@ func parseOneProvider(arr []any) models.ProviderPrice {
 	return p
 }
 
-// parseHotelsFromRaw tries to extract hotels from raw decoded entries when
-// the rpcid-based extraction fails.
-func parseHotelsFromRaw(entries []any, currency string) ([]models.HotelResult, error) {
-	var hotels []models.HotelResult
-	for _, entry := range entries {
-		found := findHotelArrays(entry, 0)
-		for _, h := range found {
-			hotel := parseOneHotel(h, currency)
-			if hotel.Name != "" {
-				hotels = append(hotels, hotel)
-			}
-		}
-	}
-	if len(hotels) == 0 {
-		return nil, fmt.Errorf("no hotels found in raw response")
-	}
-	return hotels, nil
-}
-
-// parsePricesFromRaw tries to extract prices from raw decoded entries.
 func parsePricesFromRaw(entries []any) ([]models.ProviderPrice, error) {
 	var prices []models.ProviderPrice
 	for _, entry := range entries {
@@ -503,30 +763,4 @@ func toFloat64(v any) (float64, bool) {
 		return f, err == nil
 	}
 	return 0, false
-}
-
-func allStrings(arr []any) bool {
-	for _, v := range arr {
-		if _, ok := v.(string); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func toStringSlice(arr []any) []string {
-	result := make([]string, 0, len(arr))
-	for _, v := range arr {
-		if s, ok := v.(string); ok && len(s) > 0 {
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

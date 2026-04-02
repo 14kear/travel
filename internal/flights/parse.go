@@ -2,8 +2,10 @@
 package flights
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
@@ -11,24 +13,34 @@ import (
 // parseFlights extracts FlightResult structs from the raw flight entries
 // returned by batchexec.ExtractFlightData.
 //
-// Each flight entry is a deeply nested JSON array with positional semantics:
+// Each flight entry is a deeply nested JSON array with positional semantics
+// (verified against live Google Flights API responses 2026-04):
 //
-//	entry[0][0]  — legs array (each leg has airline, airports, times)
+//	entry[0]     — flight info array
+//	entry[0][2]  — legs array (individual flight segments)
+//	entry[0][3]  — overall departure airport code
+//	entry[0][4]  — overall departure date [y, m, d]
+//	entry[0][5]  — overall departure time [h, min]
+//	entry[0][6]  — overall arrival airport code
+//	entry[0][7]  — overall arrival date [y, m, d]
+//	entry[0][8]  — overall arrival time [h, min]
 //	entry[0][9]  — total duration in minutes
-//	entry[1]     — price array: [null, amount, null, currency_code]
+//	entry[1]     — price array
+//	entry[1][0]  — price sub-array: last element is price in minor or major units
+//	entry[1][1]  — booking token (protobuf, contains currency code)
 //
-// Leg structure (entry[0][0][i]):
+// Leg structure (entry[0][2][i]):
 //
-//	leg[1] — departure airport code
-//	leg[2] — departure airport name
-//	leg[3] — arrival airport code
-//	leg[4] — arrival airport name
-//	leg[5] — departure time array [year, month, day, hour, minute]
-//	leg[6] — arrival time array [year, month, day, hour, minute]
-//	leg[7] — duration in minutes
-//	leg[8] — airline name
-//	leg[9] — airline code (IATA 2-letter)
-//	leg[10] — flight number (e.g. "NH 6521")
+//	leg[3]   — departure airport code
+//	leg[4]   — departure airport name
+//	leg[5]   — arrival airport name
+//	leg[6]   — arrival airport code
+//	leg[8]   — departure time [hour, minute]
+//	leg[10]  — arrival time [hour, minute]
+//	leg[11]  — duration in minutes
+//	leg[20]  — departure date [year, month, day]
+//	leg[21]  — arrival date [year, month, day]
+//	leg[22]  — airline info: [code, flight_number, null, airline_name]
 func parseFlights(rawFlights []any) []models.FlightResult {
 	var results []models.FlightResult
 
@@ -59,14 +71,9 @@ func parseOneFlight(entry []any) (models.FlightResult, error) {
 		return fr, fmt.Errorf("entry[0] not array")
 	}
 
-	// Parse legs from flightInfo[0]. Google places the legs array at the first
-	// position of the flight info structure. If [0] isn't an array of legs,
-	// try [2] as a fallback (some response variants may differ).
-	if len(flightInfo) > 0 {
-		fr.Legs = parseLegs(flightInfo[0])
-		if len(fr.Legs) == 0 && len(flightInfo) > 2 {
-			fr.Legs = parseLegs(flightInfo[2])
-		}
+	// Parse legs from flightInfo[2] — the legs array in Google's live response.
+	if len(flightInfo) > 2 {
+		fr.Legs = parseLegs(flightInfo[2])
 	}
 	fr.Stops = max(len(fr.Legs)-1, 0)
 
@@ -107,84 +114,119 @@ func parseLegs(raw any) []models.FlightLeg {
 }
 
 // parseOneLeg parses a single leg from the nested array.
+//
+// Real Google leg structure (33 elements observed):
+//
+//	[0]  = null
+//	[1]  = null
+//	[2]  = operating airline name (may be null)
+//	[3]  = departure airport code
+//	[4]  = departure airport name
+//	[5]  = arrival airport name
+//	[6]  = arrival airport code
+//	[7]  = null
+//	[8]  = departure time [hour, minute]
+//	[9]  = null (or 1 for +1 day offset)
+//	[10] = arrival time [hour, minute]
+//	[11] = duration in minutes
+//	[17] = aircraft type
+//	[20] = departure date [year, month, day]
+//	[21] = arrival date [year, month, day]
+//	[22] = airline info [code, flight_number, null, airline_name]
 func parseOneLeg(leg []any) models.FlightLeg {
 	var fl models.FlightLeg
 
-	if len(leg) > 1 {
-		fl.DepartureAirport.Code = toString(leg[1])
-	}
-	if len(leg) > 2 {
-		fl.DepartureAirport.Name = toString(leg[2])
-	}
 	if len(leg) > 3 {
-		fl.ArrivalAirport.Code = toString(leg[3])
+		fl.DepartureAirport.Code = toString(leg[3])
 	}
 	if len(leg) > 4 {
-		fl.ArrivalAirport.Name = toString(leg[4])
-	}
-	if len(leg) > 5 {
-		fl.DepartureTime = formatTime(leg[5])
+		fl.DepartureAirport.Name = toString(leg[4])
 	}
 	if len(leg) > 6 {
-		fl.ArrivalTime = formatTime(leg[6])
+		fl.ArrivalAirport.Code = toString(leg[6])
 	}
-	if len(leg) > 7 {
-		fl.Duration = toInt(leg[7])
+	if len(leg) > 5 {
+		fl.ArrivalAirport.Name = toString(leg[5])
 	}
-	if len(leg) > 8 {
-		fl.Airline = toString(leg[8])
+
+	// Departure time: combine date [20] and time [8]
+	if len(leg) > 20 {
+		fl.DepartureTime = formatDateTime(leg[20], leg[8])
 	}
-	if len(leg) > 9 {
-		fl.AirlineCode = toString(leg[9])
+	// Arrival time: combine date [21] and time [10]
+	if len(leg) > 21 && len(leg) > 10 {
+		fl.ArrivalTime = formatDateTime(leg[21], leg[10])
 	}
-	if len(leg) > 10 {
-		fl.FlightNumber = toString(leg[10])
+
+	if len(leg) > 11 {
+		fl.Duration = toInt(leg[11])
+	}
+
+	// Airline info at leg[22]: [code, flight_number, null, airline_name]
+	if len(leg) > 22 {
+		if info, ok := leg[22].([]any); ok && len(info) >= 2 {
+			fl.AirlineCode = toString(info[0])
+			fl.FlightNumber = toString(info[0]) + " " + toString(info[1])
+			if len(info) > 3 {
+				fl.Airline = toString(info[3])
+			}
+		}
 	}
 
 	return fl
 }
 
 // parsePrice extracts price and currency from the price array.
-// Google encodes price as: [null, amount_units, null, currency_code] or similar
-// variations. We try multiple known positions.
+//
+// Google's live format: entry[1] = [ [null, price_amount], booking_token_string ]
+// The price is the last numeric element in entry[1][0].
+// The currency is encoded as protobuf inside the booking token string at entry[1][1].
 func parsePrice(raw any) (float64, string) {
 	arr, ok := raw.([]any)
 	if !ok {
 		return 0, ""
 	}
 
-	// Common format: arr is [currency_info, amount, ...]
-	// or arr is [null, amount, null, currency_string]
-	// Try index patterns observed from real responses:
-
 	var amount float64
 	var currency string
 
-	// Try to find a numeric price value
-	for i, v := range arr {
-		if f, ok := toFloat(v); ok && f > 0 && amount == 0 {
-			amount = f
-			_ = i
-		}
-		if s := toString(v); len(s) == 3 && s >= "A" && amount > 0 && currency == "" {
-			// Looks like a 3-letter currency code after we found an amount
-			currency = s
+	// Try entry[1][0] — sub-array containing the price.
+	// Price is the last element: e.g. [null, 2581] -> 2581
+	if len(arr) > 0 {
+		if priceArr, ok := arr[0].([]any); ok && len(priceArr) > 0 {
+			// Walk backwards to find the first numeric value (price)
+			for i := len(priceArr) - 1; i >= 0; i-- {
+				if f, ok := toFloat(priceArr[i]); ok && f > 0 {
+					amount = f
+					break
+				}
+			}
 		}
 	}
 
-	// If we found amount but not currency, look in nested arrays
-	if amount > 0 && currency == "" {
+	// Try to extract currency from the booking token at entry[1][1].
+	// The token is a base64-encoded protobuf that contains the 3-letter currency code.
+	if len(arr) > 1 {
+		if token, ok := arr[1].(string); ok && len(token) > 10 {
+			currency = extractCurrencyFromToken(token)
+		}
+	}
+
+	// Fallback: scan for explicit currency code or nested price in the array
+	if amount == 0 {
 		for _, v := range arr {
-			if sub, ok := v.([]any); ok {
-				for _, sv := range sub {
-					if s := toString(sv); len(s) == 3 && s >= "A" {
-						currency = s
-						break
-					}
-				}
-				if currency != "" {
-					break
-				}
+			if f, ok := toFloat(v); ok && f > 0 {
+				amount = f
+				break
+			}
+		}
+	}
+	if currency == "" && amount > 0 {
+		// Look for 3-letter uppercase string in the array
+		for _, v := range arr {
+			if s, ok := v.(string); ok && len(s) == 3 && s >= "A" && s == strings.ToUpper(s) {
+				currency = s
+				break
 			}
 		}
 	}
@@ -197,8 +239,85 @@ func parsePrice(raw any) (float64, string) {
 	return amount, currency
 }
 
+// extractCurrencyFromToken attempts to extract a 3-letter currency code from
+// a base64-encoded protobuf booking token. The currency appears as a protobuf
+// string field (tag with wire type 2) containing exactly 3 uppercase ASCII chars.
+func extractCurrencyFromToken(token string) string {
+	data, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		// Try URL-safe or raw variants
+		data, err = base64.RawStdEncoding.DecodeString(token)
+		if err != nil {
+			data, err = base64.URLEncoding.DecodeString(token)
+			if err != nil {
+				return ""
+			}
+		}
+	}
+
+	// Scan for a 3-byte sequence that looks like a currency code.
+	// In protobuf, a string field is: varint tag | varint length | bytes.
+	// We look for length=3 followed by 3 uppercase ASCII letters.
+	for i := 0; i < len(data)-3; i++ {
+		if data[i] == 3 { // length prefix = 3
+			c1, c2, c3 := data[i+1], data[i+2], data[i+3]
+			if c1 >= 'A' && c1 <= 'Z' && c2 >= 'A' && c2 <= 'Z' && c3 >= 'A' && c3 <= 'Z' {
+				code := string(data[i+1 : i+4])
+				// Validate it looks like a real currency code (not just random uppercase)
+				if isKnownCurrency(code) {
+					return code
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// isKnownCurrency checks if a 3-letter code is a recognized currency.
+// This is a small subset covering the most common currencies for travel searches.
+func isKnownCurrency(code string) bool {
+	switch code {
+	case "USD", "EUR", "GBP", "JPY", "CNY", "KRW", "THB", "INR", "AUD", "CAD",
+		"CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "BGN", "HRK",
+		"TRY", "BRL", "MXN", "ARS", "CLP", "COP", "PEN", "ZAR", "EGP", "AED",
+		"SAR", "QAR", "OMR", "BHD", "KWD", "ILS", "SGD", "HKD", "TWD", "MYR",
+		"IDR", "PHP", "VND", "NZD", "RUB", "UAH", "ISK":
+		return true
+	}
+	return false
+}
+
+// formatDateTime combines a date array [year, month, day] and a time array
+// [hour, minute] into an ISO 8601 string "YYYY-MM-DDTHH:MM".
+func formatDateTime(dateRaw, timeRaw any) string {
+	dateArr, ok := dateRaw.([]any)
+	if !ok || len(dateArr) < 3 {
+		return ""
+	}
+
+	year := toInt(dateArr[0])
+	month := toInt(dateArr[1])
+	day := toInt(dateArr[2])
+	if year == 0 {
+		return ""
+	}
+
+	timeArr, ok := timeRaw.([]any)
+	if !ok || len(timeArr) < 2 {
+		// Date only, no time
+		return fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+	}
+
+	hour := toInt(timeArr[0])
+	minute := toInt(timeArr[1])
+
+	return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d", year, month, day, hour, minute)
+}
+
 // formatTime converts a time array [year, month, day, hour, minute] to
-// an ISO 8601 string "YYYY-MM-DDTHH:MM".
+// an ISO 8601 string "YYYY-MM-DDTHH:MM". This handles the legacy 5-element
+// format used in test fixtures.
 func formatTime(raw any) string {
 	arr, ok := raw.([]any)
 	if !ok || len(arr) < 5 {

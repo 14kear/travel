@@ -45,35 +45,32 @@ func TestParseDateArray(t *testing.T) {
 
 // TestParseHotelSearchResponse tests parsing of mock hotel search data.
 func TestParseHotelSearchResponse(t *testing.T) {
-	// Simulated batchexecute response structure with hotel entries.
-	// This mimics the structure: [["wrb.fr","AtySUc","<json>", ...]]
+	// Simulated batchexecute response with organic hotel entries.
+	// Structure: data[0][0][0][1][N][1]{"397419284"}[0] = hotel entry
+	hotel1 := make([]any, 27)
+	hotel1[0] = nil
+	hotel1[1] = "Hotel Kamp"
+	hotel1[2] = []any{[]any{60.168, 24.941}}
+	hotel1[3] = []any{"5-star hotel", 5.0}
+	hotel1[6] = []any{nil, []any{[]any{189.0, 0.0}, nil, nil, "USD"}}
+	hotel1[7] = []any{[]any{4.6, 1523.0}}
+	hotel1[9] = "/g/11b6d4_v_4"
+
+	hotel2 := make([]any, 27)
+	hotel2[0] = nil
+	hotel2[1] = "Scandic Grand Central Helsinki"
+	hotel2[2] = []any{[]any{60.170, 24.943}}
+	hotel2[3] = []any{"4-star hotel", 4.0}
+	hotel2[6] = []any{nil, []any{[]any{129.0, 0.0}, nil, nil, "USD"}}
+	hotel2[7] = []any{[]any{4.3, 892.0}}
+	hotel2[9] = "/g/11c6rk8_qb"
+
 	hotelData := []any{
-		[]any{
-			"Hotel Kamp",                  // [0] name
-			"/g/11b6d4_v_4",              // [1] hotel ID
-			4.6,                           // [2] rating
-			1523.0,                        // [3] review count
-			5.0,                           // [4] stars
-			[]any{189.0, "USD"},          // [5] price info
-			"Pohjoisesplanadi 29, Helsinki", // [6] address
-			[]any{60.168, 24.941},         // [7] coordinates
-			[]any{"WiFi", "Pool", "Spa"},  // [8] amenities
-		},
-		[]any{
-			"Scandic Grand Central Helsinki",
-			"/g/11c6rk8_qb",
-			4.3,
-			892.0,
-			4.0,
-			[]any{129.0, "USD"},
-			"Vilhonkatu 13, Helsinki",
-			[]any{60.170, 24.943},
-			[]any{"WiFi", "Restaurant"},
-		},
+		[]any{hotel1},
+		[]any{hotel2},
 	}
 
 	inner, _ := json.Marshal(hotelData)
-	// Wrap in the batchexecute response format.
 	entries := []any{
 		[]any{
 			[]any{"wrb.fr", "AtySUc", string(inner), nil, nil, nil, "generic"},
@@ -283,40 +280,33 @@ func TestExtractBatchPayload_NotFound(t *testing.T) {
 	}
 }
 
-// TestLooksLikeHotelEntry verifies the hotel entry heuristic.
-func TestLooksLikeHotelEntry(t *testing.T) {
-	tests := []struct {
-		name string
-		arr  []any
-		want bool
-	}{
-		{
-			name: "valid hotel",
-			arr:  []any{"Hotel Kamp", "/g/123", 4.5, 1000.0, 5.0},
-			want: true,
-		},
-		{
-			name: "too short",
-			arr:  []any{"Hotel"},
-			want: false,
-		},
-		{
-			name: "no name string",
-			arr:  []any{1.0, 2.0, 3.0, 4.0, 5.0},
-			want: false,
-		},
-		{
-			name: "slash prefix not name",
-			arr:  []any{"/g/123", nil, nil, nil, nil},
-			want: false,
-		},
+// TestFindHotelEntries verifies the hotel entry detection in nested structures.
+func TestFindHotelEntries(t *testing.T) {
+	// A valid organic hotel entry has: [0]=nil, [1]=name, [2]=[[lat,lon],...], ...
+	validHotel := make([]any, 12)
+	validHotel[0] = nil
+	validHotel[1] = "Hotel Kamp"
+	validHotel[2] = []any{[]any{60.168, 24.941}}
+
+	found := findHotelEntries(validHotel, 0)
+	if len(found) != 1 {
+		t.Errorf("expected 1 hotel entry, got %d", len(found))
 	}
 
-	for _, tt := range tests {
-		got := looksLikeHotelEntry(tt.arr)
-		if got != tt.want {
-			t.Errorf("looksLikeHotelEntry(%s) = %v, want %v", tt.name, got, tt.want)
-		}
+	// Invalid: too short
+	short := []any{nil, "Hotel"}
+	found = findHotelEntries(short, 0)
+	if len(found) != 0 {
+		t.Errorf("expected 0 entries for short array, got %d", len(found))
+	}
+
+	// Invalid: no name
+	noName := make([]any, 12)
+	noName[0] = nil
+	noName[1] = 42.0
+	found = findHotelEntries(noName, 0)
+	if len(found) != 0 {
+		t.Errorf("expected 0 entries for no-name array, got %d", len(found))
 	}
 }
 
@@ -363,33 +353,44 @@ func TestGetHotelPrices_ValidationErrors(t *testing.T) {
 	}
 }
 
-// TestParseOneHotel verifies single hotel entry parsing.
-func TestParseOneHotel(t *testing.T) {
-	entry := []any{
-		"Grand Hotel",
-		"/g/11abc",
-		4.2,
-		500.0,
-		3.0,
-		[]any{150.0, "EUR"},
-		"Main Street 1, City, Country",
-		[]any{51.5074, -0.1278},
-		[]any{"WiFi", "Parking", "Restaurant"},
+// TestParseOrganicHotel verifies single organic hotel entry parsing.
+func TestParseOrganicHotel(t *testing.T) {
+	// Organic hotel entry format (27 elements):
+	// [0]=nil, [1]=name, [2]=[[lat,lon],...], [3]=["X-star",X], ...
+	// [6]=price_block, [7]=[[rating, review_count]], [9]=place_id
+	entry := make([]any, 27)
+	entry[0] = nil
+	entry[1] = "Grand Hotel"
+	entry[2] = []any{
+		[]any{51.5074, -0.1278}, // [lat, lon]
 	}
+	entry[3] = []any{"3-star hotel", 3.0}
+	entry[6] = []any{nil, []any{[]any{150.0, 0.0}, nil, nil, "EUR"}}
+	entry[7] = []any{[]any{4.2, 500.0}}
+	entry[9] = "0x123:0x456"
 
-	h := parseOneHotel(entry, "EUR")
+	h := parseOrganicHotel(entry, "EUR")
 
 	if h.Name != "Grand Hotel" {
 		t.Errorf("Name = %q, want %q", h.Name, "Grand Hotel")
 	}
-	if h.HotelID != "/g/11abc" {
-		t.Errorf("HotelID = %q, want %q", h.HotelID, "/g/11abc")
-	}
 	if h.Rating != 4.2 {
 		t.Errorf("Rating = %v, want 4.2", h.Rating)
 	}
+	if h.Stars != 3 {
+		t.Errorf("Stars = %d, want 3", h.Stars)
+	}
 	if h.Lat == 0 || h.Lon == 0 {
 		t.Error("expected non-zero coordinates")
+	}
+	if h.Price != 150.0 {
+		t.Errorf("Price = %v, want 150.0", h.Price)
+	}
+	if h.Currency != "EUR" {
+		t.Errorf("Currency = %q, want EUR", h.Currency)
+	}
+	if h.HotelID != "0x123:0x456" {
+		t.Errorf("HotelID = %q, want %q", h.HotelID, "0x123:0x456")
 	}
 }
 
