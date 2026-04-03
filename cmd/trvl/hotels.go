@@ -31,7 +31,7 @@ Examples:
 	cmd.Flags().Int("guests", 2, "Number of guests")
 	cmd.Flags().Int("stars", 0, "Minimum star rating (0=any, 2-5)")
 	cmd.Flags().String("sort", "cheapest", "Sort by: cheapest, rating, distance, stars")
-	cmd.Flags().String("currency", "USD", "Currency code (e.g. USD, EUR)")
+	cmd.Flags().String("currency", "EUR", "Currency code (e.g. EUR, USD, GBP)")
 	cmd.Flags().Float64("min-price", 0, "Minimum price per night")
 	cmd.Flags().Float64("max-price", 0, "Maximum price per night")
 	cmd.Flags().Float64("min-rating", 0, "Minimum guest rating (e.g. 4.0)")

@@ -66,7 +66,7 @@ func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions)
 		opts.Guests = 2
 	}
 	if opts.Currency == "" {
-		opts.Currency = "USD"
+		opts.Currency = "EUR"
 	}
 
 	// Validate dates.
@@ -105,18 +105,16 @@ func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions)
 		return nil, fmt.Errorf("parse hotel results: %w", err)
 	}
 
-	// Convert prices to the user's preferred currency if they came back differently.
+	// Convert all prices to the user's preferred currency.
 	targetCurrency := opts.Currency
 	if targetCurrency == "" {
-		targetCurrency = "EUR" // default
+		targetCurrency = "EUR"
 	}
-	if len(hotels) > 0 && hotels[0].Currency != targetCurrency && hotels[0].Currency != "" {
-		for i := range hotels {
-			if hotels[i].Price > 0 && hotels[i].Currency != targetCurrency {
-				converted, _ := destinations.ConvertCurrency(ctx, hotels[i].Price, hotels[i].Currency, targetCurrency)
-				hotels[i].Price = math.Round(converted)
-				hotels[i].Currency = targetCurrency
-			}
+	for i := range hotels {
+		if hotels[i].Price > 0 && hotels[i].Currency != "" && hotels[i].Currency != targetCurrency {
+			converted, _ := destinations.ConvertCurrency(ctx, hotels[i].Price, hotels[i].Currency, targetCurrency)
+			hotels[i].Price = math.Round(converted)
+			hotels[i].Currency = targetCurrency
 		}
 	}
 
