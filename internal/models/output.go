@@ -60,48 +60,53 @@ func Cyan(s string) string {
 }
 
 // Banner prints a styled box header to w.
+// Accepts one or more subtitle lines. Extra lines appear between
+// the first subtitle and the bottom border.
 //
 //	╭── Flights · round_trip ──────────────────────────────╮
 //	│   Found 73 flights                                   │
+//	│   🔥 Deal: Fly4Free flash sale on this route!        │
 //	╰──────────────────────────────────────────────────────╯
 //
 // Uses displayWidth for correct alignment with emojis and Unicode.
-func Banner(w io.Writer, icon, title, subtitle string) {
+func Banner(w io.Writer, icon, title string, subtitles ...string) {
 	// Build content strings without box chars for width calculation.
 	titleContent := fmt.Sprintf(" %s %s ", icon, title)
 	titleDisplayW := displayWidth(titleContent)
 
-	// Total display width of the box (outer edge to outer edge).
-	// Top line structure: ╭(1) ─(1) titleContent(titleDisplayW) ─×topPad ╮(1)
-	// So total = 2 + titleDisplayW + topPad + 1
-	// We want a minimum inner width of 56 (total = 58).
+	// Compute inner width: must fit title + all subtitles.
 	minInner := 56
 	innerNeeded := titleDisplayW + 1 // +1 for the ─ after ╭
-	subInner := displayWidth(subtitle) + 3 // "  " + subtitle + " "
-	if subInner > innerNeeded {
-		innerNeeded = subInner
+	for _, sub := range subtitles {
+		subW := cellDisplayWidth(sub) + 3 // "  " prefix + " " suffix
+		if subW > innerNeeded {
+			innerNeeded = subW
+		}
 	}
 	if innerNeeded < minInner {
 		innerNeeded = minInner
 	}
 
 	// Top line: ╭─<titleContent><pad>╮
-	topPad := innerNeeded - titleDisplayW - 1 // -1 for the leading ─
+	topPad := innerNeeded - titleDisplayW - 1
 	if topPad < 1 {
 		topPad = 1
 	}
 	fmt.Fprintf(w, "╭─%s%s╮\n", titleContent, strings.Repeat("─", topPad))
 
-	// Subtitle line: │  subtitle<pad> │
-	if subtitle != "" {
-		subPad := innerNeeded - displayWidth(subtitle) - 3 // 3 for "  " prefix + " " suffix
+	// Subtitle lines: │  subtitle<pad> │
+	for _, sub := range subtitles {
+		if sub == "" {
+			continue
+		}
+		subPad := innerNeeded - cellDisplayWidth(sub) - 3
 		if subPad < 0 {
 			subPad = 0
 		}
-		fmt.Fprintf(w, "│  %s%s │\n", subtitle, strings.Repeat(" ", subPad))
+		fmt.Fprintf(w, "│  %s%s │\n", sub, strings.Repeat(" ", subPad))
 	}
 
-	// Bottom line: ╰─────────╯  (same total width as top)
+	// Bottom line: ╰─────────╯
 	fmt.Fprintf(w, "╰%s╯\n", strings.Repeat("─", innerNeeded))
 }
 
@@ -165,22 +170,24 @@ func FormatJSON(w io.Writer, v interface{}) error {
 }
 
 // FormatTable writes a formatted ASCII table to w with aligned columns.
-// Each column width is determined by the widest value in that column,
-// with one space of padding on each side.
+// Each column width is determined by the widest display value in that column,
+// with one space of padding on each side. Handles ANSI color codes and
+// multi-byte Unicode (emojis) correctly.
 func FormatTable(w io.Writer, headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
 
-	// Compute column widths from headers and all rows.
+	// Compute column widths using display width (handles ANSI + emoji).
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = cellDisplayWidth(h)
 	}
 	for _, row := range rows {
 		for i := range min(len(row), len(widths)) {
-			if len(row[i]) > widths[i] {
-				widths[i] = len(row[i])
+			dw := cellDisplayWidth(row[i])
+			if dw > widths[i] {
+				widths[i] = dw
 			}
 		}
 	}
@@ -202,6 +209,7 @@ func FormatTable(w io.Writer, headers []string, rows [][]string) {
 }
 
 // printRow writes a single pipe-delimited row with padded columns.
+// Uses display-width-aware padding for correct alignment with ANSI colors and emojis.
 func printRow(w io.Writer, cells []string, widths []int) {
 	parts := make([]string, len(widths))
 	for i, width := range widths {
@@ -209,7 +217,42 @@ func printRow(w io.Writer, cells []string, widths []int) {
 		if i < len(cells) {
 			cell = cells[i]
 		}
-		parts[i] = fmt.Sprintf(" %-*s ", width, cell)
+		// Pad based on display width difference, not byte length.
+		dw := cellDisplayWidth(cell)
+		pad := width - dw
+		if pad < 0 {
+			pad = 0
+		}
+		parts[i] = " " + cell + strings.Repeat(" ", pad) + " "
 	}
 	fmt.Fprintf(w, "|%s|\n", strings.Join(parts, "|"))
+}
+
+// cellDisplayWidth computes the display width of a table cell string,
+// stripping ANSI escape codes before counting.
+func cellDisplayWidth(s string) int {
+	return displayWidth(stripANSI(s))
+}
+
+// stripANSI removes ANSI escape sequences from a string.
+func stripANSI(s string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			// Skip to the end of the ANSI sequence (terminates at a letter).
+			j := i + 2
+			for j < len(s) && !((s[j] >= 'A' && s[j] <= 'Z') || (s[j] >= 'a' && s[j] <= 'z')) {
+				j++
+			}
+			if j < len(s) {
+				j++ // skip the terminator letter
+			}
+			i = j
+		} else {
+			b.WriteByte(s[i])
+			i++
+		}
+	}
+	return b.String()
 }
