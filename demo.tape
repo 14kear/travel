@@ -1,54 +1,94 @@
 Output demo.gif
 
 Set Shell "bash"
-Set FontSize 14
-Set Width 900
-Set Height 500
+Set FontSize 13
+Set Width 1100
+Set Height 600
 Set Theme "Catppuccin Mocha"
-Set Padding 10
+Set Padding 12
+Set TypingSpeed 35ms
 
-Type "# Search flights Helsinki → Barcelona"
-Enter
-Sleep 500ms
+# ─────────────────────────────────────────────────
+# trvl — Real travel planning from your terminal
+# ─────────────────────────────────────────────────
 
-Type "./bin/trvl flights HEL BCN 2026-07-01 --return 2026-07-08"
+Type "# ✈️  Complex trip: Amsterdam → Helsinki → cheap city → back"
 Enter
-Sleep 12s
+Sleep 800ms
+
+Type "# Find cheapest day to fly AMS → HEL this week"
+Enter
+Sleep 400ms
+
+Type "./bin/trvl dates AMS HEL --from 2026-04-04 --to 2026-04-09"
+Enter
+Sleep 15s
 
 Type ""
 Enter
-Sleep 500ms
+Sleep 800ms
 
-Type "# Search hotels in Barcelona"
+Type "# Where's cheap and fun from Helsinki? 🌍"
 Enter
-Sleep 500ms
+Sleep 400ms
 
-Type "./bin/trvl hotels Barcelona --checkin 2026-07-01 --checkout 2026-07-08"
+Type "./bin/trvl explore HEL"
 Enter
-Sleep 12s
+Sleep 25s
 
 Type ""
 Enter
-Sleep 500ms
+Sleep 800ms
 
-Type "# Search ground transport London → Paris (Eurostar + FlixBus + DB)"
+Type "# Prague! What's the weather + vibe? 🍺"
 Enter
-Sleep 500ms
+Sleep 400ms
 
-Type "./bin/trvl ground London Paris 2026-07-01"
+Type "./bin/trvl destination Prague"
 Enter
-Sleep 12s
+Sleep 8s
 
 Type ""
 Enter
-Sleep 500ms
+Sleep 800ms
 
-Type "# Set up price watch with alert"
+Type "# Hotels under €80, best rated"
 Enter
-Sleep 500ms
+Sleep 400ms
 
-Type "./bin/trvl watch add HEL BCN --depart 2026-07-01 --return 2026-07-08 --below 200"
+Type "./bin/trvl hotels Prague --checkin 2026-04-12 --checkout 2026-04-15 --max-price 80 --sort rating"
+Enter
+Sleep 15s
+
+Type ""
+Enter
+Sleep 800ms
+
+Type "# Prague → Amsterdam by train? 🚂"
+Enter
+Sleep 400ms
+
+Type "./bin/trvl ground Prague Amsterdam 2026-04-15"
+Enter
+Sleep 25s
+
+Type ""
+Enter
+Sleep 800ms
+
+Type "# Track the price — alert me if it drops below €100"
+Enter
+Sleep 400ms
+
+Type "./bin/trvl watch add HEL PRG --depart 2026-04-10 --below 100"
 Enter
 Sleep 5s
 
-Sleep 2s
+Type ""
+Enter
+Sleep 500ms
+
+Type "# ✅ Full trip planned. No API keys. No monthly fees. Just HTTP."
+Enter
+
+Sleep 3s
