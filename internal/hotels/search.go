@@ -46,6 +46,10 @@ type HotelSearchOptions struct {
 	Amenities     []string // required amenities, all must match (nil = no filter)
 	CenterLat     float64  // city center latitude (resolved automatically if 0)
 	CenterLon     float64  // city center longitude (resolved automatically if 0)
+
+	// Enrichment options.
+	EnrichAmenities bool // fetch detail pages for top hotels to get full amenity lists
+	EnrichLimit     int  // max hotels to enrich (default: 5, max: 10)
 }
 
 // SearchHotels searches for hotels in the given location.
@@ -116,6 +120,11 @@ func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions)
 
 	// Sort results.
 	sortHotels(hotels, opts.Sort, opts.CenterLat, opts.CenterLon)
+
+	// Enrich top hotels with full amenity data from detail pages.
+	if opts.EnrichAmenities {
+		hotels = enrichHotelAmenities(ctx, hotels, opts.EnrichLimit)
+	}
 
 	// Add booking URLs to each hotel.
 	for i := range hotels {
@@ -274,4 +283,91 @@ func parseDateArray(s string) ([3]int, error) {
 		return [3]int{}, fmt.Errorf("invalid date %q: expected YYYY-MM-DD", s)
 	}
 	return [3]int{t.Year(), int(t.Month()), t.Day()}, nil
+}
+
+// enrichHotelAmenities fetches detail pages for the top N hotels to get full
+// amenity lists. Runs up to 3 concurrent fetches. Hotels without a HotelID
+// are skipped. Failures are silently ignored (search results still have
+// partial amenities from the search page).
+func enrichHotelAmenities(ctx context.Context, hotels []models.HotelResult, limit int) []models.HotelResult {
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 10 {
+		limit = 10
+	}
+
+	// Collect indices of hotels eligible for enrichment.
+	var indices []int
+	for i := range hotels {
+		if hotels[i].HotelID != "" && len(indices) < limit {
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) == 0 {
+		return hotels
+	}
+
+	// Fetch detail pages in parallel with concurrency limit of 3.
+	const concurrency = 3
+	type result struct {
+		index     int
+		amenities []string
+	}
+
+	results := make(chan result, len(indices))
+	sem := make(chan struct{}, concurrency)
+
+	var wg sync.WaitGroup
+	for _, idx := range indices {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			amenities, err := FetchHotelAmenities(ctx, hotels[i].HotelID)
+			if err != nil || len(amenities) == 0 {
+				return
+			}
+			results <- result{index: i, amenities: amenities}
+		}(idx)
+	}
+
+	// Close results channel when all goroutines complete.
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Apply enriched amenities back to hotels.
+	for r := range results {
+		hotels[r.index].Amenities = mergeAmenities(hotels[r.index].Amenities, r.amenities)
+	}
+
+	return hotels
+}
+
+// mergeAmenities combines two amenity lists, deduplicating by lowercase name.
+// The first list's items take priority in ordering.
+func mergeAmenities(existing, additional []string) []string {
+	seen := make(map[string]bool, len(existing)+len(additional))
+	var merged []string
+
+	for _, a := range existing {
+		lower := strings.ToLower(a)
+		if !seen[lower] {
+			seen[lower] = true
+			merged = append(merged, a)
+		}
+	}
+	for _, a := range additional {
+		lower := strings.ToLower(a)
+		if !seen[lower] {
+			seen[lower] = true
+			merged = append(merged, a)
+		}
+	}
+
+	return merged
 }
