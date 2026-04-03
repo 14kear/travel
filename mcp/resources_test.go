@@ -35,7 +35,10 @@ func TestResourcesList(t *testing.T) {
 	}
 	for _, r := range result.Resources {
 		if _, ok := expected[r.URI]; !ok {
-			t.Errorf("unexpected resource: %s", r.URI)
+			// Dynamic watch resources (trvl://watch/{id}) are allowed.
+			if !strings.HasPrefix(r.URI, "trvl://watch/") {
+				t.Errorf("unexpected resource: %s", r.URI)
+			}
 		}
 		expected[r.URI] = true
 		if r.Name == "" {

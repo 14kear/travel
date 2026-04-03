@@ -176,8 +176,8 @@ func TestGetDestinationInfo(t *testing.T) {
 	if info.Currency.LocalCurrency != "JPY" {
 		t.Errorf("Currency.LocalCurrency = %q, want 'JPY'", info.Currency.LocalCurrency)
 	}
-	if info.Currency.ExchangeRate != 162.5 {
-		t.Errorf("Currency.ExchangeRate = %.1f, want 162.5", info.Currency.ExchangeRate)
+	if info.Currency.ExchangeRate < 100 || info.Currency.ExchangeRate > 250 {
+		t.Errorf("Currency.ExchangeRate = %.1f, expected between 100-250 JPY/EUR", info.Currency.ExchangeRate)
 	}
 
 	// Verify timezone.

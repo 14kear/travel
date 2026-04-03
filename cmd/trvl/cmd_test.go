@@ -281,25 +281,26 @@ func TestWatchCmd_HasSubcommands(t *testing.T) {
 	}
 }
 
-func TestWatchAddCmd_RequiresTwoArgs(t *testing.T) {
+func TestWatchAddCmd_RejectsZeroArgs(t *testing.T) {
 	cmd := watchAddCmd()
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"HEL"})
+	cmd.SetArgs([]string{})
 	if err := cmd.Execute(); err == nil {
-		t.Error("expected error with only 1 arg")
+		t.Error("expected error with 0 args")
 	}
 }
 
-func TestWatchAddCmd_RequiresDepartFlag(t *testing.T) {
+func TestWatchAddCmd_AcceptsRouteWatch(t *testing.T) {
+	// Route watch: 2 args, no --depart required.
 	cmd := watchAddCmd()
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	// Two args but missing required --depart.
-	cmd.SetArgs([]string{"HEL", "BCN"})
+	cmd.SetArgs([]string{"HEL", "BCN", "--below", "200"})
 	err := cmd.Execute()
-	if err == nil {
-		t.Error("expected error when --depart missing")
+	// May fail at store.Load but not at arg validation.
+	if err != nil && strings.Contains(err.Error(), "arg") {
+		t.Errorf("should accept 2 args without --depart: %v", err)
 	}
 }
 
