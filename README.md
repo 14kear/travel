@@ -153,7 +153,7 @@ That's it. Your AI assistant now has 13 travel tools available. Just ask natural
 | Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
 |---------|------|-----|---------------|------------|------|
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bus/train search | ✅ (FlixBus + RegioJet) | ❌ | ❌ | ❌ | ❌ |
+| Bus/train search | ✅ (FlixBus + RegioJet + Eurostar) | ❌ | ❌ | ❌ | ❌ |
 | Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Trip cost calculator | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -309,6 +309,7 @@ Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batch
 6. **Destination info** — Parallel aggregation of 5 free APIs (Open-Meteo, REST Countries, Nager.Date, travel-advisory.info, ExchangeRate-API)
 7. **Buses** — FlixBus public API (`global.api.flixbus.com`) with city autocomplete + search
 8. **Trains** — RegioJet public API (`brn-ybus-pubapi.sa.cz`) with route search + pricing
+9. **Eurostar** — `site-api.eurostar.com/gateway` GraphQL for London↔Paris/Brussels/Amsterdam
 9. **Rate limiting** — 10 req/s token bucket with exponential backoff on 429/5xx
 
 No Selenium. No Puppeteer. No browser. Just HTTP.
@@ -334,7 +335,7 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | | |
 |---|---|
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
-| **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + 11 free APIs + Google Maps |
+| **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + Eurostar + 11 free APIs + Google Maps |
 | **Auth** | None required. Optional free API keys for events/restaurant ratings. |
 | **MCP** | Full v2025-11-25 — 14 tools, 3 prompts, resources, structured content, sampling |
 | **CLI** | 21 commands with table/JSON output, color, shell completion |

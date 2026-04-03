@@ -79,8 +79,9 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 | KLM/AF connections | Via AMS | 1-stop sometimes cheaper than nonstop |
 | Open-jaw | Multi-city | Fly in A, out of B, save backtracking |
 | Train+flight | Europe | Nearby city by train + cheaper flight |
-| Bus vs train | Short haul | search_ground both, compare FlixBus vs RegioJet |
+| Bus vs train | Short haul | search_ground both, compare FlixBus vs RegioJet vs Eurostar |
 | Overnight bus | Long routes | FlixBus night buses save hotel night |
+| Eurostar deals | London↔EU | search_ground London Paris — Eurostar auto-included |
 
 ## OUTPUT FORMAT
 Be DECISIVE — 1 recommendation, not 50 options. Show exact details:
