@@ -147,7 +147,7 @@ That's it. Your AI assistant now has 15 travel tools available. Just ask natural
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
 | **Output schemas** | Full JSON Schema validation for all 15 tool responses |
-| **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels` |
+| **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels`, `where-should-i-go` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides |
 | **Elicitation** | Interactive parameter collection when dates are missing |
 | **Progressive disclosure** | Suggestions for follow-up searches in every response |
@@ -362,14 +362,14 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
 | **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + Eurostar + Deutsche Bahn + SNCF + Transitous + 11 free APIs + Google Maps |
 | **Auth** | None required. Optional free API keys for events/restaurant ratings. |
-| **MCP** | Full v2025-11-25 — 15 tools, 3 prompts, resources, structured content, sampling |
+| **MCP** | Full v2025-11-25 — 15 tools, 4 prompts, resources, structured content, sampling |
 | **CLI** | 19 commands (+ 5 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 30+ hacks auto-applied: nearby airports, throw-away returns, hotel splits |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |
 | **Output** | Pretty tables with color (default) or JSON (`--format json`) |
 | **Platforms** | Linux, macOS (amd64, arm64). Windows CI in progress. |
-| **Code** | 100+ Go files, ~32K LOC, 11 packages, 500+ tests |
+| **Code** | 128 Go files, ~36K LOC, 15 packages, 960+ tests |
 | **License** | MIT |
 
 ## Attribution
