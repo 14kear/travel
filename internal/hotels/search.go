@@ -154,8 +154,8 @@ func buildTravelURL(location string, opts HotelSearchOptions) string {
 	query.Set("q", location)
 	query.Set("dates", opts.CheckIn+","+opts.CheckOut)
 	query.Set("adults", fmt.Sprintf("%d", opts.Guests))
-	query.Set("hl", "en-US")
-	query.Set("gl", "us")
+	query.Set("hl", "en")
+	query.Set("gl", "nl")
 	query.Set("currency", opts.Currency)
 
 	return fmt.Sprintf("https://www.google.com/travel/hotels/%s?%s", encoded, query.Encode())
