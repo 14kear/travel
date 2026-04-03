@@ -244,7 +244,7 @@ func TestToolRegistration_AllTools(t *testing.T) {
 		"hotel_reviews", "destination_info", "calculate_trip_cost",
 		"weekend_getaway", "suggest_dates", "optimize_multi_city",
 		"nearby_places", "travel_guide", "local_events",
-		"search_ground", "search_restaurants",
+		"search_ground", "search_restaurants", "search_deals",
 	}
 
 	if len(s.tools) != len(expectedTools) {

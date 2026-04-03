@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/MikkoParkkola/trvl/internal/deals"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/spf13/cobra"
@@ -73,7 +75,7 @@ Examples:
 				return models.FormatJSON(os.Stdout, result)
 			}
 
-			return printFlightsTable(result)
+			return printFlightsTable(cmd.Context(), origin, destination, result)
 		},
 	}
 
@@ -91,7 +93,8 @@ Examples:
 }
 
 // printFlightsTable renders flight results as an ASCII table.
-func printFlightsTable(result *models.FlightSearchResult) error {
+// Checks for matching deals and shows them in the banner.
+func printFlightsTable(ctx context.Context, origin, destination string, result *models.FlightSearchResult) error {
 	if !result.Success {
 		fmt.Fprintf(os.Stderr, "Search failed: %s\n", result.Error)
 		return nil
@@ -102,8 +105,18 @@ func printFlightsTable(result *models.FlightSearchResult) error {
 		return nil
 	}
 
-	models.Banner(os.Stdout, "✈️", fmt.Sprintf("Flights · %s", result.TripType),
-		fmt.Sprintf("Found %d flights", result.Count))
+	// Check for matching deals from RSS feeds (cached, non-blocking).
+	bannerLines := []string{fmt.Sprintf("Found %d flights", result.Count)}
+	matchedDeals := deals.MatchDeals(ctx, origin, destination)
+	for _, d := range matchedDeals {
+		dealLine := fmt.Sprintf("🔥 %s: %s", deals.SourceNames[d.Source], d.Title)
+		if len(dealLine) > 70 {
+			dealLine = dealLine[:67] + "..."
+		}
+		bannerLines = append(bannerLines, dealLine)
+	}
+
+	models.Banner(os.Stdout, "✈️", fmt.Sprintf("Flights · %s", result.TripType), bannerLines...)
 	fmt.Println()
 
 	headers := []string{"Price", "Duration", "Stops", "Route", "Airline", "Flight", "Departs", "Arrives"}
