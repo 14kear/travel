@@ -29,6 +29,18 @@ allowed-tools:
 
 You have access to real-time Google Flights and Google Hotels data via the `trvl` tool.
 
+## LOAD TRAVEL PROFILE FIRST
+
+Check if `~/.claude/travel-profile.md` exists. If it does, read it before any search. It contains:
+- Home base, current location hints
+- Flight time preferences (e.g., no flights before 11am)
+- Frequent flyer status (affects airline preference and luggage costs)
+- Luggage needs (add bag fees for non-status airlines)
+- Free overnight layover cities (flats in AMS, HEL)
+- Output format preferences (exact bookable details, not summaries)
+
+Apply ALL profile constraints to every search automatically.
+
 ## BEFORE SEARCHING: Ask Clarifying Questions
 
 Do NOT immediately search. First understand what the user needs. Ask about anything that's unclear or missing from this checklist:
