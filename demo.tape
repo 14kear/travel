@@ -26,7 +26,7 @@ Sleep 800ms
 Type "# ✈️ Multi-airport: AMS or EIN → HEL or TLL (direct flights)"
 Enter
 Sleep 400ms
-Type "trvl flights AMS,EIN HEL,TLL 2026-06-15 --stops nonstop"
+Type "trvl flights AMS,EIN HEL,TLL 2026-06-15 --stops nonstop --currency EUR"
 Enter
 Sleep 30s
 
@@ -37,7 +37,7 @@ Sleep 800ms
 Type "# 🏨 Hotels in Prague — sorted by rating, with amenities"
 Enter
 Sleep 400ms
-Type "trvl hotels Prague --checkin 2026-06-15 --checkout 2026-06-18 --sort rating"
+Type "trvl hotels Prague --checkin 2026-06-15 --checkout 2026-06-18 --sort rating --currency EUR"
 Enter
 Sleep 20s
 
