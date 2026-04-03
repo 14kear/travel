@@ -560,6 +560,14 @@ func (s *Server) HandleRequest(req *Request) *Response {
 		return s.handleInitialize(req)
 	case "notifications/initialized":
 		return nil
+	case "notifications/cancelled":
+		return nil // Client cancelled a request; acknowledged.
+	case "ping":
+		return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+	case "logging/setLevel":
+		return s.handleLoggingSetLevel(req)
+	case "completion/complete":
+		return s.handleCompletionComplete(req)
 	case "tools/list":
 		return s.handleToolsList(req)
 	case "tools/call":
@@ -735,6 +743,132 @@ func (s *Server) handleResourcesRead(req *Request) *Response {
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result:  result,
+	}
+}
+
+// --- logging/setLevel handler ---
+
+// logLevel stores the current minimum log level.
+var logLevel = "info"
+
+func (s *Server) handleLoggingSetLevel(req *Request) *Response {
+	var params struct {
+		Level string `json:"level"`
+	}
+	if req.Params != nil {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params.Level != "" {
+		logLevel = params.Level
+		s.SendLog("info", fmt.Sprintf("Log level set to %s", params.Level))
+	}
+	return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+}
+
+// --- completion/complete handler ---
+
+// handleCompletionComplete provides argument auto-completion for tools and prompts.
+func (s *Server) handleCompletionComplete(req *Request) *Response {
+	var params struct {
+		Ref struct {
+			Type string `json:"type"` // "ref/prompt" or "ref/resource"
+			Name string `json:"name"`
+			URI  string `json:"uri"`
+		} `json:"ref"`
+		Argument struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"argument"`
+	}
+	if req.Params != nil {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+
+	var values []string
+
+	// Provide completions for known argument patterns.
+	switch params.Argument.Name {
+	case "origin", "destination", "from", "to":
+		// Return matching IATA airport codes.
+		values = completeAirport(params.Argument.Value)
+	case "cabin_class":
+		values = []string{"economy", "premium_economy", "business", "first"}
+	case "sort":
+		values = []string{"cheapest", "rating", "distance", "stars"}
+	case "type":
+		values = []string{"bus", "train"}
+	case "provider":
+		values = []string{"flixbus", "regiojet"}
+	case "currency":
+		values = []string{"EUR", "USD", "GBP", "CZK", "PLN", "SEK", "NOK", "DKK", "CHF", "JPY"}
+	}
+
+	return &Response{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result: map[string]any{
+			"completion": map[string]any{
+				"values":  values,
+				"hasMore": false,
+				"total":   len(values),
+			},
+		},
+	}
+}
+
+// completeAirport returns IATA codes matching the given prefix.
+func completeAirport(prefix string) []string {
+	if prefix == "" {
+		return nil
+	}
+	prefix = toUpper(prefix)
+	var matches []string
+	for code := range airportCompletionMap {
+		if len(matches) >= 20 {
+			break
+		}
+		if len(code) >= len(prefix) && code[:len(prefix)] == prefix {
+			matches = append(matches, code)
+		}
+	}
+	return matches
+}
+
+func toUpper(s string) string {
+	b := make([]byte, len(s))
+	for i := range len(s) {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 32
+		}
+		b[i] = c
+	}
+	return string(b)
+}
+
+// airportCompletionMap is populated from the models package at init time.
+var airportCompletionMap map[string]string
+
+func init() {
+	// Build airport completion map lazily on first access.
+	airportCompletionMap = make(map[string]string, 250)
+	// Common airports — populated from models.AirportNames if available,
+	// otherwise a static subset for completion.
+	commonAirports := map[string]string{
+		"HEL": "Helsinki", "AMS": "Amsterdam", "PRG": "Prague", "KRK": "Krakow",
+		"CDG": "Paris CDG", "ORY": "Paris Orly", "LHR": "London Heathrow",
+		"LGW": "London Gatwick", "STN": "London Stansted", "FCO": "Rome",
+		"BCN": "Barcelona", "MAD": "Madrid", "VIE": "Vienna", "BUD": "Budapest",
+		"WAW": "Warsaw", "BER": "Berlin", "MUC": "Munich", "FRA": "Frankfurt",
+		"ZRH": "Zurich", "CPH": "Copenhagen", "OSL": "Oslo", "ARN": "Stockholm",
+		"DUB": "Dublin", "BRU": "Brussels", "LIS": "Lisbon", "ATH": "Athens",
+		"IST": "Istanbul", "JFK": "New York JFK", "EWR": "Newark", "LAX": "Los Angeles",
+		"SFO": "San Francisco", "ORD": "Chicago", "NRT": "Tokyo Narita",
+		"HND": "Tokyo Haneda", "ICN": "Seoul", "SIN": "Singapore", "BKK": "Bangkok",
+		"HKG": "Hong Kong", "SYD": "Sydney", "DXB": "Dubai", "DOH": "Doha",
+	}
+	for code, name := range commonAirports {
+		airportCompletionMap[code] = name
 	}
 }
 
