@@ -12,7 +12,7 @@ Set TypingSpeed 30ms
 # trvl — What no other travel tool does
 # ─────────────────────────────────────────────────────
 
-Type "# 💰 When's the cheapest day? (date range price comparison)"
+Type "# 💰 Cheapest day to fly? (date range price scan)"
 Enter
 Sleep 400ms
 Type "trvl dates AMS HEL --from 2026-06-10 --to 2026-06-20"
@@ -23,10 +23,10 @@ Type ""
 Enter
 Sleep 800ms
 
-Type "# ✈️ Multi-airport: AMS or EIN → HEL or TLL (direct flights)"
+Type "# ✈️ Multi-airport: AMS or EIN → HEL or TLL (max 1 stop)"
 Enter
 Sleep 400ms
-Type "trvl flights AMS,EIN HEL,TLL 2026-06-15 --stops nonstop --currency EUR"
+Type "trvl flights AMS,EIN HEL,TLL 2026-06-15 --stops 1 --currency EUR"
 Enter
 Sleep 30s
 
@@ -45,10 +45,10 @@ Type ""
 Enter
 Sleep 800ms
 
-Type "# 🚂 Prague → Vienna — buses and trains from 3 providers"
+Type "# 🚂 Prague → Vienna: buses and trains with prices"
 Enter
 Sleep 400ms
-Type "trvl ground Prague Vienna 2026-06-18"
+Type "trvl ground Prague Vienna 2026-06-18 --provider regiojet,flixbus"
 Enter
 Sleep 45s
 
@@ -56,18 +56,7 @@ Type ""
 Enter
 Sleep 800ms
 
-Type "# 🔥 Travel deals from 4 RSS feeds (under 500)"
-Enter
-Sleep 400ms
-Type "trvl deals --max-price 500"
-Enter
-Sleep 20s
-
-Type ""
-Enter
-Sleep 800ms
-
-Type "# 📉 Monitor prices — flights AND hotels"
+Type "# 📉 Monitor flight AND hotel prices — alert on drops"
 Enter
 Sleep 400ms
 Type "trvl watch add HEL PRG --below 100"
