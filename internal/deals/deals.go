@@ -16,6 +16,9 @@ type Deal struct {
 	Origin      string    `json:"origin,omitempty"`
 	Destination string    `json:"destination,omitempty"`
 	Airline     string    `json:"airline,omitempty"`
+	Stops       string    `json:"stops,omitempty"`
+	CabinClass  string    `json:"cabin_class,omitempty"`
+	DateRange   string    `json:"date_range,omitempty"`
 	Type        string    `json:"type"`
 	Source      string    `json:"source"`
 	URL         string    `json:"url"`

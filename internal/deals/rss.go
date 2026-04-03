@@ -28,10 +28,11 @@ type rssInner struct {
 }
 
 type rssItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	PubDate     string `xml:"pubDate"`
-	Description string `xml:"description"`
+	Title       string   `xml:"title"`
+	Link        string   `xml:"link"`
+	PubDate     string   `xml:"pubDate"`
+	Description string   `xml:"description"`
+	Categories  []string `xml:"category"`
 }
 
 // shared rate limiter: 10 requests per minute across all feeds.
@@ -158,7 +159,13 @@ func ParseRSS(data []byte, source string) ([]Deal, error) {
 		// Extract price and route from title.
 		extractPriceAndRoute(&d)
 
-		// Classify deal type.
+		// Extract additional metadata from categories.
+		extractFromCategories(&d, item.Categories)
+
+		// Extract date range from description.
+		extractDateRange(&d, item.Description)
+
+		// Classify deal type (uses title + categories).
 		classifyDeal(&d)
 
 		deals = append(deals, d)
@@ -191,6 +198,23 @@ var (
 
 	// Airlines in titles
 	airlinePattern = regexp.MustCompile(`(?i)\b(Finnair|Lufthansa|Ryanair|easyJet|Norwegian|SAS|KLM|British Airways|Air France|Swiss|TAP|Wizz Air|Vueling|Eurowings|Iberia|Turkish Airlines|Emirates|Qatar Airways|Singapore Airlines|ANA|JAL|Delta|United|American Airlines|JetBlue|Southwest|Spirit|Frontier|Alaska Airlines|Air Canada|WestJet)\b`)
+
+	// Category route pattern: "City, Country → City, Country"
+	categoryRoutePattern = regexp.MustCompile(`^(.+?)\s*→\s*(.+)$`)
+
+	// Date range pattern in descriptions: "April 2026 to January 2027" or "from May to September 2026"
+	dateRangePatterns = []*regexp.Regexp{
+		// "April 2026 to January 2027" or "April 2026 – January 2027"
+		regexp.MustCompile(`(?i)((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\s+(?:to|–|-|through)\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})`),
+		// "from May to September 2026"
+		regexp.MustCompile(`(?i)from\s+((?:January|February|March|April|May|June|July|August|September|October|November|December))\s+(?:to|–|-|through)\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})`),
+	}
+
+	// Stop patterns in titles or categories.
+	stopPattern = regexp.MustCompile(`(?i)\b(non-?stop|nonstop|direct|1\s*stop|2\s*stops?)\b`)
+
+	// Cabin class patterns in titles or categories.
+	cabinPattern = regexp.MustCompile(`(?i)\b(economy|premium economy|business class|business|first class|first)\b`)
 )
 
 // extractPriceAndRoute parses the deal title to extract price, currency, origin, and destination.
@@ -259,18 +283,143 @@ func extractPriceAndRoute(d *Deal) {
 	}
 }
 
+// extractFromCategories parses RSS <category> tags for route, airline, stops,
+// cabin class, and deal type metadata.
+func extractFromCategories(d *Deal, categories []string) {
+	for _, cat := range categories {
+		cat = strings.TrimSpace(cat)
+		if cat == "" {
+			continue
+		}
+
+		// Route: "Burbank, USA → Vancouver, Canada"
+		if m := categoryRoutePattern.FindStringSubmatch(cat); m != nil {
+			if d.Origin == "" {
+				d.Origin = extractCityFromRoute(m[1])
+			}
+			if d.Destination == "" {
+				d.Destination = extractCityFromRoute(m[2])
+			}
+			continue
+		}
+
+		// Airline name (reuse the same pattern used for titles).
+		if d.Airline == "" {
+			if m := airlinePattern.FindStringSubmatch(cat); m != nil {
+				d.Airline = m[1]
+				continue
+			}
+		}
+
+		// Stops: "Non-stop", "1 Stop"
+		if d.Stops == "" {
+			if m := stopPattern.FindStringSubmatch(cat); m != nil {
+				d.Stops = normalizeStops(m[1])
+				continue
+			}
+		}
+
+		// Cabin class: "Business Class", "Economy"
+		if d.CabinClass == "" {
+			if m := cabinPattern.FindStringSubmatch(cat); m != nil {
+				d.CabinClass = normalizeCabin(m[1])
+				continue
+			}
+		}
+
+		// Deal type metadata from categories.
+		lower := strings.ToLower(cat)
+		switch {
+		case lower == "error fare" || lower == "mistake fare":
+			if d.Type == "" {
+				d.Type = "error_fare"
+			}
+		case lower == "deal" || lower == "flight deal":
+			// don't override a more specific type
+		}
+	}
+
+	// Also extract stops and cabin from the title if not found in categories.
+	if d.Stops == "" {
+		if m := stopPattern.FindStringSubmatch(d.Title); m != nil {
+			d.Stops = normalizeStops(m[1])
+		}
+	}
+	if d.CabinClass == "" {
+		if m := cabinPattern.FindStringSubmatch(d.Title); m != nil {
+			d.CabinClass = normalizeCabin(m[1])
+		}
+	}
+}
+
+// extractCityFromRoute extracts the city name from a route component like
+// "Burbank, USA" -> "Burbank" or "New York, USA" -> "New York".
+func extractCityFromRoute(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, ","); i >= 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return s
+}
+
+// normalizeStops normalizes stop descriptions to a consistent format.
+func normalizeStops(s string) string {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	switch {
+	case strings.Contains(lower, "nonstop") || strings.Contains(lower, "non-stop") || lower == "direct":
+		return "nonstop"
+	case strings.Contains(lower, "1"):
+		return "1 stop"
+	case strings.Contains(lower, "2"):
+		return "2 stops"
+	default:
+		return lower
+	}
+}
+
+// normalizeCabin normalizes cabin class descriptions.
+func normalizeCabin(s string) string {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	switch {
+	case strings.HasPrefix(lower, "first"):
+		return "first"
+	case strings.HasPrefix(lower, "business"):
+		return "business"
+	case strings.HasPrefix(lower, "premium"):
+		return "premium_economy"
+	default:
+		return "economy"
+	}
+}
+
+// extractDateRange looks for travel date ranges in the RSS description text.
+func extractDateRange(d *Deal, description string) {
+	text := stripHTML(description)
+	for _, pat := range dateRangePatterns {
+		if m := pat.FindStringSubmatch(text); m != nil {
+			d.DateRange = m[1] + " to " + m[2]
+			return
+		}
+	}
+}
+
 // classifyDeal sets the deal Type based on title keywords.
+// Does not overwrite a type already set from categories.
 func classifyDeal(d *Deal) {
 	lower := strings.ToLower(d.Title)
+	titleType := "deal"
 	switch {
 	case strings.Contains(lower, "error fare") || strings.Contains(lower, "mistake fare"):
-		d.Type = "error_fare"
+		titleType = "error_fare"
 	case strings.Contains(lower, "flash sale") || strings.Contains(lower, "flash deal"):
-		d.Type = "flash_sale"
+		titleType = "flash_sale"
 	case strings.Contains(lower, "package") || strings.Contains(lower, "hotel +") || strings.Contains(lower, "holiday"):
-		d.Type = "package"
-	default:
-		d.Type = "deal"
+		titleType = "package"
+	}
+
+	// Title-derived type wins if it's more specific than "deal", or if no type set yet.
+	if d.Type == "" || titleType != "deal" {
+		d.Type = titleType
 	}
 }
 

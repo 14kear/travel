@@ -603,3 +603,189 @@ func TestDealFilter_ZeroValue(t *testing.T) {
 		t.Error("zero-value DealFilter should have all defaults")
 	}
 }
+
+// --- Category extraction ---
+
+func TestExtractFromCategories_Route(t *testing.T) {
+	d := Deal{Title: "Cheap flights"}
+	extractFromCategories(&d, []string{"Burbank, USA → Vancouver, Canada"})
+	if d.Origin != "Burbank" {
+		t.Errorf("origin = %q, want Burbank", d.Origin)
+	}
+	if d.Destination != "Vancouver" {
+		t.Errorf("destination = %q, want Vancouver", d.Destination)
+	}
+}
+
+func TestExtractFromCategories_RouteDoesNotOverwriteTitle(t *testing.T) {
+	d := Deal{Title: "Flights from Rome to Tokyo $299"}
+	extractPriceAndRoute(&d)
+	// Title already extracted Rome->Tokyo.
+	extractFromCategories(&d, []string{"Rome, Italy → Tokyo, Japan"})
+	if d.Origin != "Rome" {
+		t.Errorf("origin = %q, want Rome (should not overwrite)", d.Origin)
+	}
+	if d.Destination != "Tokyo" {
+		t.Errorf("destination = %q, want Tokyo (should not overwrite)", d.Destination)
+	}
+}
+
+func TestExtractFromCategories_Airline(t *testing.T) {
+	d := Deal{Title: "Cheap flights"}
+	extractFromCategories(&d, []string{"United", "Deal"})
+	// "United" alone doesn't match the full airline regex; the category should be exact.
+	// But "United Airlines" style entries should work:
+	d2 := Deal{Title: "Cheap flights"}
+	extractFromCategories(&d2, []string{"Qatar Airways", "Deal"})
+	if d2.Airline != "Qatar Airways" {
+		t.Errorf("airline = %q, want Qatar Airways", d2.Airline)
+	}
+}
+
+func TestExtractFromCategories_Stops(t *testing.T) {
+	tests := []struct {
+		cat  string
+		want string
+	}{
+		{"Non-stop", "nonstop"},
+		{"Nonstop", "nonstop"},
+		{"1 Stop", "1 stop"},
+		{"2 Stops", "2 stops"},
+	}
+	for _, tt := range tests {
+		d := Deal{Title: "Flights"}
+		extractFromCategories(&d, []string{tt.cat})
+		if d.Stops != tt.want {
+			t.Errorf("category %q: stops = %q, want %q", tt.cat, d.Stops, tt.want)
+		}
+	}
+}
+
+func TestExtractFromCategories_CabinClass(t *testing.T) {
+	tests := []struct {
+		cat  string
+		want string
+	}{
+		{"Economy", "economy"},
+		{"Business Class", "business"},
+		{"First Class", "first"},
+		{"Premium Economy", "premium_economy"},
+	}
+	for _, tt := range tests {
+		d := Deal{Title: "Flights"}
+		extractFromCategories(&d, []string{tt.cat})
+		if d.CabinClass != tt.want {
+			t.Errorf("category %q: cabin = %q, want %q", tt.cat, d.CabinClass, tt.want)
+		}
+	}
+}
+
+func TestExtractFromCategories_ErrorFareType(t *testing.T) {
+	d := Deal{Title: "Flights to Paris"}
+	extractFromCategories(&d, []string{"Error Fare"})
+	classifyDeal(&d)
+	if d.Type != "error_fare" {
+		t.Errorf("type = %q, want error_fare", d.Type)
+	}
+}
+
+func TestExtractStopsFromTitle(t *testing.T) {
+	d := Deal{Title: "Non-stop flights from Rome to Taiwan from EUR595"}
+	extractFromCategories(&d, nil)
+	if d.Stops != "nonstop" {
+		t.Errorf("stops = %q, want nonstop", d.Stops)
+	}
+}
+
+func TestExtractCabinFromTitle(t *testing.T) {
+	d := Deal{Title: "Business class flights HEL-NRT from EUR1200"}
+	extractFromCategories(&d, nil)
+	if d.CabinClass != "business" {
+		t.Errorf("cabin = %q, want business", d.CabinClass)
+	}
+}
+
+// --- Date range extraction ---
+
+func TestExtractDateRange(t *testing.T) {
+	tests := []struct {
+		desc string
+		want string
+	}{
+		{
+			"Great deal! Travel from April 2026 to January 2027 for cheap.",
+			"April 2026 to January 2027",
+		},
+		{
+			"Fly from May to September 2026.",
+			"May to September 2026",
+		},
+		{
+			"No date info here",
+			"",
+		},
+	}
+	for _, tt := range tests {
+		d := Deal{}
+		extractDateRange(&d, tt.desc)
+		if d.DateRange != tt.want {
+			t.Errorf("desc=%q: dateRange = %q, want %q", tt.desc, d.DateRange, tt.want)
+		}
+	}
+}
+
+// --- RSS with categories ---
+
+const sampleRSSWithCategories = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <item>
+      <title>Cheap flights from $399</title>
+      <link>https://example.com/deal1</link>
+      <pubDate>Thu, 03 Apr 2026 10:00:00 +0000</pubDate>
+      <description>Travel April 2026 to January 2027</description>
+      <category>Burbank, USA → Vancouver, Canada</category>
+      <category>Qatar Airways</category>
+      <category>Non-stop</category>
+      <category>Business Class</category>
+      <category>Error Fare</category>
+    </item>
+  </channel>
+</rss>`
+
+func TestParseRSS_WithCategories(t *testing.T) {
+	deals, err := ParseRSS([]byte(sampleRSSWithCategories), "test")
+	if err != nil {
+		t.Fatalf("ParseRSS error: %v", err)
+	}
+	if len(deals) != 1 {
+		t.Fatalf("expected 1 deal, got %d", len(deals))
+	}
+
+	d := deals[0]
+	if d.Origin != "Burbank" {
+		t.Errorf("origin = %q, want Burbank", d.Origin)
+	}
+	if d.Destination != "Vancouver" {
+		t.Errorf("destination = %q, want Vancouver", d.Destination)
+	}
+	if d.Airline != "Qatar Airways" {
+		t.Errorf("airline = %q, want Qatar Airways", d.Airline)
+	}
+	if d.Stops != "nonstop" {
+		t.Errorf("stops = %q, want nonstop", d.Stops)
+	}
+	if d.CabinClass != "business" {
+		t.Errorf("cabin = %q, want business", d.CabinClass)
+	}
+	if d.Type != "error_fare" {
+		t.Errorf("type = %q, want error_fare", d.Type)
+	}
+	if d.DateRange != "April 2026 to January 2027" {
+		t.Errorf("dateRange = %q, want 'April 2026 to January 2027'", d.DateRange)
+	}
+	if d.Price != 399 {
+		t.Errorf("price = %.2f, want 399", d.Price)
+	}
+}

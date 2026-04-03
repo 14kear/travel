@@ -13,9 +13,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/cache"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/time/rate"
 )
+
+// groundCache caches ground transport search results.
+var groundCache = cache.New()
+
+// groundCacheTTL is the TTL for cached ground transport results.
+const groundCacheTTL = 10 * time.Minute
 
 // httpClient is a shared HTTP client with sensible timeouts for FlixBus/RegioJet.
 var httpClient = &http.Client{
@@ -43,6 +50,7 @@ type SearchOptions struct {
 	Providers []string // Filter to specific providers; empty = all
 	MaxPrice  float64  // 0 = no limit
 	Type      string   // "bus", "train", or empty for all
+	NoCache   bool     // bypass response cache
 }
 
 // SearchByName searches all providers for ground transport between two cities
@@ -50,6 +58,27 @@ type SearchOptions struct {
 func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions) (*models.GroundSearchResult, error) {
 	if opts.Currency == "" {
 		opts.Currency = "EUR"
+	}
+
+	// Build cache key from search parameters.
+	providerKey := "all"
+	if len(opts.Providers) > 0 {
+		sorted := make([]string, len(opts.Providers))
+		copy(sorted, opts.Providers)
+		sort.Strings(sorted)
+		providerKey = strings.Join(sorted, ",")
+	}
+	cacheKey := cache.Key("ground", fmt.Sprintf("%s|%s|%s|%s|%s|%.2f|%s", from, to, date, opts.Currency, providerKey, opts.MaxPrice, opts.Type))
+
+	// Check cache unless bypassed.
+	if !opts.NoCache {
+		if data, ok := groundCache.Get(cacheKey); ok {
+			var cached models.GroundSearchResult
+			if err := json.Unmarshal(data, &cached); err == nil {
+				slog.Debug("ground cache hit", "from", from, "to", to, "date", date)
+				return &cached, nil
+			}
+		}
 	}
 
 	type providerResult struct {
@@ -195,6 +224,14 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	if len(allRoutes) == 0 && len(errors) > 0 {
 		result.Error = strings.Join(errors, "; ")
 	}
+
+	// Cache successful results.
+	if result.Success && !opts.NoCache {
+		if data, err := json.Marshal(result); err == nil {
+			groundCache.Set(cacheKey, data, groundCacheTTL)
+		}
+	}
+
 	return result, nil
 }
 

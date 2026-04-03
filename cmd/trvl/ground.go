@@ -45,6 +45,7 @@ Examples:
 				Currency: currency,
 				MaxPrice: maxPrice,
 				Type:     typeFilter,
+				NoCache:  noCache,
 			}
 			if providers != "" {
 				opts.Providers = strings.Split(providers, ",")
