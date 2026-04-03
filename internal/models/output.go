@@ -61,29 +61,85 @@ func Cyan(s string) string {
 
 // Banner prints a styled box header to w.
 //
-//	╭─ ✈️  Flights AMS → HEL · 2026-04-08 ───────────────╮
-//	│  Found 73 flights (round_trip)                       │
+//	╭── Flights · round_trip ──────────────────────────────╮
+//	│   Found 73 flights                                   │
 //	╰──────────────────────────────────────────────────────╯
+//
+// Uses displayWidth for correct alignment with emojis and Unicode.
 func Banner(w io.Writer, icon, title, subtitle string) {
-	titleLine := fmt.Sprintf(" %s  %s", icon, title)
-	width := max(len(titleLine)+4, len(subtitle)+6, 56)
+	// Build content strings without box chars for width calculation.
+	titleContent := fmt.Sprintf(" %s %s ", icon, title)
+	titleDisplayW := displayWidth(titleContent)
 
-	topPad := width - len(titleLine) - 3
+	minWidth := 58
+	subDisplayW := displayWidth(subtitle) + 4 // "│  " + subtitle + " │"
+	width := minWidth
+	if titleDisplayW+4 > width {
+		width = titleDisplayW + 4
+	}
+	if subDisplayW+2 > width {
+		width = subDisplayW + 2
+	}
+
+	// Top line: ╭──<titleContent>──────╮
+	topPad := width - titleDisplayW - 2 // 2 for ╭─ and ╮
 	if topPad < 1 {
 		topPad = 1
 	}
+	fmt.Fprintf(w, "╭─%s%s╮\n", titleContent, strings.Repeat("─", topPad))
 
-	fmt.Fprintf(w, "╭─%s%s╮\n", titleLine, strings.Repeat("─", topPad))
-
+	// Subtitle line: │  subtitle          │
 	if subtitle != "" {
-		subPad := width - len(subtitle) - 5
+		subPad := width - displayWidth(subtitle) - 4 // 4 for "│  " and "│"
 		if subPad < 1 {
 			subPad = 1
 		}
-		fmt.Fprintf(w, "│  %s%s│\n", subtitle, strings.Repeat(" ", subPad))
+		fmt.Fprintf(w, "│  %s%s │\n", subtitle, strings.Repeat(" ", subPad))
 	}
 
+	// Bottom line: ╰──────────────────────╯
 	fmt.Fprintf(w, "╰%s╯\n", strings.Repeat("─", width-2))
+}
+
+// displayWidth estimates the terminal display width of a string.
+// Handles ASCII (1 cell), common emojis (2 cells), and other Unicode.
+func displayWidth(s string) int {
+	w := 0
+	i := 0
+	runes := []rune(s)
+	for i < len(runes) {
+		r := runes[i]
+		switch {
+		case r < 128:
+			// ASCII: 1 cell
+			w++
+		case r == 0xFE0F:
+			// Variation selector: 0 cells (follows emoji)
+		case r >= 0x1F300 && r <= 0x1FAFF:
+			// Common emoji block: 2 cells
+			w += 2
+		case r >= 0x2600 && r <= 0x27BF:
+			// Misc symbols + dingbats: 2 cells
+			w += 2
+		case r >= 0x2300 && r <= 0x23FF:
+			// Misc technical: 2 cells
+			w += 2
+		case r >= 0xFF00 && r <= 0xFFEF:
+			// Fullwidth forms: 2 cells
+			w += 2
+		case r >= 0x4E00 && r <= 0x9FFF:
+			// CJK: 2 cells
+			w += 2
+		case r >= 0x2190 && r <= 0x21FF:
+			// Arrows: 1 cell
+			w++
+		default:
+			// Other Unicode: assume 1 cell
+			w++
+		}
+		i++
+	}
+	return w
 }
 
 // Summary prints a dimmed summary line after a table.
@@ -94,12 +150,6 @@ func Summary(w io.Writer, text string) {
 // BookingHint prints a hint about getting booking URLs.
 func BookingHint(w io.Writer) {
 	fmt.Fprintf(w, "  %s\n", Dim("Tip: --format json | jq '.flights[0].booking_url' for direct booking links"))
-}
-
-func max(a, b, c int) int {
-	if b > a { a = b }
-	if c > a { a = c }
-	return a
 }
 
 // FormatJSON writes v as pretty-printed JSON to w.
