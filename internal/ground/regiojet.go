@@ -109,7 +109,7 @@ func loadRegioJetLocations(ctx context.Context) ([]regiojetCountry, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := rateLimitedDo(ctx, regiojetLimiter, req)
 	if err != nil {
 		return nil, fmt.Errorf("regiojet locations: %w", err)
 	}
@@ -155,7 +155,7 @@ func SearchRegioJet(ctx context.Context, fromCityID, toCityID int, date, currenc
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := rateLimitedDo(ctx, regiojetLimiter, req)
 	if err != nil {
 		return nil, fmt.Errorf("regiojet search: %w", err)
 	}

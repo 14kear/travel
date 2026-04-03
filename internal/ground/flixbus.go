@@ -114,7 +114,7 @@ func FlixBusAutoComplete(ctx context.Context, query string) ([]FlixBusCity, erro
 		return nil, err
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := rateLimitedDo(ctx, flixbusLimiter, req)
 	if err != nil {
 		return nil, fmt.Errorf("flixbus autocomplete: %w", err)
 	}
@@ -179,7 +179,7 @@ func SearchFlixBus(ctx context.Context, fromCity, toCity, date, currency string)
 		return nil, err
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := rateLimitedDo(ctx, flixbusLimiter, req)
 	if err != nil {
 		return nil, fmt.Errorf("flixbus search: %w", err)
 	}

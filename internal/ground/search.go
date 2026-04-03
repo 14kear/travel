@@ -11,11 +11,27 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"golang.org/x/time/rate"
 )
 
-// httpClient is a shared HTTP client with sensible timeouts.
+// httpClient is a shared HTTP client with sensible timeouts for FlixBus/RegioJet.
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
+}
+
+// Shared rate limiters for FlixBus and RegioJet (used by the shared httpClient).
+var (
+	flixbusLimiter  = rate.NewLimiter(rate.Limit(10), 1) // 10 req/s
+	regiojetLimiter = rate.NewLimiter(rate.Limit(10), 1) // 10 req/s
+)
+
+// rateLimitedDo executes an HTTP request through the shared client after
+// waiting on the provided rate limiter.
+func rateLimitedDo(ctx context.Context, limiter *rate.Limiter, req *http.Request) (*http.Response, error) {
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter: %w", err)
+	}
+	return httpClient.Do(req)
 }
 
 // SearchOptions configures a ground transport search.
@@ -40,7 +56,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan providerResult, 2)
+	results := make(chan providerResult, 3)
 
 	useProvider := func(name string) bool {
 		if len(opts.Providers) == 0 {
@@ -71,6 +87,18 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 			defer wg.Done()
 			routes, err := searchRegioJetByName(ctx, from, to, date, opts.Currency)
 			results <- providerResult{routes: routes, err: err, name: "regiojet"}
+		}()
+	}
+
+	// Eurostar — only if both cities have Eurostar stations
+	if useProvider("eurostar") && HasEurostarRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Eurostar returns cheapest fares for a date range; use the single date
+			// as both start and end to get that day's price.
+			routes, err := SearchEurostar(ctx, from, to, date, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "eurostar"}
 		}()
 	}
 
