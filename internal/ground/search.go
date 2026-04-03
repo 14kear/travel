@@ -59,7 +59,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan providerResult, 5)
+	results := make(chan providerResult, 6)
 
 	useProvider := func(name string) bool {
 		if len(opts.Providers) == 0 {
@@ -108,6 +108,16 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 				routes, err = SearchEurostar(ctx, from, to, date, date, opts.Currency, false)
 			}
 			results <- providerResult{routes: routes, err: err, name: "eurostar"}
+		}()
+	}
+
+	// Deutsche Bahn — if at least one city has a DB station (covers most European rail).
+	if useProvider("db") && (HasDBStation(from) || HasDBStation(to)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchDeutscheBahn(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "db"}
 		}()
 	}
 
