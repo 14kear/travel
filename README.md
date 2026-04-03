@@ -32,7 +32,7 @@
 > ```
 > Want me to check nearby restaurants or events that weekend?
 
-trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights and Google Hotels data. It searches, optimizes, and applies travel hacks automatically — no API keys, no monthly fees, no scraping.
+trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights, Google Hotels, and European ground transport data. It searches, optimizes, and applies travel hacks automatically — no API keys, no monthly fees, no scraping.
 
 ## Quick Setup (30 seconds)
 
@@ -108,7 +108,7 @@ Now Claude knows about trvl in every project — just say "search flights" or "p
 
 ### 4. Ask your AI to search
 
-That's it. Your AI assistant now has 13 travel tools available. Just ask naturally:
+That's it. Your AI assistant now has 15 travel tools available. Just ask naturally:
 
 - *"Search flights from JFK to Tokyo on July 1st, business class"*
 - *"Find hotels in Paris for July 1-5, at least 4 stars"*
@@ -128,12 +128,17 @@ That's it. Your AI assistant now has 13 travel tools available. Just ask natural
 | **search_dates** | Find cheapest day to fly across a date range | HEL -> BCN, June-August 2026 |
 | **search_hotels** | Search hotels in any city | Tokyo, June 15-18, 4+ stars |
 | **hotel_prices** | Compare hotel prices from Google (aggregated from multiple providers) |
+| **hotel_reviews** | Get reviews for a specific hotel | Top reviews, sorted by rating or recency |
 | **destination_info** | Travel intelligence for any city | Tokyo: weather, safety, holidays, currency |
 | **calculate_trip_cost** | Estimate total trip cost (flights + hotel) | HEL -> BCN, Jul 1-8, 2 guests |
 | **weekend_getaway** | Find cheap weekend destinations | From HEL in July, budget EUR 500 |
 | **suggest_dates** | Smart date suggestions around a target date | HEL -> BCN around Jul 15, +/- 7 days |
 | **optimize_multi_city** | Find cheapest routing for multi-city trips | HEL -> BCN, ROM, PAR -> HEL |
-| **search_ground** | Search buses and trains (FlixBus + RegioJet) | Prague -> Vienna, May 3rd, trains only |
+| **nearby_places** | Find points of interest near a location | Restaurants, attractions near hotel |
+| **travel_guide** | Wikivoyage travel guide for a city | Neighbourhoods, getting around, safety |
+| **local_events** | Find events during your trip dates | Concerts, festivals, exhibitions |
+| **search_ground** | Search buses and trains (6 providers) | Prague -> Vienna, May 3rd, trains only |
+| **search_restaurants** | Find restaurants near a location (Google Maps) | Barcelona, italian cuisine |
 
 ### MCP Protocol Features (v2025-11-25)
 
@@ -141,7 +146,7 @@ That's it. Your AI assistant now has 13 travel tools available. Just ask natural
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all 10 tool responses |
+| **Output schemas** | Full JSON Schema validation for all 15 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides |
 | **Elicitation** | Interactive parameter collection when dates are missing |
@@ -153,7 +158,8 @@ That's it. Your AI assistant now has 13 travel tools available. Just ask natural
 | Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
 |---------|------|-----|---------------|------------|------|
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bus/train search | ✅ (FlixBus + RegioJet + Eurostar) | ❌ | ❌ | ❌ | ❌ |
+| Bus/train search | ✅ (6 providers: FlixBus, RegioJet, Eurostar, DB, SNCF, Transitous) | ❌ | ❌ | ❌ | ❌ |
+| Price tracking | ✅ (watches with alerts) | ❌ | ❌ | ❌ | ❌ |
 | Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Trip cost calculator | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -194,7 +200,7 @@ https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 14 commands:
+trvl also works as a standalone CLI tool with 19 commands:
 
 ### Flights
 
@@ -289,12 +295,28 @@ trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21
 
 ### Buses & Trains
 
+Searches 6 providers in parallel: FlixBus (buses, pan-European), RegioJet (buses+trains, CZ/SK/AT/HU/DE/PL), Eurostar/Snap (trains, London↔Paris/Brussels/Amsterdam/Cologne), Deutsche Bahn (trains, all European rail), SNCF (trains, French TGV/TER), and Transitous.org (transit routing, pan-European).
+
 ```bash
-trvl ground Prague Vienna 2026-07-01                  # All providers
+trvl ground Prague Vienna 2026-07-01                  # All 6 providers
+trvl ground London Paris 2026-07-01                   # Eurostar + FlixBus + DB
 trvl bus Prague Krakow 2026-07-01                     # Same command, bus alias
 trvl train Prague Vienna 2026-07-01 --type train      # Trains only
 trvl ground Prague Vienna 2026-07-01 --provider regiojet  # RegioJet only
+trvl ground Paris Lyon 2026-07-01 --provider sncf     # SNCF TGV only
 trvl ground Prague Vienna 2026-07-01 --max-price 20   # Under EUR 20
+```
+
+### Price Watch
+
+Track flight and hotel prices over time. Get alerts when prices drop below a threshold.
+
+```bash
+trvl watch add HEL BCN --depart 2026-07-01 --return 2026-07-08 --below 200
+trvl watch list                                       # Show all active watches
+trvl watch check                                      # Check current prices
+trvl watch history <id>                               # Price history for a watch
+trvl watch remove <id>                                # Remove a watch
 ```
 
 ## How It Works
@@ -308,9 +330,12 @@ Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batch
 5. **Explore** — `GetExploreDestinations` for destination discovery
 6. **Destination info** — Parallel aggregation of 5 free APIs (Open-Meteo, REST Countries, Nager.Date, travel-advisory.info, ExchangeRate-API)
 7. **Buses** — FlixBus public API (`global.api.flixbus.com`) with city autocomplete + search
-8. **Trains** — RegioJet public API (`brn-ybus-pubapi.sa.cz`) with route search + pricing
-9. **Eurostar** — `site-api.eurostar.com/gateway` GraphQL for London↔Paris/Brussels/Amsterdam
-9. **Rate limiting** — 10 req/s token bucket with exponential backoff on 429/5xx
+8. **Trains (RegioJet)** — RegioJet public API (`brn-ybus-pubapi.sa.cz`) with route search + pricing
+9. **Trains (Eurostar)** — `site-api.eurostar.com/gateway` GraphQL for London↔Paris/Brussels/Amsterdam/Cologne
+10. **Trains (Deutsche Bahn)** — DB Vendo API (`int.bahn.de/web/api`) for all European rail connections
+11. **Trains (SNCF)** — SNCF Connect API for French TGV, TER, and Intercity routes
+12. **Transit (Transitous)** — `routing.spicebus.org` MOTIS2 API for pan-European transit routing
+13. **Rate limiting** — 10 req/s token bucket with exponential backoff on 429/5xx
 
 No Selenium. No Puppeteer. No browser. Just HTTP.
 
@@ -335,10 +360,10 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | | |
 |---|---|
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
-| **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + Eurostar + 11 free APIs + Google Maps |
+| **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + Eurostar + Deutsche Bahn + SNCF + Transitous + 11 free APIs + Google Maps |
 | **Auth** | None required. Optional free API keys for events/restaurant ratings. |
-| **MCP** | Full v2025-11-25 — 14 tools, 3 prompts, resources, structured content, sampling |
-| **CLI** | 21 commands with table/JSON output, color, shell completion |
+| **MCP** | Full v2025-11-25 — 15 tools, 3 prompts, resources, structured content, sampling |
+| **CLI** | 19 commands (+ 5 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 30+ hacks auto-applied: nearby airports, throw-away returns, hotel splits |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |

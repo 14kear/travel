@@ -1,6 +1,6 @@
 ---
 name: trvl
-description: "AI Travel Agent — flights, hotels, buses, trains, destinations, hacks, trip optimization. Searches Google Flights, Hotels, FlixBus, and RegioJet in real-time."
+description: "AI Travel Agent — flights, hotels, buses, trains, restaurants, price tracking, destinations, hacks. Searches Google Flights/Hotels, FlixBus, RegioJet, Eurostar, Deutsche Bahn, SNCF, Transitous in real-time."
 triggers:
   - flight
   - flights
@@ -28,6 +28,14 @@ triggers:
   - flixbus
   - regiojet
   - ground transport
+  - eurostar
+  - deutsche bahn
+  - sncf
+  - transitous
+  - restaurant
+  - price watch
+  - price alert
+  - monitor
 allowed-tools:
   - Bash
   - mcp__gateway__gateway_invoke
@@ -59,7 +67,8 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 | `nearby_places` | POIs near hotel | lat,lon,[category,radius_m] |
 | `travel_guide` | Wikivoyage guide | location |
 | `local_events` | Events during trip | location,start_date,end_date |
-| `search_ground` | Bus/train routes | from,to,date,[currency,type,provider] |
+| `search_ground` | Bus/train (6 providers) | from,to,date,[currency,type,provider] |
+| `search_restaurants` | Restaurants near location | location,[query,limit] |
 
 ## ALWAYS RUN THESE CHECKS
 1. **Nearby airports** — HEL/TMP/TKU, LHR/LGW/STN, CDG/ORY/BVA, JFK/EWR
