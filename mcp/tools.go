@@ -44,8 +44,8 @@ func registerTools(s *Server) {
 // then post-processes the result to add resource_link blocks and record the
 // search in trip state.
 func (s *Server) wrapHandler(inner ToolHandler) ToolHandler {
-	return func(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
-		content, structured, err := inner(args, elicit)
+	return func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+		content, structured, err := inner(args, elicit, sampling)
 		if err != nil {
 			return content, structured, err
 		}

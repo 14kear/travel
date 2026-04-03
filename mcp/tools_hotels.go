@@ -170,7 +170,7 @@ func hotelElicitationSchema(count int, location string) map[string]interface{} {
 
 // --- Tool handlers ---
 
-func handleSearchHotels(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	location := argString(args, "location")
 	checkIn := argString(args, "check_in")
 	checkOut := argString(args, "check_out")
@@ -223,16 +223,29 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc) ([]ContentBlock,
 	// Build suggestions for progressive disclosure.
 	suggestions := hotelSuggestions(result, opts)
 
+	// If 20+ results and client supports sampling, use AI to curate top 3.
+	var curatedPicks string
+	if result.Success && result.Count >= 20 && sampling != nil {
+		curatedPicks = curateHotelsViaSampling(result, location, sampling)
+	}
+
 	type hotelResponse struct {
 		*models.HotelSearchResult
-		Suggestions []Suggestion `json:"suggestions,omitempty"`
+		Suggestions  []Suggestion `json:"suggestions,omitempty"`
+		CuratedPicks string       `json:"curated_picks,omitempty"`
 	}
 	resp := hotelResponse{
 		HotelSearchResult: result,
 		Suggestions:       suggestions,
+		CuratedPicks:      curatedPicks,
 	}
 
-	content, err := buildAnnotatedContentBlocks(hotelSummary(result, location), resp)
+	summary := hotelSummary(result, location)
+	if curatedPicks != "" {
+		summary += "\n\nAI-curated top picks:\n" + curatedPicks
+	}
+
+	content, err := buildAnnotatedContentBlocks(summary, resp)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,7 +253,57 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc) ([]ContentBlock,
 	return content, resp, nil
 }
 
-func handleHotelPrices(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+// curateHotelsViaSampling uses MCP sampling to ask the client's LLM to pick
+// the best 3 hotels from a large result set based on traveler profile.
+func curateHotelsViaSampling(result *models.HotelSearchResult, location string, sampling SamplingFunc) string {
+	// Build a compact summary of hotels for the LLM.
+	var hotelLines string
+	limit := result.Count
+	if limit > 30 {
+		limit = 30 // Keep context reasonable.
+	}
+	for i, h := range result.Hotels {
+		if i >= limit {
+			break
+		}
+		line := fmt.Sprintf("%d. %s", i+1, h.Name)
+		if h.Stars > 0 {
+			line += fmt.Sprintf(" (%d-star)", h.Stars)
+		}
+		if h.Rating > 0 {
+			line += fmt.Sprintf(" rating=%.1f", h.Rating)
+		}
+		if h.Price > 0 {
+			line += fmt.Sprintf(" %s%.0f/night", h.Currency, h.Price)
+		}
+		if h.Address != "" {
+			line += fmt.Sprintf(" @ %s", h.Address)
+		}
+		hotelLines += line + "\n"
+	}
+
+	prompt := fmt.Sprintf(
+		"Given these %d hotels in %s, which 3 best match each traveler type? "+
+			"Consider rating, price, and location.\n\n"+
+			"Hotels:\n%s\n"+
+			"For each of budget, luxury, and family travelers, pick the single best hotel "+
+			"and explain in one sentence why. Format as:\n"+
+			"Budget: [name] - [reason]\nLuxury: [name] - [reason]\nFamily: [name] - [reason]",
+		result.Count, location, hotelLines,
+	)
+
+	messages := []SamplingMessage{
+		{Role: "user", Content: SamplingContent{Type: "text", Text: prompt}},
+	}
+
+	response, err := sampling(messages, 300)
+	if err != nil {
+		return "" // Gracefully degrade if sampling fails.
+	}
+	return response
+}
+
+func handleHotelPrices(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	hotelID := argString(args, "hotel_id")
 	checkIn := argString(args, "check_in")
 	checkOut := argString(args, "check_out")
@@ -387,7 +450,7 @@ func hotelReviewsOutputSchema() interface{} {
 	}
 }
 
-func handleHotelReviews(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+func handleHotelReviews(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	hotelID := argString(args, "hotel_id")
 	if hotelID == "" {
 		return nil, nil, fmt.Errorf("hotel_id is required")

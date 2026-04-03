@@ -116,7 +116,7 @@ func destinationInfoOutputSchema() interface{} {
 
 // --- Tool handler ---
 
-func handleDestinationInfo(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+func handleDestinationInfo(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	location := argString(args, "location")
 	if location == "" {
 		return nil, nil, fmt.Errorf("location is required")
@@ -238,7 +238,7 @@ func weekendGetawayTool() ToolDef {
 	}
 }
 
-func handleWeekendGetaway(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+func handleWeekendGetaway(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	month := argString(args, "month")
 
@@ -345,7 +345,7 @@ func tripCostOutputSchema() interface{} {
 	}
 }
 
-func handleTripCost(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+func handleTripCost(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	dest := strings.ToUpper(argString(args, "destination"))
 	departDate := argString(args, "depart_date")

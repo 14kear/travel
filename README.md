@@ -297,20 +297,37 @@ Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batch
 
 No Selenium. No Puppeteer. No browser. Just HTTP.
 
+## Every Result is Bookable
+
+Every flight and hotel result includes a `booking_url` — a direct link to Google Flights or Google Hotels where you can complete the booking:
+
+```json
+{
+  "price": 113,
+  "currency": "EUR",
+  "airline": "Norwegian",
+  "flight_number": "D8 2900",
+  "booking_url": "https://www.google.com/travel/flights?q=Flights+to+BCN+from+HEL+on+2026-07-01"
+}
+```
+
+The AI uses these to give you actionable recommendations: "Book here: [link]". No copying flight numbers into another search engine.
+
 ## At a Glance
 
 | | |
 |---|---|
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
-| **Data** | Real-time from Google Flights + Google Hotels + 5 free APIs |
-| **Auth** | None. No API keys, no accounts, no tokens. |
-| **MCP** | Full v2025-11-25 — 13 tools, 3 prompts, resources, structured content, elicitation |
-| **CLI** | 14 commands with table and JSON output |
-| **Skills** | 4 Claude Code skills (trvl, travel-hacks, travel-agent, travel-agent-compact) |
-| **Output** | Pretty tables (default) or JSON (`--format json`) |
-| **Platforms** | Linux, macOS (amd64, arm64) |
-| **Code** | 81 Go files, ~21K LOC, 11 packages |
-| **Tests** | 600+ test functions, race-detector clean |
+| **Data** | Real-time from 7 Google endpoints + 11 free APIs + Google Maps |
+| **Auth** | None required. Optional free API keys for events/restaurant ratings. |
+| **MCP** | Full v2025-11-25 — 13 tools, 3 prompts, resources, structured content, sampling |
+| **CLI** | 20 commands with table/JSON output, color, shell completion |
+| **Booking links** | Every flight and hotel result includes a direct Google booking link |
+| **Travel hacks** | 30+ hacks auto-applied: nearby airports, throw-away returns, hotel splits |
+| **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |
+| **Output** | Pretty tables with color (default) or JSON (`--format json`) |
+| **Platforms** | Linux, macOS (amd64, arm64). Windows CI in progress. |
+| **Code** | 100+ Go files, ~32K LOC, 11 packages, 500+ tests |
 | **License** | MIT |
 
 ## Attribution

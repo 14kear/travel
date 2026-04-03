@@ -205,6 +205,52 @@ type ContentAnnotation struct {
 // will be nil and tool handlers should proceed with defaults.
 type ElicitFunc func(message string, schema map[string]interface{}) (map[string]interface{}, error)
 
+// SamplingFunc asks the client's LLM to reason about a prompt via
+// sampling/createMessage (MCP 2025-11-25). Returns the LLM's text response.
+// Nil when the client does not declare the sampling capability.
+type SamplingFunc func(messages []SamplingMessage, maxTokens int) (string, error)
+
+// SamplingMessage is a single message in a sampling/createMessage request.
+type SamplingMessage struct {
+	Role    string         `json:"role"`
+	Content SamplingContent `json:"content"`
+}
+
+// SamplingContent is the content of a sampling message.
+type SamplingContent struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+// SamplingRequest is the JSON-RPC request for sampling/createMessage.
+type SamplingRequest struct {
+	JSONRPC string             `json:"jsonrpc"`
+	ID      any                `json:"id"`
+	Method  string             `json:"method"`
+	Params  SamplingReqParams  `json:"params"`
+}
+
+// SamplingReqParams is the params for sampling/createMessage.
+type SamplingReqParams struct {
+	Messages  []SamplingMessage `json:"messages"`
+	MaxTokens int               `json:"maxTokens"`
+}
+
+// SamplingResponse is the client's response to a sampling/createMessage request.
+type SamplingResponse struct {
+	JSONRPC string         `json:"jsonrpc"`
+	ID      any            `json:"id,omitempty"`
+	Result  SamplingResult `json:"result"`
+	Error   *Error         `json:"error,omitempty"`
+}
+
+// SamplingResult is the result of a sampling/createMessage response.
+type SamplingResult struct {
+	Role    string          `json:"role"`
+	Content SamplingContent `json:"content"`
+	Model   string          `json:"model,omitempty"`
+}
+
 // ElicitationRequest is the JSON-RPC request sent to the client.
 type ElicitationRequest struct {
 	JSONRPC string               `json:"jsonrpc"`
@@ -414,7 +460,8 @@ type Server struct {
 // ToolHandler processes a tool call and returns content blocks, optional
 // structured content, and an error.
 // The elicit parameter may be nil if the client does not support elicitation.
-type ToolHandler func(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error)
+// The sampling parameter may be nil if the client does not support sampling.
+type ToolHandler func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error)
 
 // NewServer creates a new MCP server with the standard trvl tools registered.
 func NewServer() *Server {
@@ -495,6 +542,17 @@ func (s *Server) makeElicitFunc() ElicitFunc {
 	return nil
 }
 
+// makeSamplingFunc returns a SamplingFunc if the client declared the sampling
+// capability. Like elicitation, sampling is disabled in stdio mode to prevent
+// stream desync.
+func (s *Server) makeSamplingFunc() SamplingFunc {
+	if s.clientCapabilities.Sampling == nil {
+		return nil
+	}
+	// Disabled in stdio mode to prevent stream desync (same as elicitation).
+	return nil
+}
+
 // HandleRequest processes a single JSON-RPC request and returns the response.
 func (s *Server) HandleRequest(req *Request) *Response {
 	switch req.Method {
@@ -529,6 +587,9 @@ func (s *Server) handleInitialize(req *Request) *Response {
 		var params InitializeParams
 		if err := json.Unmarshal(req.Params, &params); err == nil {
 			s.clientCapabilities = params.Capabilities
+			if params.Capabilities.Sampling != nil {
+				s.SendLog("info", "Client supports sampling/createMessage — AI-powered result curation enabled")
+			}
 		}
 	}
 
@@ -581,10 +642,11 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 	// Log the tool call.
 	s.SendLog("info", fmt.Sprintf("Calling tool: %s", params.Name))
 
-	// Build elicit function based on client capabilities.
+	// Build elicit and sampling functions based on client capabilities.
 	elicit := s.makeElicitFunc()
+	sampling := s.makeSamplingFunc()
 
-	content, structured, err := handler(params.Arguments, elicit)
+	content, structured, err := handler(params.Arguments, elicit, sampling)
 	if err != nil {
 		return &Response{
 			JSONRPC: "2.0",

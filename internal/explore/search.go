@@ -5,23 +5,53 @@ package explore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
+
+// warmupTimeout is the deadline for the TLS warmup ping.
+const warmupTimeout = 5 * time.Second
 
 // SearchExplore searches for cheapest flight destinations from the given origin.
 //
 // Unlike a normal flight search which requires a destination, explore searches
 // return a list of destinations with their cheapest prices, optionally filtered
 // by geographic coordinates.
+//
+// To reduce timeout failures, this function:
+//  1. Warms up the TLS connection with a lightweight GET before the heavy POST
+//  2. Retries once if the API returns empty results within 10 seconds
 func SearchExplore(ctx context.Context, client *batchexec.Client, origin string, opts ExploreOptions) (*models.ExploreResult, error) {
 	if origin == "" {
 		return nil, fmt.Errorf("origin airport is required")
 	}
 
+	// Warm up the TLS connection to reduce cold-start latency.
+	warmupTLS(ctx, client)
+
 	encoded := EncodeExplorePayload(origin, opts)
 
+	result, err := doExploreRequest(ctx, client, encoded)
+	if err != nil {
+		return nil, err
+	}
+
+	// If empty results came back quickly, retry once -- Google sometimes
+	// returns empty on the first request when the backend is cold.
+	if result.Count == 0 {
+		result, err = doExploreRequest(ctx, client, encoded)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
+// doExploreRequest performs a single explore API call.
+func doExploreRequest(ctx context.Context, client *batchexec.Client, encoded string) (*models.ExploreResult, error) {
 	status, body, err := client.PostExplore(ctx, encoded)
 	if err != nil {
 		return nil, fmt.Errorf("explore request: %w", err)
@@ -44,6 +74,16 @@ func SearchExplore(ctx context.Context, client *batchexec.Client, origin string,
 		Count:        len(destinations),
 		Destinations: destinations,
 	}, nil
+}
+
+// warmupTLS sends a lightweight GET to Google to establish the TLS connection
+// before the heavy explore POST. This avoids paying TLS handshake cost inside
+// the main request's timeout budget.
+func warmupTLS(ctx context.Context, client *batchexec.Client) {
+	warmCtx, cancel := context.WithTimeout(ctx, warmupTimeout)
+	defer cancel()
+	// A simple GET to the flights domain warms the connection pool.
+	_, _, _ = client.Get(warmCtx, "https://www.google.com/travel/flights")
 }
 
 // ExploreOptions configures an explore destination search.
