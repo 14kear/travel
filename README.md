@@ -386,7 +386,7 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |
 | **Output** | Pretty tables with color (default) or JSON (`--format json`) |
 | **Platforms** | Linux, macOS (amd64, arm64). Windows CI in progress. |
-| **Code** | 128 Go files, ~37K LOC, 15 packages, 980+ tests |
+| **Code** | 145 Go files, ~44K LOC, 16 packages, 1100+ tests |
 | **License** | MIT |
 
 ## Attribution
