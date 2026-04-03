@@ -63,7 +63,40 @@ trvl flights HEL LHR 2026-07-01 --format json | head -5
 # Expected: JSON with flight results
 ```
 
-Tell the user: "trvl is installed with 9 MCP tools and 4 skills. I can now search flights, hotels, destinations, plan trips, find weekend getaways, and optimize multi-city routes. Just ask me anything about travel."
+Tell the user: "trvl is installed with 13 MCP tools and 5 skills. I can search flights, hotels, destinations, plan trips, find weekend getaways, optimize multi-city routes, find nearby restaurants, and check local events. Just ask me anything about travel."
+
+### Step 5: (Optional) Set up free API keys for enhanced data
+
+trvl works out of the box with Wikivoyage + OpenStreetMap (no keys needed). For richer data (events, restaurant ratings, attractions), the user can get free API keys:
+
+| Service | What it adds | Signup |
+|---------|-------------|--------|
+| Ticketmaster | Events (concerts, sports, festivals) | https://developer.ticketmaster.com/ |
+| Foursquare | Restaurant ratings, tips, price levels | https://developer.foursquare.com/ |
+| Geoapify | Walking-distance POI search | https://myprojects.geoapify.com/ |
+| OpenTripMap | Tourist attractions + Wikipedia | https://opentripmap.io/product |
+
+All free, no credit card, 2 min signup each. Walk the user through each signup:
+1. Open the URL for them
+2. Tell them what to click (Sign up → Create project → Copy key)
+3. Have them paste the key
+4. Set it: `echo 'export TICKETMASTER_API_KEY="their-key"' >> ~/.zshrc && source ~/.zshrc`
+5. Verify: `trvl events "Barcelona" --from 2026-07-01 --to 2026-07-08`
+
+Use `/setup-api-keys` command for the guided wizard.
+
+### Step 6: (Optional) Create personal travel profile
+
+Ask the user about their preferences and create `~/.claude/travel-profile.md`:
+- Home airport
+- Frequent flyer status (SkyTeam, oneworld, Star Alliance?)
+- Usually travel with luggage?
+- Departure time preferences?
+- Budget range preference?
+- Any flats/free accommodation in cities?
+- Favourite hotels anywhere?
+
+This makes every future search personalized automatically.
 
 ---
 
