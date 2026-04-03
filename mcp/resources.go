@@ -36,6 +36,12 @@ func registerResources(s *Server) {
 			Description: "Accumulated summary of all searches in this session",
 			MimeType:    "text/plain",
 		},
+		{
+			URI:         "trvl://watches",
+			Name:        "Price Watches",
+			Description: "List all active price watches with current prices",
+			MimeType:    "text/plain",
+		},
 	}
 }
 
@@ -65,6 +71,23 @@ func (s *Server) listResources() []ResourceDef {
 		}
 	}
 	s.tripState.mu.Unlock()
+
+	// Add dynamic watch resources from the watch store.
+	if s.watchStore != nil {
+		for _, w := range s.watchStore.List() {
+			route := fmt.Sprintf("%s -> %s", w.Origin, w.Destination)
+			priceInfo := ""
+			if w.LastPrice > 0 {
+				priceInfo = fmt.Sprintf(" (%.0f %s)", w.LastPrice, w.Currency)
+			}
+			resources = append(resources, ResourceDef{
+				URI:         fmt.Sprintf("trvl://watch/%s", w.ID),
+				Name:        fmt.Sprintf("Watch: %s %s%s", w.Type, route, priceInfo),
+				Description: fmt.Sprintf("Price watch for %s on %s", route, w.DepartDate),
+				MimeType:    "text/plain",
+			})
+		}
+	}
 
 	return resources
 }
@@ -119,6 +142,8 @@ func (s *Server) readResource(uri string) (*ResourcesReadResult, error) {
 		}, nil
 	case uri == "trvl://trip/summary":
 		return s.readTripSummary()
+	case uri == "trvl://watches":
+		return s.readWatchesList()
 	case strings.HasPrefix(uri, "trvl://watch/"):
 		return s.readWatchResource(uri)
 	default:
@@ -204,11 +229,140 @@ func (s *Server) readTripSummary() (*ResourcesReadResult, error) {
 	}, nil
 }
 
-// readWatchResource handles trvl://watch/{origin}-{dest}-{date} URIs.
-// It runs a fresh cheapest-flight search and returns the price with delta.
+// readWatchesList returns a formatted list of all active watches.
+func (s *Server) readWatchesList() (*ResourcesReadResult, error) {
+	if s.watchStore == nil {
+		return &ResourcesReadResult{
+			Contents: []ResourceContent{{
+				URI:      "trvl://watches",
+				MimeType: "text/plain",
+				Text:     "Price Watches\n\nNo watch store available.",
+			}},
+		}, nil
+	}
+
+	watches := s.watchStore.List()
+	if len(watches) == 0 {
+		return &ResourcesReadResult{
+			Contents: []ResourceContent{{
+				URI:      "trvl://watches",
+				MimeType: "text/plain",
+				Text:     "Price Watches\n\nNo active watches. Use the CLI to add watches: trvl watch add",
+			}},
+		}, nil
+	}
+
+	var b strings.Builder
+	b.WriteString("Price Watches\n")
+	b.WriteString(strings.Repeat("=", 40))
+	b.WriteString(fmt.Sprintf("\n%d active watch(es)\n\n", len(watches)))
+
+	for _, w := range watches {
+		route := fmt.Sprintf("%s -> %s", w.Origin, w.Destination)
+		b.WriteString(fmt.Sprintf("[%s] %s  %s  %s", w.ID, w.Type, route, w.DepartDate))
+		if w.ReturnDate != "" {
+			b.WriteString(fmt.Sprintf(" (return %s)", w.ReturnDate))
+		}
+		b.WriteString("\n")
+		if w.LastPrice > 0 {
+			b.WriteString(fmt.Sprintf("  Current: %.0f %s", w.LastPrice, w.Currency))
+			if w.LowestPrice > 0 && w.LowestPrice < w.LastPrice {
+				b.WriteString(fmt.Sprintf("  Lowest: %.0f", w.LowestPrice))
+			}
+			b.WriteString("\n")
+		}
+		if w.BelowPrice > 0 {
+			b.WriteString(fmt.Sprintf("  Goal: below %.0f %s\n", w.BelowPrice, w.Currency))
+		}
+		if !w.LastCheck.IsZero() {
+			b.WriteString(fmt.Sprintf("  Last checked: %s\n", w.LastCheck.Format("2006-01-02 15:04")))
+		}
+		b.WriteString("\n")
+	}
+
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      "trvl://watches",
+			MimeType: "text/plain",
+			Text:     b.String(),
+		}},
+	}, nil
+}
+
+// readWatchByID returns details and price history for a single watch.
+func (s *Server) readWatchByID(id string) (*ResourcesReadResult, error) {
+	if s.watchStore == nil {
+		return nil, fmt.Errorf("watch store not available")
+	}
+
+	w, ok := s.watchStore.Get(id)
+	if !ok {
+		return nil, fmt.Errorf("watch %s not found", id)
+	}
+
+	uri := fmt.Sprintf("trvl://watch/%s", id)
+	route := fmt.Sprintf("%s -> %s", w.Origin, w.Destination)
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Watch: %s %s\n", w.Type, route))
+	b.WriteString(strings.Repeat("=", 40))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("ID:        %s\n", w.ID))
+	b.WriteString(fmt.Sprintf("Type:      %s\n", w.Type))
+	b.WriteString(fmt.Sprintf("Route:     %s\n", route))
+	b.WriteString(fmt.Sprintf("Date:      %s\n", w.DepartDate))
+	if w.ReturnDate != "" {
+		b.WriteString(fmt.Sprintf("Return:    %s\n", w.ReturnDate))
+	}
+	if w.BelowPrice > 0 {
+		b.WriteString(fmt.Sprintf("Goal:      below %.0f %s\n", w.BelowPrice, w.Currency))
+	}
+	if w.LastPrice > 0 {
+		b.WriteString(fmt.Sprintf("Current:   %.0f %s\n", w.LastPrice, w.Currency))
+	}
+	if w.LowestPrice > 0 {
+		b.WriteString(fmt.Sprintf("Lowest:    %.0f %s\n", w.LowestPrice, w.Currency))
+	}
+	if !w.LastCheck.IsZero() {
+		b.WriteString(fmt.Sprintf("Checked:   %s\n", w.LastCheck.Format("2006-01-02 15:04")))
+	}
+	b.WriteString(fmt.Sprintf("Created:   %s\n", w.CreatedAt.Format("2006-01-02 15:04")))
+
+	// Price history.
+	history := s.watchStore.History(w.ID)
+	if len(history) > 0 {
+		b.WriteString(fmt.Sprintf("\nPrice History (%d points)\n", len(history)))
+		b.WriteString(strings.Repeat("-", 30))
+		b.WriteString("\n")
+		for _, p := range history {
+			b.WriteString(fmt.Sprintf("  %s  %.0f %s\n",
+				p.Timestamp.Format("2006-01-02 15:04"), p.Price, p.Currency))
+		}
+	}
+
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      uri,
+			MimeType: "text/plain",
+			Text:     b.String(),
+		}},
+	}, nil
+}
+
+// readWatchResource handles trvl://watch/{id} URIs.
+// First checks the watch store for an ID match, then falls back to
+// the legacy trvl://watch/{origin}-{dest}-{date} flight price format.
 func (s *Server) readWatchResource(uri string) (*ResourcesReadResult, error) {
-	// Parse: "trvl://watch/HEL-BCN-2026-07-01"
 	path := strings.TrimPrefix(uri, "trvl://watch/")
+
+	// Try watch store lookup first (8-char hex IDs).
+	if s.watchStore != nil {
+		if _, ok := s.watchStore.Get(path); ok {
+			return s.readWatchByID(path)
+		}
+	}
+
+	// Legacy format: "trvl://watch/HEL-BCN-2026-07-01"
 	parts := strings.SplitN(path, "-", 3)
 	if len(parts) < 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return nil, fmt.Errorf("invalid watch URI: %s (expected trvl://watch/ORIGIN-DEST-YYYY-MM-DD)", uri)

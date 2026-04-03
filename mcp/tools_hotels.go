@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/hotels"
@@ -105,6 +106,7 @@ func searchHotelsTool() ToolDef {
 				"max_price":    {Type: "number", Description: "Maximum price per night (default: no filter)"},
 				"min_rating":   {Type: "number", Description: "Minimum guest rating, e.g. 4.0 (default: no filter)"},
 				"max_distance": {Type: "number", Description: "Maximum distance from city center in km (default: no filter)"},
+				"amenities":    {Type: "string", Description: "Filter by amenities (comma-separated, e.g. pool,wifi,breakfast)"},
 			},
 			Required: []string{"location", "check_in", "check_out"},
 		},
@@ -188,6 +190,17 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling Samplin
 		return nil, nil, err
 	}
 
+	// Parse amenities filter: comma-separated, trimmed, lowercased.
+	var amenities []string
+	if raw := argString(args, "amenities"); raw != "" {
+		for _, a := range strings.Split(raw, ",") {
+			a = strings.ToLower(strings.TrimSpace(a))
+			if a != "" {
+				amenities = append(amenities, a)
+			}
+		}
+	}
+
 	opts := hotels.HotelSearchOptions{
 		CheckIn:       checkIn,
 		CheckOut:      checkOut,
@@ -198,6 +211,7 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling Samplin
 		MaxPrice:      argFloat(args, "max_price", 0),
 		MinRating:     argFloat(args, "min_rating", 0),
 		MaxDistanceKm: argFloat(args, "max_distance", 0),
+		Amenities:     amenities,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

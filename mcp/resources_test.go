@@ -22,8 +22,8 @@ func TestResourcesList(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	if len(result.Resources) != 4 {
-		t.Fatalf("expected 4 resources, got %d", len(result.Resources))
+	if len(result.Resources) < 5 {
+		t.Fatalf("expected at least 5 resources, got %d", len(result.Resources))
 	}
 
 	expected := map[string]bool{
@@ -31,6 +31,7 @@ func TestResourcesList(t *testing.T) {
 		"trvl://help/flights":    false,
 		"trvl://help/hotels":     false,
 		"trvl://trip/summary":    false,
+		"trvl://watches":         false,
 	}
 	for _, r := range result.Resources {
 		if _, ok := expected[r.URI]; !ok {

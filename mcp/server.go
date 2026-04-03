@@ -24,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/watch"
 )
 
 const (
@@ -455,6 +457,9 @@ type Server struct {
 	// Session state for trip planning.
 	tripState  TripState
 	priceCache *priceCache
+
+	// Watch store for price tracking resources.
+	watchStore *watch.Store
 }
 
 // ToolHandler processes a tool call and returns content blocks, optional
@@ -469,6 +474,13 @@ func NewServer() *Server {
 		handlers:   make(map[string]ToolHandler),
 		priceCache: newPriceCache(),
 	}
+
+	// Initialize watch store (best-effort; nil store is handled gracefully).
+	if ws, err := watch.DefaultStore(); err == nil {
+		_ = ws.Load()
+		s.watchStore = ws
+	}
+
 	registerTools(s)
 	registerPrompts(s)
 	registerResources(s)

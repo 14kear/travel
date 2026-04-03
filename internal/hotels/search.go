@@ -39,12 +39,13 @@ type HotelSearchOptions struct {
 	Currency string // default "USD"
 
 	// Post-fetch filters.
-	MinPrice      float64 // minimum price per night (0 = no filter)
-	MaxPrice      float64 // maximum price per night (0 = no filter)
-	MinRating     float64 // minimum guest rating, e.g. 4.0 (0 = no filter)
-	MaxDistanceKm float64 // max km from city center (0 = no filter)
-	CenterLat     float64 // city center latitude (resolved automatically if 0)
-	CenterLon     float64 // city center longitude (resolved automatically if 0)
+	MinPrice      float64  // minimum price per night (0 = no filter)
+	MaxPrice      float64  // maximum price per night (0 = no filter)
+	MinRating     float64  // minimum guest rating, e.g. 4.0 (0 = no filter)
+	MaxDistanceKm float64  // max km from city center (0 = no filter)
+	Amenities     []string // required amenities, all must match (nil = no filter)
+	CenterLat     float64  // city center latitude (resolved automatically if 0)
+	CenterLon     float64  // city center longitude (resolved automatically if 0)
 }
 
 // SearchHotels searches for hotels in the given location.
@@ -173,6 +174,9 @@ func filterHotels(hotels []models.HotelResult, opts HotelSearchOptions) []models
 				continue
 			}
 		}
+		if len(opts.Amenities) > 0 && !hasAllAmenities(h.Amenities, opts.Amenities) {
+			continue
+		}
 		filtered = append(filtered, h)
 	}
 	return filtered
@@ -187,6 +191,21 @@ func filterByStars(hotels []models.HotelResult, minStars int) []models.HotelResu
 		}
 	}
 	return filtered
+}
+
+// hasAllAmenities returns true if the hotel's amenities contain every
+// requested amenity (case-insensitive substring match).
+func hasAllAmenities(have, want []string) bool {
+	set := make(map[string]bool, len(have))
+	for _, a := range have {
+		set[strings.ToLower(a)] = true
+	}
+	for _, req := range want {
+		if !set[strings.ToLower(strings.TrimSpace(req))] {
+			return false
+		}
+	}
+	return true
 }
 
 // sortHotels sorts hotel results in-place by the given criteria.
