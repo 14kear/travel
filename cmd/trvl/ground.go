@@ -81,7 +81,18 @@ func printGroundTable(result *models.GroundSearchResult) error {
 		return nil
 	}
 
-	fmt.Printf("Found %d routes:\n\n", result.Count)
+	// Count unique providers
+	providers := map[string]bool{}
+	for _, r := range result.Routes {
+		providers[r.Provider] = true
+	}
+	provList := make([]string, 0, len(providers))
+	for p := range providers {
+		provList = append(provList, p)
+	}
+	models.Banner(os.Stdout, "🚂", fmt.Sprintf("Ground Transport · %d providers", len(providers)),
+		fmt.Sprintf("Found %d routes (%s)", result.Count, strings.Join(provList, ", ")))
+	fmt.Println()
 
 	headers := []string{"Price", "Duration", "Type", "Provider", "Transfers", "Departs", "Arrives", "Seats"}
 	var rows [][]string

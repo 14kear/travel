@@ -5,11 +5,13 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/MikkoParkkola/trvl.svg)](https://pkg.go.dev/github.com/MikkoParkkola/trvl)
 [![MCP](https://img.shields.io/badge/MCP-2025--11--25-blue)](https://modelcontextprotocol.io)
 
-# trvl — Travel MCP Server for AI Assistants
+# trvl — The Travel MCP Server
 
 ![trvl demo](demo.gif)
 
-> **Real-time Google Flights + Hotels data for your AI assistant. Free. No API keys. One binary.**
+> **15 travel tools for your AI assistant — flights, hotels, trains, buses, price alerts, destination intel. Free. No API keys. One binary.**
+>
+> Also works as a standalone CLI with 19 commands.
 
 ### What it looks like
 

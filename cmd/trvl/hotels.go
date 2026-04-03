@@ -92,7 +92,9 @@ func formatHotelsTable(result *models.HotelSearchResult) error {
 		return nil
 	}
 
-	fmt.Printf("Found %d hotels:\n\n", result.Count)
+	models.Banner(os.Stdout, "🏨", "Hotels",
+		fmt.Sprintf("Found %d hotels", result.Count))
+	fmt.Println()
 
 	headers := []string{"Name", "Stars", "Rating", "Reviews", "Price", "Amenities"}
 	rows := make([][]string, 0, len(result.Hotels))
@@ -121,5 +123,29 @@ func formatHotelsTable(result *models.HotelSearchResult) error {
 	}
 
 	models.FormatTable(os.Stdout, headers, rows)
+
+	// Summary
+	if len(result.Hotels) > 0 {
+		cheapest := result.Hotels[0]
+		bestRated := result.Hotels[0]
+		for _, h := range result.Hotels[1:] {
+			if h.Price > 0 && (cheapest.Price == 0 || h.Price < cheapest.Price) {
+				cheapest = h
+			}
+			if h.Rating > bestRated.Rating {
+				bestRated = h
+			}
+		}
+		parts := []string{}
+		if cheapest.Price > 0 {
+			parts = append(parts, fmt.Sprintf("Cheapest: %.0f %s (%s)", cheapest.Price, cheapest.Currency, cheapest.Name))
+		}
+		if bestRated.Rating > 0 {
+			parts = append(parts, fmt.Sprintf("Top rated: %.1f (%s)", bestRated.Rating, bestRated.Name))
+		}
+		if len(parts) > 0 {
+			models.Summary(os.Stdout, strings.Join(parts, " · "))
+		}
+	}
 	return nil
 }

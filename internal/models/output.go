@@ -35,6 +35,73 @@ func Yellow(s string) string {
 	return "\033[33m" + s + "\033[0m"
 }
 
+// Bold wraps s in ANSI bold.
+func Bold(s string) string {
+	if !UseColor {
+		return s
+	}
+	return "\033[1m" + s + "\033[0m"
+}
+
+// Dim wraps s in ANSI dim/faint.
+func Dim(s string) string {
+	if !UseColor {
+		return s
+	}
+	return "\033[2m" + s + "\033[0m"
+}
+
+// Cyan wraps s in ANSI cyan.
+func Cyan(s string) string {
+	if !UseColor {
+		return s
+	}
+	return "\033[36m" + s + "\033[0m"
+}
+
+// Banner prints a styled box header to w.
+//
+//	╭─ ✈️  Flights AMS → HEL · 2026-04-08 ───────────────╮
+//	│  Found 73 flights (round_trip)                       │
+//	╰──────────────────────────────────────────────────────╯
+func Banner(w io.Writer, icon, title, subtitle string) {
+	titleLine := fmt.Sprintf(" %s  %s", icon, title)
+	width := max(len(titleLine)+4, len(subtitle)+6, 56)
+
+	topPad := width - len(titleLine) - 3
+	if topPad < 1 {
+		topPad = 1
+	}
+
+	fmt.Fprintf(w, "╭─%s%s╮\n", titleLine, strings.Repeat("─", topPad))
+
+	if subtitle != "" {
+		subPad := width - len(subtitle) - 5
+		if subPad < 1 {
+			subPad = 1
+		}
+		fmt.Fprintf(w, "│  %s%s│\n", subtitle, strings.Repeat(" ", subPad))
+	}
+
+	fmt.Fprintf(w, "╰%s╯\n", strings.Repeat("─", width-2))
+}
+
+// Summary prints a dimmed summary line after a table.
+func Summary(w io.Writer, text string) {
+	fmt.Fprintf(w, "\n  %s\n", Dim(text))
+}
+
+// BookingHint prints a hint about getting booking URLs.
+func BookingHint(w io.Writer) {
+	fmt.Fprintf(w, "  %s\n", Dim("Tip: --format json | jq '.flights[0].booking_url' for direct booking links"))
+}
+
+func max(a, b, c int) int {
+	if b > a { a = b }
+	if c > a { a = c }
+	return a
+}
+
 // FormatJSON writes v as pretty-printed JSON to w.
 func FormatJSON(w io.Writer, v interface{}) error {
 	enc := json.NewEncoder(w)
