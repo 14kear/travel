@@ -1,0 +1,60 @@
+fulcrum: "1.0"
+name: trvl_travel_guide
+description: >-
+  Get a structured Wikivoyage travel guide for any destination. Returns
+  sections like Get in, Get around, See, Do, Eat, Drink, Sleep, and Stay safe.
+  Free, no API key required.
+
+schema:
+  input:
+    type: object
+    properties:
+      location:
+        type: string
+        description: City or destination name (e.g., Barcelona, Tokyo, New York)
+    required: [location]
+  output:
+    type: object
+    properties:
+      location:
+        type: string
+      summary:
+        type: string
+      sections:
+        type: object
+        additionalProperties:
+          type: string
+      url:
+        type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 15
+    config:
+      command: trvl
+      args:
+        - guide
+        - "{location}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 86400
+
+auth:
+  required: false
+
+metadata:
+  category: travel
+  tags: [travel, guide, wikivoyage, destination, sightseeing, food, transport, safety, free, no-api-key]
+  cost_category: free
+  execution_time: fast
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Fetches from Wikivoyage MediaWiki API. Parses plain-text extracts into
+    structured sections. Cached for 24h (content rarely changes). No API key
+    required.

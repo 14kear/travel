@@ -1,0 +1,350 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/destinations"
+	"github.com/MikkoParkkola/trvl/internal/models"
+)
+
+// --- nearby_places tool ---
+
+func nearbyPlacesTool() ToolDef {
+	return ToolDef{
+		Name:        "nearby_places",
+		Title:       "Nearby Places",
+		Description: "Find nearby points of interest (restaurants, cafes, attractions, pharmacies, etc.) from OpenStreetMap. Optionally enriched with Foursquare ratings, Geoapify walking data, and OpenTripMap attractions when API keys are set.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"lat":      {Type: "number", Description: "Latitude of the center point"},
+				"lon":      {Type: "number", Description: "Longitude of the center point"},
+				"radius_m": {Type: "integer", Description: "Search radius in meters (default: 500, max: 5000)"},
+				"category": {Type: "string", Description: "POI category: restaurant, cafe, bar, pharmacy, atm, bank, supermarket, hospital, museum, attraction, all (default: all)"},
+			},
+			Required: []string{"lat", "lon"},
+		},
+		OutputSchema: nearbyPlacesOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Nearby Places",
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+			OpenWorldHint:  true,
+		},
+	}
+}
+
+func nearbyPlacesOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"pois": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name":          map[string]interface{}{"type": "string"},
+						"type":          map[string]interface{}{"type": "string"},
+						"lat":           map[string]interface{}{"type": "number"},
+						"lon":           map[string]interface{}{"type": "number"},
+						"distance_m":    map[string]interface{}{"type": "integer"},
+						"cuisine":       map[string]interface{}{"type": "string"},
+						"opening_hours": map[string]interface{}{"type": "string"},
+						"phone":         map[string]interface{}{"type": "string"},
+						"website":       map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+			"rated_places": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name":        map[string]interface{}{"type": "string"},
+						"rating":      map[string]interface{}{"type": "number"},
+						"category":    map[string]interface{}{"type": "string"},
+						"price_level": map[string]interface{}{"type": "integer"},
+						"distance_m":  map[string]interface{}{"type": "integer"},
+						"address":     map[string]interface{}{"type": "string"},
+						"tip":         map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+			"attractions": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name":          map[string]interface{}{"type": "string"},
+						"kind":          map[string]interface{}{"type": "string"},
+						"distance_m":    map[string]interface{}{"type": "integer"},
+						"wikipedia_url": map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func handleNearbyPlaces(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+	lat := argFloat(args, "lat", 0)
+	lon := argFloat(args, "lon", 0)
+	if lat == 0 && lon == 0 {
+		return nil, nil, fmt.Errorf("lat and lon are required")
+	}
+
+	radius := argInt(args, "radius_m", 500)
+	category := argString(args, "category")
+	if category == "" {
+		category = "all"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	result, err := destinations.GetNearbyPlaces(ctx, lat, lon, radius, category)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	summary := nearbyPlacesSummary(result, category)
+	content, err := buildAnnotatedContentBlocks(summary, result)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return content, result, nil
+}
+
+func nearbyPlacesSummary(result *destinations.NearbyResult, category string) string {
+	parts := []string{fmt.Sprintf("Found %d nearby places", len(result.POIs))}
+
+	if category != "all" && category != "" {
+		parts[0] += fmt.Sprintf(" (%s)", category)
+	}
+
+	if len(result.POIs) > 0 {
+		closest := result.POIs[0]
+		parts = append(parts, fmt.Sprintf("Closest: %s (%s, %dm away)", closest.Name, closest.Type, closest.Distance))
+	}
+
+	if len(result.RatedPlaces) > 0 {
+		top := result.RatedPlaces[0]
+		parts = append(parts, fmt.Sprintf("Top rated: %s (%.1f/10)", top.Name, top.Rating))
+	}
+
+	if len(result.Attractions) > 0 {
+		parts = append(parts, fmt.Sprintf("%d tourist attractions nearby", len(result.Attractions)))
+	}
+
+	return strings.Join(parts, ". ") + "."
+}
+
+// --- travel_guide tool ---
+
+func travelGuideTool() ToolDef {
+	return ToolDef{
+		Name:        "travel_guide",
+		Title:       "Travel Guide",
+		Description: "Get a Wikivoyage travel guide for any destination with structured sections (Get in, See, Do, Eat, Drink, Sleep, Stay safe). Free, no API key required.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"location": {Type: "string", Description: "City or destination name (e.g., Barcelona, Tokyo, New York)"},
+			},
+			Required: []string{"location"},
+		},
+		OutputSchema: travelGuideOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Travel Guide",
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+			OpenWorldHint:  true,
+		},
+	}
+}
+
+func travelGuideOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"location": map[string]interface{}{"type": "string"},
+			"summary":  map[string]interface{}{"type": "string"},
+			"sections": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": map[string]interface{}{"type": "string"},
+			},
+			"url": map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"location"},
+	}
+}
+
+func handleTravelGuide(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+	location := argString(args, "location")
+	if location == "" {
+		return nil, nil, fmt.Errorf("location is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	guide, err := destinations.GetWikivoyageGuide(ctx, location)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	summary := travelGuideSummary(guide)
+	content, err := buildAnnotatedContentBlocks(summary, guide)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return content, guide, nil
+}
+
+func travelGuideSummary(guide *models.WikivoyageGuide) string {
+	parts := []string{fmt.Sprintf("Travel guide: %s", guide.Location)}
+
+	if guide.Summary != "" {
+		// Truncate summary to first 200 chars for the text block.
+		s := guide.Summary
+		if len(s) > 200 {
+			s = s[:200] + "..."
+		}
+		parts = append(parts, s)
+	}
+
+	sectionNames := make([]string, 0, len(guide.Sections))
+	for name := range guide.Sections {
+		sectionNames = append(sectionNames, name)
+	}
+	if len(sectionNames) > 0 {
+		parts = append(parts, fmt.Sprintf("Sections: %s", strings.Join(sectionNames, ", ")))
+	}
+
+	parts = append(parts, fmt.Sprintf("Full guide: %s", guide.URL))
+
+	return strings.Join(parts, ". ") + "."
+}
+
+// --- local_events tool ---
+
+func localEventsTool() ToolDef {
+	return ToolDef{
+		Name:        "local_events",
+		Title:       "Local Events",
+		Description: "Find local events at a destination during your travel dates. Requires TICKETMASTER_API_KEY environment variable (free at developer.ticketmaster.com).",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"location":   {Type: "string", Description: "City name (e.g., Barcelona, Tokyo, New York)"},
+				"start_date": {Type: "string", Description: "Start date in YYYY-MM-DD format"},
+				"end_date":   {Type: "string", Description: "End date in YYYY-MM-DD format"},
+			},
+			Required: []string{"location", "start_date", "end_date"},
+		},
+		OutputSchema: localEventsOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Local Events",
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+			OpenWorldHint:  true,
+		},
+	}
+}
+
+func localEventsOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"events": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"name":        map[string]interface{}{"type": "string"},
+						"date":        map[string]interface{}{"type": "string"},
+						"time":        map[string]interface{}{"type": "string"},
+						"venue":       map[string]interface{}{"type": "string"},
+						"type":        map[string]interface{}{"type": "string"},
+						"url":         map[string]interface{}{"type": "string"},
+						"price_range": map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+			"message": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+func handleLocalEvents(args map[string]any, elicit ElicitFunc) ([]ContentBlock, interface{}, error) {
+	location := argString(args, "location")
+	startDate := argString(args, "start_date")
+	endDate := argString(args, "end_date")
+
+	if location == "" {
+		return nil, nil, fmt.Errorf("location is required")
+	}
+	if startDate == "" || endDate == "" {
+		return nil, nil, fmt.Errorf("start_date and end_date are required")
+	}
+
+	// Check if Ticketmaster key is set.
+	if os.Getenv("TICKETMASTER_API_KEY") == "" {
+		result := map[string]interface{}{
+			"events":  []models.Event{},
+			"message": "Set TICKETMASTER_API_KEY for event listings (free at developer.ticketmaster.com)",
+		}
+		summary := "Event search unavailable. Set TICKETMASTER_API_KEY for event listings (free at developer.ticketmaster.com)."
+		content, err := buildAnnotatedContentBlocks(summary, result)
+		if err != nil {
+			return nil, nil, err
+		}
+		return content, result, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	events, err := destinations.GetEvents(ctx, location, startDate, endDate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := map[string]interface{}{
+		"events": events,
+	}
+
+	summary := localEventsSummary(events, location, startDate, endDate)
+	content, err := buildAnnotatedContentBlocks(summary, result)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return content, result, nil
+}
+
+func localEventsSummary(events []models.Event, location, startDate, endDate string) string {
+	if len(events) == 0 {
+		return fmt.Sprintf("No events found in %s from %s to %s.", location, startDate, endDate)
+	}
+
+	parts := []string{
+		fmt.Sprintf("Found %d events in %s from %s to %s", len(events), location, startDate, endDate),
+	}
+
+	// Show first event.
+	e := events[0]
+	detail := fmt.Sprintf("Next: %s at %s on %s", e.Name, e.Venue, e.Date)
+	if e.PriceRange != "" {
+		detail += fmt.Sprintf(" (%s)", e.PriceRange)
+	}
+	parts = append(parts, detail)
+
+	return strings.Join(parts, ". ") + "."
+}

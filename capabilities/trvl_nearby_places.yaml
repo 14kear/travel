@@ -1,0 +1,122 @@
+fulcrum: "1.0"
+name: trvl_nearby_places
+description: >-
+  Find nearby points of interest (restaurants, cafes, bars, pharmacies, ATMs,
+  museums, attractions) using OpenStreetMap Overpass API. Results include name,
+  type, distance, cuisine, opening hours, phone, and website. Optionally
+  enriched with Foursquare ratings (FOURSQUARE_API_KEY), Geoapify walking data
+  (GEOAPIFY_API_KEY), and OpenTripMap tourist attractions (OPENTRIPMAP_API_KEY).
+  OSM data is always free, no API key required.
+
+schema:
+  input:
+    type: object
+    properties:
+      lat:
+        type: number
+        description: Latitude of the center point
+      lon:
+        type: number
+        description: Longitude of the center point
+      radius_m:
+        type: integer
+        description: "Search radius in meters (default: 500, max: 5000)"
+      category:
+        type: string
+        description: "POI category: restaurant, cafe, bar, pharmacy, atm, bank, supermarket, hospital, museum, attraction, all"
+    required: [lat, lon]
+  output:
+    type: object
+    properties:
+      pois:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+            lat:
+              type: number
+            lon:
+              type: number
+            distance_m:
+              type: integer
+            cuisine:
+              type: string
+            opening_hours:
+              type: string
+            phone:
+              type: string
+            website:
+              type: string
+      rated_places:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            rating:
+              type: number
+            category:
+              type: string
+            price_level:
+              type: integer
+            distance_m:
+              type: integer
+            address:
+              type: string
+            tip:
+              type: string
+      attractions:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            kind:
+              type: string
+            distance_m:
+              type: integer
+            wikipedia_url:
+              type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 20
+    config:
+      command: trvl
+      args:
+        - nearby
+        - "{lat}"
+        - "{lon}"
+        - "--category"
+        - "{category}"
+        - "--radius"
+        - "{radius_m}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 3600
+
+auth:
+  required: false
+
+metadata:
+  category: travel
+  tags: [travel, poi, nearby, restaurant, cafe, museum, attraction, osm, openstreetmap, foursquare, geoapify, free]
+  cost_category: free
+  execution_time: medium
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Always-on via OpenStreetMap Overpass (free, no key). Optional enrichment
+    from Foursquare (ratings), Geoapify (walking isochrone), and OpenTripMap
+    (tourist attractions) when respective API keys are set.

@@ -1,0 +1,83 @@
+fulcrum: "1.0"
+name: trvl_local_events
+description: >-
+  Find local events (concerts, sports, arts, theatre) at a destination during
+  travel dates. Powered by the Ticketmaster Discovery API. Requires
+  TICKETMASTER_API_KEY environment variable (free at developer.ticketmaster.com).
+
+schema:
+  input:
+    type: object
+    properties:
+      location:
+        type: string
+        description: City name (e.g., Barcelona, Tokyo, New York)
+      start_date:
+        type: string
+        description: Start date in YYYY-MM-DD format
+      end_date:
+        type: string
+        description: End date in YYYY-MM-DD format
+    required: [location, start_date, end_date]
+  output:
+    type: object
+    properties:
+      events:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            date:
+              type: string
+            time:
+              type: string
+            venue:
+              type: string
+            type:
+              type: string
+            url:
+              type: string
+            price_range:
+              type: string
+      message:
+        type: string
+
+providers:
+  primary:
+    service: cli
+    cost_per_call: 0
+    timeout: 15
+    config:
+      command: trvl
+      args:
+        - events
+        - "{location}"
+        - "--from"
+        - "{start_date}"
+        - "--to"
+        - "{end_date}"
+        - "--format"
+        - "json"
+
+cache:
+  strategy: exact
+  ttl: 21600
+
+auth:
+  required: false
+  optional_keys:
+    - TICKETMASTER_API_KEY
+
+metadata:
+  category: travel
+  tags: [travel, events, concerts, sports, arts, ticketmaster, entertainment, local]
+  cost_category: free
+  execution_time: fast
+  read_only: true
+  source: https://github.com/MikkoParkkola/trvl
+  notes: >-
+    Requires TICKETMASTER_API_KEY environment variable. Free tier available at
+    developer.ticketmaster.com. Returns helpful message when key is not set.
+    Results cached for 6 hours.
