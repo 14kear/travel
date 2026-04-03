@@ -141,6 +141,11 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 
 	headers := []string{"Price", "Duration", "Stops", "Route", "Airline", "Flight", "Departs", "Arrives"}
 	var rows [][]string
+	var prices priceScale
+
+	for _, f := range result.Flights {
+		prices = prices.With(f.Price)
+	}
 
 	for _, f := range result.Flights {
 		route := flightRoute(f)
@@ -157,9 +162,9 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 		}
 
 		rows = append(rows, []string{
-			formatPrice(f.Price, f.Currency),
+			prices.Apply(f.Price, formatPrice(f.Price, f.Currency)),
 			formatDuration(f.Duration),
-			formatStops(f.Stops),
+			colorizeStops(f.Stops),
 			route,
 			airline,
 			flightNum,

@@ -111,6 +111,11 @@ func formatHotelsTable(ctx context.Context, targetCurrency string, result *model
 
 	headers := []string{"Name", "Stars", "Rating", "Reviews", "Price", "Amenities"}
 	rows := make([][]string, 0, len(result.Hotels))
+	var prices priceScale
+
+	for _, h := range result.Hotels {
+		prices = prices.With(h.Price)
+	}
 	for _, h := range result.Hotels {
 		starsStr := ""
 		if h.Stars > 0 {
@@ -126,13 +131,13 @@ func formatHotelsTable(ctx context.Context, targetCurrency string, result *model
 		}
 		priceStr := ""
 		if h.Price > 0 {
-			priceStr = fmt.Sprintf("%.0f %s", h.Price, h.Currency)
+			priceStr = prices.Apply(h.Price, fmt.Sprintf("%.0f %s", h.Price, h.Currency))
 		}
 		amenStr := strings.Join(h.Amenities, ", ")
 		if len(amenStr) > 40 {
 			amenStr = amenStr[:37] + "..."
 		}
-		rows = append(rows, []string{h.Name, starsStr, ratingStr, reviewsStr, priceStr, amenStr})
+		rows = append(rows, []string{h.Name, starsStr, colorizeRating(h.Rating, ratingStr), reviewsStr, priceStr, amenStr})
 	}
 
 	models.FormatTable(os.Stdout, headers, rows)

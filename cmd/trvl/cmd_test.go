@@ -157,7 +157,7 @@ func TestHotelsCmd_Flags(t *testing.T) {
 		{"guests", "2"},
 		{"stars", "0"},
 		{"sort", "cheapest"},
-		{"currency", "USD"},
+		{"currency", ""},
 		{"min-price", "0"},
 		{"max-price", "0"},
 		{"min-rating", "0"},
@@ -172,6 +172,94 @@ func TestHotelsCmd_Flags(t *testing.T) {
 		if f.DefValue != tt.defValue {
 			t.Errorf("hotels --%s default = %q, want %q", tt.name, f.DefValue, tt.defValue)
 		}
+	}
+}
+
+type fakeStdout struct{}
+
+func (fakeStdout) Fd() uintptr { return 1 }
+
+func TestShouldUseColor(t *testing.T) {
+	tests := []struct {
+		name       string
+		isTerminal bool
+		env        map[string]string
+		want       bool
+	}{
+		{name: "terminal by default", isTerminal: true, want: true},
+		{name: "piped by default", isTerminal: false, want: false},
+		{name: "no color disables", isTerminal: true, env: map[string]string{"NO_COLOR": "1"}, want: false},
+		{name: "clicolor zero disables", isTerminal: true, env: map[string]string{"CLICOLOR": "0"}, want: false},
+		{name: "dumb terminal disables", isTerminal: true, env: map[string]string{"TERM": "dumb"}, want: false},
+		{name: "force color overrides pipe", isTerminal: false, env: map[string]string{"FORCE_COLOR": "1"}, want: true},
+		{name: "clicolor force overrides pipe", isTerminal: false, env: map[string]string{"CLICOLOR_FORCE": "1"}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldUseColor(fakeStdout{}, func(int) bool { return tt.isTerminal }, func(key string) string {
+				return tt.env[key]
+			})
+			if got != tt.want {
+				t.Fatalf("shouldUseColor() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPriceScaleApply(t *testing.T) {
+	origColor := models.UseColor
+	models.UseColor = true
+	defer func() { models.UseColor = origColor }()
+
+	scale := priceScale{}.With(120).With(260).With(480)
+
+	if got := scale.Apply(120, "EUR 120"); got != "\033[32mEUR 120\033[0m" {
+		t.Fatalf("expected cheapest price in green, got %q", got)
+	}
+	if got := scale.Apply(260, "EUR 260"); got != "EUR 260" {
+		t.Fatalf("expected midpoint price uncolored, got %q", got)
+	}
+	if got := scale.Apply(480, "EUR 480"); got != "\033[31mEUR 480\033[0m" {
+		t.Fatalf("expected highest price in red, got %q", got)
+	}
+	if got := scale.Apply(0, "-"); got != "-" {
+		t.Fatalf("expected zero price to stay plain, got %q", got)
+	}
+}
+
+func TestColorizeStops(t *testing.T) {
+	origColor := models.UseColor
+	models.UseColor = true
+	defer func() { models.UseColor = origColor }()
+
+	if got := colorizeStops(0); got != "\033[32mDirect\033[0m" {
+		t.Fatalf("expected direct route in green, got %q", got)
+	}
+	if got := colorizeStops(1); got != "\033[33m1 stop\033[0m" {
+		t.Fatalf("expected one stop in yellow, got %q", got)
+	}
+	if got := colorizeStops(2); got != "\033[31m2 stops\033[0m" {
+		t.Fatalf("expected multi-stop route in red, got %q", got)
+	}
+}
+
+func TestColorizeRating(t *testing.T) {
+	origColor := models.UseColor
+	models.UseColor = true
+	defer func() { models.UseColor = origColor }()
+
+	if got := colorizeRating(4.8, "4.8"); got != "\033[32m4.8\033[0m" {
+		t.Fatalf("expected strong rating in green, got %q", got)
+	}
+	if got := colorizeRating(4.0, "4.0"); got != "\033[33m4.0\033[0m" {
+		t.Fatalf("expected middling rating in yellow, got %q", got)
+	}
+	if got := colorizeRating(3.2, "3.2"); got != "\033[31m3.2\033[0m" {
+		t.Fatalf("expected weak rating in red, got %q", got)
+	}
+	if got := colorizeRating(0, "-"); got != "-" {
+		t.Fatalf("expected missing rating to stay plain, got %q", got)
 	}
 }
 

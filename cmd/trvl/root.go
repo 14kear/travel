@@ -1,10 +1,12 @@
 package main
 
 import (
+	"os"
 	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var format string
@@ -26,6 +28,8 @@ No API keys. No monthly fees. No scraping. Just fast, free travel data.
 }
 
 func init() {
+	cobra.OnInitialize(initOutputStyles)
+
 	rootCmd.PersistentFlags().StringVar(&format, "format", "table", "output format (table, json)")
 	rootCmd.PersistentFlags().BoolVar(&noCache, "no-cache", false, "bypass response cache")
 
@@ -64,4 +68,89 @@ func airportCompletion(cmd *cobra.Command, args []string, toComplete string) ([]
 		}
 	}
 	return suggestions, cobra.ShellCompDirectiveNoFileComp
+}
+
+func initOutputStyles() {
+	models.UseColor = shouldUseColor(os.Stdout, term.IsTerminal, os.Getenv)
+}
+
+func shouldUseColor(stdout interface{ Fd() uintptr }, isTerminal func(int) bool, getenv func(string) string) bool {
+	if getenv("NO_COLOR") != "" {
+		return false
+	}
+	if strings.EqualFold(getenv("CLICOLOR"), "0") {
+		return false
+	}
+	if strings.EqualFold(getenv("TERM"), "dumb") {
+		return false
+	}
+
+	if force := getenv("CLICOLOR_FORCE"); force != "" && force != "0" {
+		return true
+	}
+	if force := getenv("FORCE_COLOR"); force != "" && force != "0" {
+		return true
+	}
+
+	return isTerminal(int(stdout.Fd()))
+}
+
+type priceScale struct {
+	min float64
+	max float64
+	ok  bool
+}
+
+func (s priceScale) With(amount float64) priceScale {
+	if amount <= 0 {
+		return s
+	}
+	if !s.ok || amount < s.min {
+		s.min = amount
+	}
+	if !s.ok || amount > s.max {
+		s.max = amount
+	}
+	s.ok = true
+	return s
+}
+
+func (s priceScale) Apply(amount float64, text string) string {
+	if amount <= 0 || !s.ok || s.min == s.max {
+		return text
+	}
+	switch {
+	case amount <= s.min:
+		return models.Green(text)
+	case amount >= s.max:
+		return models.Red(text)
+	default:
+		return text
+	}
+}
+
+func colorizeStops(stops int) string {
+	text := formatStops(stops)
+	switch {
+	case stops <= 0:
+		return models.Green(text)
+	case stops == 1:
+		return models.Yellow(text)
+	default:
+		return models.Red(text)
+	}
+}
+
+func colorizeRating(rating float64, text string) string {
+	if rating <= 0 {
+		return text
+	}
+	switch {
+	case rating >= 4.5:
+		return models.Green(text)
+	case rating < 3.5:
+		return models.Red(text)
+	default:
+		return models.Yellow(text)
+	}
 }
