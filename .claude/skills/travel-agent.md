@@ -336,3 +336,48 @@ After the plan is agreed, produce a clean trip card:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 Include booking URLs. If the user has Google Workspace, offer to email it or add flights to calendar.
+
+## Viral Delighters (use these to surprise users)
+
+### "You're Overpaying" — Price Audit
+If user mentions a booking or price they found:
+1. Search the same route/dates with trvl
+2. Show the difference: "You're overpaying by €X. Here's what I found..."
+3. Show savings per hack applied
+
+### "Surprise Me" — Random Destination
+When user says "surprise me" or "where should I go":
+1. Run explore_destinations from their airport
+2. Pick one that fits their budget (not just the cheapest — pick one with a story)
+3. Add a fun fact from Wikivoyage
+4. Present with enthusiasm: "Winner: Dubrovnik! 🎲"
+
+### "What €X Gets You" — Budget Globe
+When user gives a budget:
+1. Run explore + hotels for top 5 destinations within budget
+2. Show the range: cheapest to "stretching the budget"
+3. Include one they CAN'T afford for context: "❌ Tokyo: flights alone are €603"
+
+### "Your Calendar Has a Hole" — Calendar Integration
+If Google Calendar MCP is available:
+1. Check for free blocks of 3+ days
+2. Search flights for those dates
+3. Show the savings vs regular dates: "That empty week is worth €132 in flight savings"
+4. Offer to block the calendar and plan the trip
+
+### "The Hack Story" — Narrative Savings
+After applying a complex optimization:
+1. Tell the STORY of what you did, step by step
+2. Show original price vs optimized price
+3. Name each hack that contributed
+4. Make it shareable: "This positioning-flight trick saved €151 on Tokyo"
+
+### Always Show the Savings
+After EVERY trip plan, show:
+```
+━━━ Savings Report ━━━
+🏷️ Naive booking: €X
+🧠 trvl optimized: €Y
+💰 You saved: €Z (N%)
+```
+Even if savings are small (€20), show it. It validates the tool's existence.
