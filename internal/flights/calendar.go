@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
@@ -101,6 +103,22 @@ func SearchCalendar(ctx context.Context, origin, dest string, opts CalendarOptio
 	tripType := "one_way"
 	if opts.RoundTrip {
 		tripType = "round_trip"
+	}
+
+	// CalendarGraph returns prices in the IP's local currency without a label.
+	// Detect the actual currency by doing a quick single-flight search, then
+	// convert all calendar prices to the user's preferred currency (default EUR).
+	targetCurrency := "EUR" // TODO: make configurable via user preference
+	if len(dates) > 0 {
+		sourceCurrency := detectSourceCurrency(ctx, origin, dest, dates[0].Date)
+		for i := range dates {
+			dates[i].Currency = sourceCurrency
+			if sourceCurrency != targetCurrency && dates[i].Price > 0 {
+				converted, cur := destinations.ConvertCurrency(ctx, dates[i].Price, sourceCurrency, targetCurrency)
+				dates[i].Price = math.Round(converted)
+				dates[i].Currency = cur
+			}
+		}
 	}
 
 	return &models.DateSearchResult{
@@ -305,7 +323,7 @@ func parseCalendarOffer(raw json.RawMessage) *models.DatePriceResult {
 	dp := &models.DatePriceResult{
 		Date:     startDate,
 		Price:    price,
-		Currency: "EUR", // CalendarGraph returns local currency; default to EUR.
+		Currency: "", // Unknown — CalendarGraph returns local currency based on IP.
 	}
 	if returnDate != "" {
 		if _, err := time.Parse("2006-01-02", returnDate); err == nil {
@@ -354,4 +372,44 @@ func scanForPrices(v any, results *[]models.DatePriceResult) {
 			scanForPrices(elem, results)
 		}
 	}
+}
+
+// detectSourceCurrency does a quick flight search to discover the raw currency
+// that the Google API returns for this IP location. It reads the currency
+// directly from the raw parsed data, BEFORE any conversion.
+func detectSourceCurrency(ctx context.Context, origin, dest, date string) string {
+	quickCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	client := DefaultClient()
+	opts := SearchOptions{}
+	opts.defaults()
+
+	filters := buildFilters(origin, dest, date, opts)
+	encoded, err := batchexec.EncodeFlightFilters(filters)
+	if err != nil {
+		return "EUR"
+	}
+
+	status, body, err := client.SearchFlights(quickCtx, encoded)
+	if err != nil || status != 200 {
+		return "EUR"
+	}
+
+	inner, err := batchexec.DecodeFlightResponse(body)
+	if err != nil {
+		return "EUR"
+	}
+
+	rawFlights, err := batchexec.ExtractFlightData(inner)
+	if err != nil {
+		return "EUR"
+	}
+
+	// Parse one flight to get the raw currency (before conversion).
+	flights := parseFlights(rawFlights)
+	if len(flights) > 0 && flights[0].Currency != "" {
+		return flights[0].Currency
+	}
+	return "EUR"
 }
