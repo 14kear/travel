@@ -12,26 +12,21 @@ import (
 func TestFilterZeroPriceRoutes(t *testing.T) {
 	routes := []models.GroundRoute{
 		{Provider: "regiojet", Price: 15.0, Currency: "EUR"},
-		{Provider: "regiojet", Price: 0, Currency: "EUR"},   // sold out
+		{Provider: "regiojet", Price: 0, Currency: "EUR"}, // sold out
 		{Provider: "flixbus", Price: 22.5, Currency: "EUR"},
-		{Provider: "regiojet", Price: 0, Currency: "EUR"},   // sold out
+		{Provider: "transitous", Price: 0, Currency: ""},  // unpriced, should be kept
+		{Provider: "regiojet", Price: 0, Currency: "EUR"}, // sold out
 		{Provider: "flixbus", Price: 9.99, Currency: "EUR"},
 	}
 
-	// Apply the same filtering logic used in SearchByName.
-	filtered := routes[:0]
-	for _, r := range routes {
-		if r.Price > 0 {
-			filtered = append(filtered, r)
-		}
-	}
+	filtered := filterUnavailableGroundRoutes(routes)
 
-	if len(filtered) != 3 {
-		t.Fatalf("expected 3 routes after filtering, got %d", len(filtered))
+	if len(filtered) != 4 {
+		t.Fatalf("expected 4 routes after filtering, got %d", len(filtered))
 	}
 	for _, r := range filtered {
-		if r.Price == 0 {
-			t.Error("zero-price route should have been filtered out")
+		if r.Price == 0 && r.Provider != "transitous" {
+			t.Error("zero-price non-transitous route should have been filtered out")
 		}
 	}
 }
@@ -42,12 +37,7 @@ func TestFilterZeroPriceRoutes_AllZero(t *testing.T) {
 		{Provider: "regiojet", Price: 0, Currency: "EUR"},
 	}
 
-	filtered := routes[:0]
-	for _, r := range routes {
-		if r.Price > 0 {
-			filtered = append(filtered, r)
-		}
-	}
+	filtered := filterUnavailableGroundRoutes(routes)
 
 	if len(filtered) != 0 {
 		t.Fatalf("expected 0 routes after filtering, got %d", len(filtered))
@@ -60,12 +50,7 @@ func TestFilterZeroPriceRoutes_NoneZero(t *testing.T) {
 		{Provider: "regiojet", Price: 5, Currency: "EUR"},
 	}
 
-	filtered := routes[:0]
-	for _, r := range routes {
-		if r.Price > 0 {
-			filtered = append(filtered, r)
-		}
-	}
+	filtered := filterUnavailableGroundRoutes(routes)
 
 	if len(filtered) != 2 {
 		t.Fatalf("expected 2 routes after filtering, got %d", len(filtered))

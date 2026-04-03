@@ -39,7 +39,7 @@ func rateLimitedDo(ctx context.Context, limiter *rate.Limiter, req *http.Request
 
 // SearchOptions configures a ground transport search.
 type SearchOptions struct {
-	Currency  string // Default: EUR
+	Currency  string   // Default: EUR
 	Providers []string // Filter to specific providers; empty = all
 	MaxPrice  float64  // 0 = no limit
 	Type      string   // "bus", "train", or empty for all
@@ -158,16 +158,9 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		allRoutes = append(allRoutes, r.routes...)
 	}
 
-	// Filter out zero-price routes (sold-out routes from RegioJet)
-	{
-		filtered := allRoutes[:0]
-		for _, r := range allRoutes {
-			if r.Price > 0 {
-				filtered = append(filtered, r)
-			}
-		}
-		allRoutes = filtered
-	}
+	// Filter out zero-price routes that indicate sold-out inventory, while
+	// preserving providers like Transitous that do not expose pricing at all.
+	allRoutes = filterUnavailableGroundRoutes(allRoutes)
 
 	// Apply filters
 	if opts.MaxPrice > 0 {
@@ -203,6 +196,16 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		result.Error = strings.Join(errors, "; ")
 	}
 	return result, nil
+}
+
+func filterUnavailableGroundRoutes(routes []models.GroundRoute) []models.GroundRoute {
+	filtered := routes[:0]
+	for _, route := range routes {
+		if route.Price > 0 || strings.EqualFold(route.Provider, "transitous") {
+			filtered = append(filtered, route)
+		}
+	}
+	return filtered
 }
 
 // searchFlixBusByName resolves city names and searches FlixBus.
