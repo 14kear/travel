@@ -2,9 +2,12 @@ package ground
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -56,7 +59,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan providerResult, 3)
+	results := make(chan providerResult, 5)
 
 	useProvider := func(name string) bool {
 		if len(opts.Providers) == 0 {
@@ -105,6 +108,27 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 				routes, err = SearchEurostar(ctx, from, to, date, date, opts.Currency, false)
 			}
 			results <- providerResult{routes: routes, err: err, name: "eurostar"}
+		}()
+	}
+
+	// SNCF — only if at least one city is French.
+	if useProvider("sncf") && HasSNCFRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchSNCF(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "sncf"}
+		}()
+	}
+
+	// Transitous — coordinate-based, always available as a fallback.
+	// Requires geocoding city names to coordinates; skipped if geocoding fails.
+	if useProvider("transitous") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := searchTransitousByName(ctx, from, to, date)
+			results <- providerResult{routes: routes, err: err, name: "transitous"}
 		}()
 	}
 
@@ -226,4 +250,95 @@ func searchRegioJetByName(ctx context.Context, from, to, date, currency string) 
 	}
 
 	return SearchRegioJet(ctx, fromCities[0].ID, toCities[0].ID, date, currency)
+}
+
+// searchTransitousByName geocodes city names to coordinates and searches Transitous.
+func searchTransitousByName(ctx context.Context, from, to, date string) ([]models.GroundRoute, error) {
+	fromGeo, err := geocodeCity(ctx, from)
+	if err != nil {
+		return nil, fmt.Errorf("geocode from city: %w", err)
+	}
+	toGeo, err := geocodeCity(ctx, to)
+	if err != nil {
+		return nil, fmt.Errorf("geocode to city: %w", err)
+	}
+	return SearchTransitous(ctx, fromGeo.lat, fromGeo.lon, toGeo.lat, toGeo.lon, date)
+}
+
+// geoCoord holds a latitude/longitude pair from geocoding.
+type geoCoord struct {
+	lat float64
+	lon float64
+}
+
+// geoCityCache caches city name to coordinate lookups.
+var geoCityCache = struct {
+	sync.RWMutex
+	entries map[string]geoCoord
+}{entries: make(map[string]geoCoord)}
+
+// geocodeCity resolves a city name to coordinates using Nominatim.
+func geocodeCity(ctx context.Context, city string) (geoCoord, error) {
+	key := strings.ToLower(strings.TrimSpace(city))
+
+	geoCityCache.RLock()
+	if entry, ok := geoCityCache.entries[key]; ok {
+		geoCityCache.RUnlock()
+		return entry, nil
+	}
+	geoCityCache.RUnlock()
+
+	params := url.Values{
+		"q":      {city},
+		"format": {"json"},
+		"limit":  {"1"},
+	}
+	apiURL := "https://nominatim.openstreetmap.org/search?" + params.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return geoCoord{}, err
+	}
+	req.Header.Set("User-Agent", "trvl/1.0 (travel agent; github.com/MikkoParkkola/trvl)")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return geoCoord{}, fmt.Errorf("nominatim: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return geoCoord{}, fmt.Errorf("nominatim: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if err != nil {
+		return geoCoord{}, fmt.Errorf("nominatim read: %w", err)
+	}
+
+	var results []struct {
+		Lat string `json:"lat"`
+		Lon string `json:"lon"`
+	}
+	if err := json.Unmarshal(body, &results); err != nil {
+		return geoCoord{}, fmt.Errorf("nominatim decode: %w", err)
+	}
+	if len(results) == 0 {
+		return geoCoord{}, fmt.Errorf("no geocoding results for %q", city)
+	}
+
+	var lat, lon float64
+	if _, err := fmt.Sscanf(results[0].Lat, "%f", &lat); err != nil {
+		return geoCoord{}, fmt.Errorf("parse lat %q: %w", results[0].Lat, err)
+	}
+	if _, err := fmt.Sscanf(results[0].Lon, "%f", &lon); err != nil {
+		return geoCoord{}, fmt.Errorf("parse lon %q: %w", results[0].Lon, err)
+	}
+
+	coord := geoCoord{lat: lat, lon: lon}
+	geoCityCache.Lock()
+	geoCityCache.entries[key] = coord
+	geoCityCache.Unlock()
+
+	return coord, nil
 }
