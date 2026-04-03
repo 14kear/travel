@@ -12,6 +12,10 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
+func longCallbackPreamble() string {
+	return strings.Repeat("meta:'xxxxxxxxxx',", 40)
+}
+
 // --- parsePriceString ---
 
 func TestParsePriceString(t *testing.T) {
@@ -394,6 +398,31 @@ func TestExtractCallbacks_MalformedJSON(t *testing.T) {
 	// The data: starts with '{' not '[', so it should be skipped.
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for non-array data, got %d", len(results))
+	}
+}
+
+func TestExtractCallbacks_LongCallbackPreamble(t *testing.T) {
+	page := `AF_initDataCallback({key: 'ds:0', ` + longCallbackPreamble() + `data:[1,2,3], sideChannel: {}});`
+	results := extractCallbacks(page)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	arr, ok := results[0].([]any)
+	if !ok {
+		t.Fatalf("expected parsed array result, got %T", results[0])
+	}
+	if len(arr) != 3 {
+		t.Fatalf("expected 3 array elements, got %d", len(arr))
+	}
+}
+
+func TestExtractCallbacks_DoesNotReachIntoNextCallback(t *testing.T) {
+	page := `AF_initDataCallback({key: 'ds:0', sideChannel: {}});` +
+		`AF_initDataCallback({key: 'ds:1', data:[4,5,6]});`
+	results := extractCallbacks(page)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result from the second callback only, got %d", len(results))
 	}
 }
 

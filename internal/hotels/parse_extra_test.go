@@ -375,6 +375,39 @@ func TestParseHotelsFromPage_WithOrganicHotels(t *testing.T) {
 	}
 }
 
+func TestParseHotelsFromPage_LongCallbackPreamble(t *testing.T) {
+	hotel := make([]any, 12)
+	hotel[0] = nil
+	hotel[1] = "Long Preamble Hotel"
+	hotel[2] = []any{[]any{60.168, 24.941}}
+	hotel[3] = []any{"3-star", 3.0}
+	hotel[9] = "/g/long-preamble"
+
+	hotelList := []any{
+		[]any{
+			nil,
+			map[string]any{
+				"397419284": []any{hotel},
+			},
+		},
+	}
+	innerData := []any{[]any{[]any{[]any{nil, hotelList}}}}
+	dataJSON, _ := json.Marshal(innerData)
+
+	page := `AF_initDataCallback({key: 'ds:0', ` + longCallbackPreamble() + `data:` + string(dataJSON) + `});`
+
+	hotels, err := parseHotelsFromPage(page, "EUR")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(hotels) != 1 {
+		t.Fatalf("expected 1 hotel, got %d", len(hotels))
+	}
+	if hotels[0].Name != "Long Preamble Hotel" {
+		t.Errorf("Name = %q", hotels[0].Name)
+	}
+}
+
 func TestParseHotelsFromPage_DeduplicateOrgAndSponsored(t *testing.T) {
 	// Same hotel appears in both organic and sponsored.
 	organicHotel := make([]any, 12)

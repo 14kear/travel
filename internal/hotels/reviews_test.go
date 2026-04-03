@@ -428,6 +428,37 @@ func TestParseReviewsFromPage_NoCallbacks(t *testing.T) {
 	}
 }
 
+func TestParseReviewsFromPage_LongCallbackPreamble(t *testing.T) {
+	review1 := []any{
+		nil,
+		"Alice",
+		5.0,
+		"Outstanding hotel with incredible views and impeccable service throughout.",
+		"1 week ago",
+	}
+	review2 := []any{
+		nil,
+		"Bob",
+		3.0,
+		"Decent hotel but a bit overpriced for what you get, average amenities.",
+		"2 weeks ago",
+	}
+	dataJSON, _ := json.Marshal([]any{review1, review2})
+
+	page := `AF_initDataCallback({key: 'ds:0', ` + longCallbackPreamble() + `data:` + string(dataJSON) + `});`
+
+	result, err := parseReviewsFromPage(page, "/g/test", ReviewOptions{Limit: 10, Sort: "newest"})
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if result.Count != 2 {
+		t.Fatalf("expected 2 reviews, got %d", result.Count)
+	}
+	if result.Reviews[0].Author != "Alice" {
+		t.Errorf("first review author = %q", result.Reviews[0].Author)
+	}
+}
+
 // --- findReviewEntries ---
 
 func TestFindReviewEntries_DirectReviewList(t *testing.T) {
@@ -529,4 +560,3 @@ func TestExtractHotelName_NotFound(t *testing.T) {
 		t.Errorf("expected empty name, got %q", name)
 	}
 }
-

@@ -77,26 +77,36 @@ func parseHotelsFromPage(page string, currency string) ([]models.HotelResult, er
 // extractCallbacks extracts parsed JSON data from AF_initDataCallback blocks
 // in an HTML page. Returns a slice of parsed JSON values.
 func extractCallbacks(page string) []any {
+	const callbackPrefix = "AF_initDataCallback({"
+	const callbackEndMarker = "});"
+
 	var results []any
 	remaining := page
 
 	for {
-		idx := strings.Index(remaining, "AF_initDataCallback({")
+		idx := strings.Index(remaining, callbackPrefix)
 		if idx < 0 {
 			break
 		}
 		remaining = remaining[idx:]
 
+		callbackEnd := strings.Index(remaining, callbackEndMarker)
+		if callbackEnd < 0 {
+			remaining = remaining[len(callbackPrefix):]
+			continue
+		}
+		callback := remaining[:callbackEnd]
+
 		// Find the "data:" field.
-		dataStart := strings.Index(remaining, "data:")
-		if dataStart < 0 || dataStart > 500 {
-			remaining = remaining[20:]
+		dataStart := strings.Index(callback, "data:")
+		if dataStart < 0 {
+			remaining = remaining[len(callbackPrefix):]
 			continue
 		}
 
-		dataStr := strings.TrimSpace(remaining[dataStart+5:])
+		dataStr := strings.TrimSpace(callback[dataStart+len("data:"):])
 		if len(dataStr) == 0 || dataStr[0] != '[' {
-			remaining = remaining[20:]
+			remaining = remaining[len(callbackPrefix):]
 			continue
 		}
 
@@ -107,7 +117,7 @@ func extractCallbacks(page string) []any {
 			results = append(results, parsed)
 		}
 
-		remaining = remaining[20:]
+		remaining = remaining[len(callbackPrefix):]
 	}
 
 	return results
