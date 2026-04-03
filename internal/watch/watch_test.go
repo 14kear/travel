@@ -283,8 +283,8 @@ type mockChecker struct {
 	err      error
 }
 
-func (m *mockChecker) CheckPrice(_ context.Context, _ Watch) (float64, string, error) {
-	return m.price, m.currency, m.err
+func (m *mockChecker) CheckPrice(_ context.Context, _ Watch) (float64, string, string, error) {
+	return m.price, m.currency, "", m.err
 }
 
 func TestCheckAllThreshold(t *testing.T) {

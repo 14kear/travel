@@ -11,19 +11,21 @@ import (
 // without creating an import dependency from the watch package.
 type PriceChecker interface {
 	// CheckPrice returns the cheapest price and currency for the given watch.
+	// For date-range and route watches, also returns the cheapest date found.
 	// Returns 0 price if no results are found (not an error).
-	CheckPrice(ctx context.Context, w Watch) (price float64, currency string, err error)
+	CheckPrice(ctx context.Context, w Watch) (price float64, currency string, cheapestDate string, err error)
 }
 
 // CheckResult holds the outcome of checking a single watch.
 type CheckResult struct {
-	Watch      Watch
-	NewPrice   float64
-	Currency   string
-	PrevPrice  float64
-	BelowGoal  bool    // price dropped below threshold
-	PriceDrop  float64 // negative = price decreased (good)
-	Error      error
+	Watch        Watch
+	NewPrice     float64
+	Currency     string
+	PrevPrice    float64
+	BelowGoal    bool    // price dropped below threshold
+	PriceDrop    float64 // negative = price decreased (good)
+	CheapestDate string  // for range/route watches: which date was cheapest
+	Error        error
 }
 
 // CheckAll checks all watches using the provided price checker and records
@@ -41,16 +43,17 @@ func CheckAll(ctx context.Context, store *Store, checker PriceChecker) []CheckRe
 
 // checkOne performs a price check for a single watch.
 func checkOne(ctx context.Context, store *Store, checker PriceChecker, w Watch) CheckResult {
-	price, currency, err := checker.CheckPrice(ctx, w)
+	price, currency, cheapestDate, err := checker.CheckPrice(ctx, w)
 	if err != nil {
 		return CheckResult{Watch: w, Error: err}
 	}
 
 	result := CheckResult{
-		Watch:     w,
-		NewPrice:  price,
-		Currency:  currency,
-		PrevPrice: w.LastPrice,
+		Watch:        w,
+		NewPrice:     price,
+		Currency:     currency,
+		PrevPrice:    w.LastPrice,
+		CheapestDate: cheapestDate,
 	}
 
 	if price > 0 {
@@ -68,6 +71,9 @@ func checkOne(ctx context.Context, store *Store, checker PriceChecker, w Watch) 
 		w.LastCheck = time.Now()
 		w.LastPrice = price
 		w.Currency = currency
+		if cheapestDate != "" {
+			w.CheapestDate = cheapestDate
+		}
 		if w.LowestPrice == 0 || price < w.LowestPrice {
 			w.LowestPrice = price
 		}

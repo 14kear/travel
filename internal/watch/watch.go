@@ -15,19 +15,37 @@ import (
 )
 
 // Watch represents a price tracking rule for a flight or hotel route.
+//
+// Three watch modes:
+//   - Specific date: DepartDate set, no DepartFrom/DepartTo → checks one date
+//   - Date range: DepartFrom + DepartTo set → checks cheapest across range
+//   - Route watch: no dates at all → checks next 60 days for cheapest on any date
 type Watch struct {
 	ID          string    `json:"id"`
 	Type        string    `json:"type"` // "flight" or "hotel"
 	Origin      string    `json:"origin"`
 	Destination string    `json:"destination"`
-	DepartDate  string    `json:"depart_date"`
+	DepartDate  string    `json:"depart_date,omitempty"`
 	ReturnDate  string    `json:"return_date,omitempty"`
+	DepartFrom  string    `json:"depart_from,omitempty"` // date range start (YYYY-MM-DD)
+	DepartTo    string    `json:"depart_to,omitempty"`   // date range end (YYYY-MM-DD)
 	BelowPrice  float64   `json:"below_price"`
 	Currency    string    `json:"currency"`
 	CreatedAt   time.Time `json:"created_at"`
 	LastCheck   time.Time `json:"last_check"`
 	LastPrice   float64   `json:"last_price"`
 	LowestPrice float64   `json:"lowest_price"`
+	CheapestDate string   `json:"cheapest_date,omitempty"` // which date had the lowest price
+}
+
+// IsRouteWatch returns true if this watch monitors a route without specific dates.
+func (w Watch) IsRouteWatch() bool {
+	return w.DepartDate == "" && w.DepartFrom == "" && w.DepartTo == ""
+}
+
+// IsDateRange returns true if this watch monitors a date range.
+func (w Watch) IsDateRange() bool {
+	return w.DepartFrom != "" && w.DepartTo != ""
 }
 
 // PricePoint records a single price observation for a watch.
