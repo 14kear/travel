@@ -142,6 +142,24 @@ That's it. Your AI assistant now has 9 travel tools available. Just ask naturall
 | **Progressive disclosure** | Suggestions for follow-up searches in every response |
 | **Booking links** | Direct Google Flights/Hotels links in results |
 
+## How trvl Compares
+
+| Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
+|---------|------|-----|---------------|------------|------|
+| Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Trip cost calculator | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Explore destinations | ✅ | ❌ | ✅ (web only) | ✅ (web) | ✅ |
+| Multi-city optimizer | ✅ | ❌ | ❌ | ❌ | ⚠️ (1.7★) |
+| Destination intelligence | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Travel hacks (auto-applied) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| MCP server | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Personal profile | ✅ | ❌ | ❌ | ❌ | ❌ |
+| CLI | ✅ | ✅ | ❌ | ❌ | ❌ |
+| No API key needed | ✅ | ✅ | N/A | N/A | N/A |
+| Single binary | ✅ (Go) | ❌ (Python) | N/A | N/A | N/A |
+
 ### mcp-gateway Integration
 
 ```yaml

@@ -196,7 +196,7 @@ func TestHTTPHandler_Health(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
 
-	var result map[string]string
+	var result map[string]interface{}
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -208,6 +208,10 @@ func TestHTTPHandler_Health(t *testing.T) {
 	}
 	if result["version"] != "0.2.0" {
 		t.Errorf("version = %q, want 0.2.0", result["version"])
+	}
+	tools, ok := result["tools"].(float64)
+	if !ok || tools < 1 {
+		t.Errorf("tools = %v, want positive number", result["tools"])
 	}
 }
 

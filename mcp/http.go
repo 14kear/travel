@@ -91,10 +91,11 @@ func (h *HTTPServer) handleMCP(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"server":  serverName,
 		"version": serverVersion,
+		"tools":   len(h.server.tools),
 	})
 }
 
