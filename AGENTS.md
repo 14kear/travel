@@ -102,7 +102,7 @@ This makes every future search personalized automatically.
 
 ## How To Use (after setup)
 
-You now have 9 MCP tools available. Use them when the user asks about travel:
+You now have 13 MCP tools available. Use them when the user asks about travel:
 
 ### search_flights — Find flights between airports
 ```json

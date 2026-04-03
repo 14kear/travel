@@ -2,6 +2,7 @@
 [![CI](https://github.com/MikkoParkkola/trvl/actions/workflows/ci.yaml/badge.svg)](https://github.com/MikkoParkkola/trvl/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/MikkoParkkola/trvl)](https://github.com/MikkoParkkola/trvl/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Reference](https://pkg.go.dev/badge/github.com/MikkoParkkola/trvl.svg)](https://pkg.go.dev/github.com/MikkoParkkola/trvl)
 [![MCP](https://img.shields.io/badge/MCP-2025--11--25-blue)](https://modelcontextprotocol.io)
 
 # trvl — Travel MCP Server for AI Assistants
@@ -301,7 +302,7 @@ No Selenium. No Puppeteer. No browser. Just HTTP.
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
 | **Data** | Real-time from Google Flights + Google Hotels + 5 free APIs |
 | **Auth** | None. No API keys, no accounts, no tokens. |
-| **MCP** | Full v2025-11-25 — 9 tools, 3 prompts, resources, structured content, elicitation |
+| **MCP** | Full v2025-11-25 — 13 tools, 3 prompts, resources, structured content, elicitation |
 | **CLI** | 14 commands with table and JSON output |
 | **Skills** | 4 Claude Code skills (trvl, travel-hacks, travel-agent, travel-agent-compact) |
 | **Output** | Pretty tables (default) or JSON (`--format json`) |
