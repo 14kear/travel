@@ -151,13 +151,8 @@ func oebbTripSearchRequest(fromExtID, toExtID, dateStr, timeStr string) map[stri
 					"outDate": dateStr,
 					"outTime": timeStr,
 					"outFrwd": true,
-					"trfReq": map[string]any{
-						"cType": "PK",
-						"jnyCl": 2,
-						"tvlrProf": []map[string]any{
-							{"type": "E", "redtnCard": 0},
-						},
-					},
+					// trfReq omitted — causes "empty svcResL" error on ÖBB HAFAS.
+					// Fares need a separate query or different HAFAS method.
 				},
 			},
 		},

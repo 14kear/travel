@@ -18,6 +18,7 @@ import (
 )
 
 const dbJourneysEndpoint = "https://app.services-bahn.de/mob/angebote/fahrplan"
+const dbBestPriceEndpoint = "https://app.services-bahn.de/mob/angebote/tagesbestpreis"
 
 // generateCorrelationID creates a DB-compatible correlation ID (uuid_uuid format).
 func generateCorrelationID() string {
@@ -252,6 +253,115 @@ type dbHalt struct {
 	Gleis         string `json:"gleis"`
 }
 
+// dbBestPriceResponse represents the response from the tagesbestpreis endpoint.
+type dbBestPriceResponse struct {
+	Preis *dbPreis `json:"preis,omitempty"`
+	Ab    *dbPreis `json:"ab,omitempty"`
+}
+
+// fetchDBBestPrice queries the DB tagesbestpreis endpoint for cross-border routes
+// that return no price from the standard fahrplan search. Returns (price, currency).
+// Returns (0, "") on any error so callers can skip gracefully.
+func fetchDBBestPrice(ctx context.Context, fromEVA, toEVA, date string) (float64, string) {
+	fromLid := fmt.Sprintf("A=1@L=%s@", fromEVA)
+	toLid := fmt.Sprintf("A=1@L=%s@", toEVA)
+
+	// reiseDatum must be a full datetime; use 06:00 departure.
+	reiseDatum := date + "T06:00:00"
+
+	// Format A — matches the fahrplan request structure.
+	reqBodyA := map[string]any{
+		"autonomeReservierung": false,
+		"klasse":               "KLASSE_2",
+		"reisendenProfil": map[string]any{
+			"reisende": []map[string]any{
+				{
+					"ermaessigungen": []string{"KEINE_ERMAESSIGUNG KLASSENLOS"},
+					"reisendenTyp":   "ERWACHSENER",
+				},
+			},
+		},
+		"reiseHin": map[string]any{
+			"wunsch": map[string]any{
+				"abgangsLocationId": fromLid,
+				"zielLocationId":    toLid,
+				"zeitWunsch": map[string]any{
+					"reiseDatum":   reiseDatum,
+					"zeitPunktArt": "ABFAHRT",
+				},
+			},
+		},
+	}
+
+	// Format B — simpler flat structure.
+	reqBodyB := map[string]any{
+		"abgangsLocationId": fromLid,
+		"zielLocationId":    toLid,
+		"klasse":            "KLASSE_2",
+		"reisende": []map[string]any{
+			{
+				"ermaessigungen": []string{"KEINE_ERMAESSIGUNG KLASSENLOS"},
+				"reisendenTyp":   "ERWACHSENER",
+			},
+		},
+		"reiseDatum": date,
+	}
+
+	contentType := "application/x.db.vendo.mob.tagesbestpreis.v1+json"
+
+	for _, reqBody := range []map[string]any{reqBodyA, reqBodyB} {
+		body, err := json.Marshal(reqBody)
+		if err != nil {
+			continue
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, dbBestPriceEndpoint, bytes.NewReader(body))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Accept", contentType)
+		req.Header.Set("Accept-Language", "en")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+		req.Header.Set("X-Correlation-ID", generateCorrelationID())
+
+		resp, err := dbClient.Do(req)
+		if err != nil {
+			slog.Debug("db tagesbestpreis request failed", "err", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			io.ReadAll(io.LimitReader(resp.Body, 256)) //nolint:errcheck
+			slog.Debug("db tagesbestpreis non-200", "status", resp.StatusCode)
+			continue
+		}
+
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+		if err != nil {
+			continue
+		}
+
+		var bpResp dbBestPriceResponse
+		if err := json.Unmarshal(respBody, &bpResp); err != nil {
+			slog.Debug("db tagesbestpreis decode failed", "err", err)
+			continue
+		}
+
+		if bpResp.Preis != nil && bpResp.Preis.Betrag > 0 {
+			return bpResp.Preis.Betrag, strings.ToUpper(bpResp.Preis.Waehrung)
+		}
+		if bpResp.Ab != nil && bpResp.Ab.Betrag > 0 {
+			return bpResp.Ab.Betrag, strings.ToUpper(bpResp.Ab.Waehrung)
+		}
+		// Got 200 but no parseable price — don't try format B.
+		break
+	}
+
+	return 0, ""
+}
+
 // SearchDeutscheBahn searches Deutsche Bahn for train journeys between two cities.
 func SearchDeutscheBahn(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
 	fromStation, ok := LookupDBStation(from)
@@ -328,6 +438,31 @@ func SearchDeutscheBahn(ctx context.Context, from, to, date, currency string) ([
 
 	routes := parseDBVerbindungen(dbResp.Verbindungen, fromStation, toStation, currency)
 	slog.Debug("db routes", "count", len(routes))
+
+	// For cross-border routes the fahrplan endpoint often returns price=0.
+	// Try tagesbestpreis as a fallback for any route with missing price.
+	needsBestPrice := false
+	for _, r := range routes {
+		if r.Price == 0 {
+			needsBestPrice = true
+			break
+		}
+	}
+	if needsBestPrice {
+		bp, bpCur := fetchDBBestPrice(ctx, fromStation.EVA, toStation.EVA, date)
+		if bp > 0 {
+			slog.Debug("db tagesbestpreis fallback", "price", bp, "currency", bpCur)
+			for i := range routes {
+				if routes[i].Price == 0 {
+					routes[i].Price = bp
+					if bpCur != "" {
+						routes[i].Currency = bpCur
+					}
+				}
+			}
+		}
+	}
+
 	return routes, nil
 }
 

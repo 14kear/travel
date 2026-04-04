@@ -2,6 +2,7 @@ package ground
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -469,6 +470,88 @@ func TestParseDBVerbindungen_WalkingLegSkipped(t *testing.T) {
 	}
 	if len(r.Legs) != 2 {
 		t.Errorf("Legs = %d, want 2 (walking leg excluded)", len(r.Legs))
+	}
+}
+
+func TestDBBestPriceResponse_Decode(t *testing.T) {
+	// Verify dbBestPriceResponse correctly decodes both "preis" and "ab" fields.
+	tests := []struct {
+		name      string
+		json      string
+		wantPrice float64
+		wantCur   string
+	}{
+		{
+			name:      "preis field",
+			json:      `{"preis":{"betrag":39.90,"waehrung":"EUR"}}`,
+			wantPrice: 39.90,
+			wantCur:   "EUR",
+		},
+		{
+			name:      "ab field",
+			json:      `{"ab":{"betrag":49.00,"waehrung":"EUR"}}`,
+			wantPrice: 49.00,
+			wantCur:   "EUR",
+		},
+		{
+			name:      "empty response",
+			json:      `{}`,
+			wantPrice: 0,
+			wantCur:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var r dbBestPriceResponse
+			if err := json.Unmarshal([]byte(tt.json), &r); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			gotPrice := 0.0
+			gotCur := ""
+			if r.Preis != nil && r.Preis.Betrag > 0 {
+				gotPrice = r.Preis.Betrag
+				gotCur = r.Preis.Waehrung
+			} else if r.Ab != nil && r.Ab.Betrag > 0 {
+				gotPrice = r.Ab.Betrag
+				gotCur = r.Ab.Waehrung
+			}
+			if gotPrice != tt.wantPrice {
+				t.Errorf("price = %f, want %f", gotPrice, tt.wantPrice)
+			}
+			if gotCur != tt.wantCur {
+				t.Errorf("currency = %q, want %q", gotCur, tt.wantCur)
+			}
+		})
+	}
+}
+
+func TestParseDBVerbindungen_ZeroPrice(t *testing.T) {
+	// Routes with no price data should produce price=0 so the caller can apply
+	// the tagesbestpreis fallback.
+	from := DBStation{EVA: "8011160", Name: "Berlin Hbf", City: "Berlin", Country: "DE"}
+	to := DBStation{EVA: "5400014", Name: "Praha hl.n.", City: "Prague", Country: "CZ"}
+
+	verbindungen := []dbVerbindung{
+		{
+			VerbindungsAbschnitte: []dbAbschnitt{
+				{
+					AbfahrtsZeitpunkt: "2026-06-18T08:00:00+02:00",
+					AnkunftsZeitpunkt: "2026-06-18T14:00:00+02:00",
+					Typ:               "PUBLICTRANSPORT",
+					Verkehrsmittel:    &dbVerkehrsmittel{Name: "EC 379"},
+				},
+			},
+			// No price fields set — cross-border route.
+		},
+	}
+
+	routes := parseDBVerbindungen(verbindungen, from, to, "EUR")
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].Price != 0 {
+		t.Errorf("expected price=0 for unprice route, got %f", routes[0].Price)
 	}
 }
 
