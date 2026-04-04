@@ -73,6 +73,124 @@ func HasEurostarRoute(from, to string) bool {
 	return fromOK && toOK
 }
 
+// eurostarTimetableEntry holds a single train from the timetableServices response.
+type eurostarTimetableEntry struct {
+	TrainNumber   string
+	DepartureTime string // ISO datetime from origin
+	ArrivalTime   string // ISO datetime at destination
+}
+
+// eurostarTimetableResponse is the GraphQL response for timetableServices.
+type eurostarTimetableResponse struct {
+	Data struct {
+		TimetableServices []struct {
+			Model struct {
+				TrainNumber              string `json:"trainNumber"`
+				ScheduledDepartureDateTime string `json:"scheduledDepartureDateTime"`
+			} `json:"model"`
+			Origin struct {
+				Model struct {
+					ScheduledDepartureDateTime string `json:"scheduledDepartureDateTime"`
+				} `json:"model"`
+			} `json:"origin"`
+			Destination struct {
+				Model struct {
+					ScheduledArrivalDateTime string `json:"scheduledArrivalDateTime"`
+				} `json:"model"`
+			} `json:"destination"`
+		} `json:"timetableServices"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// eurostarBuildTimetableBody builds the timetableServices GraphQL request body.
+func eurostarBuildTimetableBody(originUIC, destUIC, date string) ([]byte, error) {
+	// The API expects a full ISO datetime; use midnight UTC for the requested date.
+	dateTime := date + "T00:00:00.000Z"
+	variables := map[string]interface{}{
+		"date":           dateTime,
+		"originUic":      originUIC,
+		"destinationUic": destUIC,
+	}
+	body := eurostarGQLBody{
+		OperationName: "timetableServices",
+		Variables:     variables,
+		Query:         `query timetableServices($date: Date!, $trainNumber: String, $originUic: String, $destinationUic: String) { timetableServices(date: $date trainNumber: $trainNumber originUic: $originUic destinationUic: $destinationUic) { model { trainNumber scheduledDepartureDateTime __typename } origin { model { scheduledDepartureDateTime __typename } __typename } destination { model { scheduledArrivalDateTime __typename } __typename } __typename } }`,
+	}
+	return json.Marshal(body)
+}
+
+// searchEurostarTimetable fetches the timetable for a specific date and city pair.
+// Returns a slice of timetable entries ordered by departure time.
+// A non-fatal API error (e.g. no trains on date) returns an empty slice, not an error.
+func searchEurostarTimetable(ctx context.Context, fromStation, toStation EurostarStation, date string) ([]eurostarTimetableEntry, error) {
+	body, err := eurostarBuildTimetableBody(fromStation.UIC, toStation.UIC, date)
+	if err != nil {
+		return nil, fmt.Errorf("eurostar timetable marshal: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, eurostarGateway, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("eurostar timetable request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
+	req.Header.Set("Origin", "https://www.eurostar.com")
+	req.Header.Set("Referer", "https://www.eurostar.com/")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("x-platform", "web")
+	req.Header.Set("x-market-code", "uk")
+
+	slog.Debug("eurostar timetable", "from", fromStation.City, "to", toStation.City, "date", date)
+
+	resp, err := eurostarClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("eurostar timetable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		slog.Debug("eurostar timetable non-200", "status", resp.StatusCode, "body", string(body))
+		// Non-fatal: cheapest fares are still usable without timetable data.
+		return nil, nil
+	}
+
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("eurostar timetable read: %w", err)
+	}
+	slog.Debug("eurostar timetable response", "body_len", len(rawBody))
+
+	var ttResp eurostarTimetableResponse
+	if err := json.Unmarshal(rawBody, &ttResp); err != nil {
+		slog.Debug("eurostar timetable decode error", "err", err)
+		return nil, nil // non-fatal
+	}
+	if len(ttResp.Errors) > 0 {
+		slog.Debug("eurostar timetable graphql error", "msg", ttResp.Errors[0].Message)
+		return nil, nil // non-fatal
+	}
+
+	var entries []eurostarTimetableEntry
+	for _, svc := range ttResp.Data.TimetableServices {
+		dep := svc.Origin.Model.ScheduledDepartureDateTime
+		if dep == "" {
+			dep = svc.Model.ScheduledDepartureDateTime
+		}
+		arr := svc.Destination.Model.ScheduledArrivalDateTime
+		entries = append(entries, eurostarTimetableEntry{
+			TrainNumber:   svc.Model.TrainNumber,
+			DepartureTime: dep,
+			ArrivalTime:   arr,
+		})
+	}
+	return entries, nil
+}
+
 // eurostarGQLBody is the full GraphQL request body sent to the Eurostar gateway.
 type eurostarGQLBody struct {
 	OperationName string                 `json:"operationName"`
@@ -221,7 +339,8 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 				if len(gqlResp.Errors) > 0 {
 					return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
 				}
-				return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly)
+				timetable2, _ := searchEurostarTimetable(ctx, fromStation, toStation, startDate)
+				return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly, timetable2)
 			}
 			// Cookie retry did not yield 200; log and fall through to 403 error.
 			retryBody, _ := io.ReadAll(io.LimitReader(resp2.Body, 512))
@@ -259,7 +378,8 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
 	}
 
-	return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly)
+	timetable, _ := searchEurostarTimetable(ctx, fromStation, toStation, startDate)
+	return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly, timetable)
 }
 
 // eurostarRouteDuration returns the typical journey duration in minutes for a
@@ -283,46 +403,84 @@ func eurostarRouteDuration(fromCity, toCity string) int {
 }
 
 // buildEurostarRoutes converts a parsed GraphQL response into GroundRoute values.
-// The cheapestFaresSearch API returns daily cheapest prices (one per date), not
-// individual train departures, so departure/arrival times are shown as formatted
-// dates (e.g. "Jun 01") and duration is set from known scheduled times.
-func buildEurostarRoutes(gqlResp eurostarGQLResponse, fromStation, toStation EurostarStation, currency string, snapOnly bool) ([]models.GroundRoute, error) {
-	duration := eurostarRouteDuration(fromStation.City, toStation.City)
+// When timetable data is available (non-nil, non-empty), each cheapest-fare date
+// entry is expanded into one route per train on that date using actual departure
+// and arrival times. When no timetable data is provided, falls back to showing the
+// date as "Jan 02" (daily cheapest price display).
+func buildEurostarRoutes(gqlResp eurostarGQLResponse, fromStation, toStation EurostarStation, currency string, snapOnly bool, timetable []eurostarTimetableEntry) ([]models.GroundRoute, error) {
+	defaultDuration := eurostarRouteDuration(fromStation.City, toStation.City)
+	provider := "eurostar"
+	if snapOnly {
+		provider = "eurostar_snap"
+	}
+
 	var routes []models.GroundRoute
 	for _, search := range gqlResp.Data.CheapestFaresSearch {
 		for _, fare := range search.CheapestFares {
 			if fare.Price <= 0 {
 				continue
 			}
-			provider := "eurostar"
-			if snapOnly {
-				provider = "eurostar_snap"
+
+			// If we have timetable trains for this fare's date, emit one route per train.
+			var fareTrains []eurostarTimetableEntry
+			for _, tt := range timetable {
+				if len(tt.DepartureTime) >= 10 && tt.DepartureTime[:10] == fare.Date {
+					fareTrains = append(fareTrains, tt)
+				}
 			}
-			// Format date as "Jan 02" for cleaner display — this is a daily
-			// cheapest price, not a specific train departure time.
-			displayDate := fare.Date
-			if t, err := time.Parse("2006-01-02", fare.Date); err == nil {
-				displayDate = t.Format("Jan 02")
+
+			if len(fareTrains) > 0 {
+				for _, tt := range fareTrains {
+					dur := defaultDuration
+					if tt.DepartureTime != "" && tt.ArrivalTime != "" {
+						if computed := computeDBDuration(tt.DepartureTime, tt.ArrivalTime); computed > 0 {
+							dur = computed
+						}
+					}
+					routes = append(routes, models.GroundRoute{
+						Provider: provider,
+						Type:     "train",
+						Price:    fare.Price,
+						Currency: strings.ToUpper(currency),
+						Duration: dur,
+						Departure: models.GroundStop{
+							City:    fromStation.City,
+							Station: fromStation.Name,
+							Time:    tt.DepartureTime,
+						},
+						Arrival: models.GroundStop{
+							City:    toStation.City,
+							Station: toStation.Name,
+							Time:    tt.ArrivalTime,
+						},
+						BookingURL: buildEurostarBookingURL(fromStation.UIC, toStation.UIC, fare.Date),
+					})
+				}
+			} else {
+				// No timetable data — show date as "Jan 02" (daily cheapest fallback).
+				displayDate := fare.Date
+				if t, err := time.Parse("2006-01-02", fare.Date); err == nil {
+					displayDate = t.Format("Jan 02")
+				}
+				routes = append(routes, models.GroundRoute{
+					Provider: provider,
+					Type:     "train",
+					Price:    fare.Price,
+					Currency: strings.ToUpper(currency),
+					Duration: defaultDuration,
+					Departure: models.GroundStop{
+						City:    fromStation.City,
+						Station: fromStation.Name,
+						Time:    displayDate,
+					},
+					Arrival: models.GroundStop{
+						City:    toStation.City,
+						Station: toStation.Name,
+						Time:    displayDate,
+					},
+					BookingURL: buildEurostarBookingURL(fromStation.UIC, toStation.UIC, fare.Date),
+				})
 			}
-			route := models.GroundRoute{
-				Provider: provider,
-				Type:     "train",
-				Price:    fare.Price,
-				Currency: strings.ToUpper(currency),
-				Duration: duration,
-				Departure: models.GroundStop{
-					City:    fromStation.City,
-					Station: fromStation.Name,
-					Time:    displayDate,
-				},
-				Arrival: models.GroundStop{
-					City:    toStation.City,
-					Station: toStation.Name,
-					Time:    displayDate,
-				},
-				BookingURL: buildEurostarBookingURL(fromStation.UIC, toStation.UIC, fare.Date),
-			}
-			routes = append(routes, route)
 		}
 	}
 	return routes, nil

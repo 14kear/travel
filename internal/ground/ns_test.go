@@ -269,7 +269,36 @@ func TestParseNSTrips_NoPrice(t *testing.T) {
 					PlannedArrivalDateTime:   "2026-06-18T09:07:00+0200",
 				},
 			},
-			OptimalPrice: nil, // no price
+			OptimalPrice: nil, // no API price — falls back to fixed fare lookup
+		},
+	}
+
+	routes := parseNSTrips(trips, from, to, "EUR")
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	// Amsterdam-Rotterdam fixed fare is 17.40 EUR (lookupNSPrice fallback).
+	if routes[0].Price != 17.40 {
+		t.Errorf("Price = %.2f, want 17.40 (fixed fare fallback)", routes[0].Price)
+	}
+}
+
+func TestParseNSTrips_NoPrice_UnknownRoute(t *testing.T) {
+	// For a route with no fixed fare entry, price should remain 0.
+	from := nsStation{UIC: "8400058", Name: "Amsterdam Centraal", City: "Amsterdam", Country: "NL"}
+	to := nsStation{UIC: "8821006", Name: "Antwerpen-Berchem", City: "Antwerp", Country: "BE"}
+
+	trips := []nsTrip{
+		{
+			Legs: []nsTripLeg{
+				{
+					Origin:                   nsStop{Name: "Amsterdam Centraal"},
+					Destination:              nsStop{Name: "Antwerpen-Berchem"},
+					PlannedDepartureDateTime: "2026-06-18T08:02:00+0200",
+					PlannedArrivalDateTime:   "2026-06-18T10:30:00+0200",
+				},
+			},
+			OptimalPrice: nil,
 		},
 	}
 
@@ -278,7 +307,7 @@ func TestParseNSTrips_NoPrice(t *testing.T) {
 		t.Fatalf("expected 1 route, got %d", len(routes))
 	}
 	if routes[0].Price != 0 {
-		t.Errorf("Price = %.2f, want 0", routes[0].Price)
+		t.Errorf("Price = %.2f, want 0 for unknown route", routes[0].Price)
 	}
 }
 
@@ -350,6 +379,48 @@ func TestDate_ExtractFromISO(t *testing.T) {
 		got := date(tt.input)
 		if got != tt.want {
 			t.Errorf("date(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestLookupNSPrice(t *testing.T) {
+	tests := []struct {
+		from string
+		to   string
+		want float64
+	}{
+		{"Amsterdam", "Rotterdam", 17.40},
+		{"Rotterdam", "Amsterdam", 17.40}, // reverse lookup
+		{"amsterdam", "rotterdam", 17.40}, // case-insensitive
+		{"Amsterdam", "Utrecht", 9.40},
+		{"Rotterdam", "Den Haag", 5.40},
+		{"Utrecht", "Arnhem", 11.50},
+		{"Amsterdam", "Nonexistent", 0},
+		{"London", "Paris", 0}, // not in fixed fare table
+	}
+	for _, tt := range tests {
+		got := lookupNSPrice(tt.from, tt.to)
+		if got != tt.want {
+			t.Errorf("lookupNSPrice(%q, %q) = %.2f, want %.2f", tt.from, tt.to, got, tt.want)
+		}
+	}
+}
+
+func TestNSPricesMapSymmetry(t *testing.T) {
+	// Every entry in nsPrices should be findable in both directions.
+	for key, price := range nsPrices {
+		parts := strings.SplitN(key, "-", 2)
+		if len(parts) != 2 {
+			t.Errorf("nsPrices key %q should have exactly one hyphen separator", key)
+			continue
+		}
+		got := lookupNSPrice(parts[0], parts[1])
+		if got != price {
+			t.Errorf("lookupNSPrice(%q, %q) = %.2f, want %.2f", parts[0], parts[1], got, price)
+		}
+		gotRev := lookupNSPrice(parts[1], parts[0])
+		if gotRev != price {
+			t.Errorf("lookupNSPrice reverse (%q, %q) = %.2f, want %.2f", parts[1], parts[0], gotRev, price)
 		}
 	}
 }

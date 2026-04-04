@@ -110,6 +110,39 @@ type nsPrice struct {
 	PriceInCents      int `json:"priceInCents,omitempty"`
 }
 
+// nsPrices maps a "from-to" pair (lowercase, hyphen-separated city names) to the
+// second-class single fare in EUR. Prices are fixed NS tariffs that change rarely.
+// The map is keyed by the canonical direction; lookupNSPrice also checks the reverse.
+var nsPrices = map[string]float64{
+	"amsterdam-rotterdam":  17.40,
+	"amsterdam-den haag":   13.50,
+	"amsterdam-utrecht":    9.40,
+	"amsterdam-eindhoven":  24.70,
+	"amsterdam-groningen":  33.90,
+	"amsterdam-maastricht": 30.50,
+	"amsterdam-arnhem":     21.60,
+	"amsterdam-breda":      20.60,
+	"rotterdam-utrecht":    12.80,
+	"rotterdam-den haag":   5.40,
+	"utrecht-arnhem":       11.50,
+	"utrecht-eindhoven":    16.60,
+}
+
+// lookupNSPrice returns the fixed NS fare in EUR for a city pair, or 0 if unknown.
+// Comparison is case-insensitive and direction-independent.
+func lookupNSPrice(from, to string) float64 {
+	key := strings.ToLower(from) + "-" + strings.ToLower(to)
+	if p, ok := nsPrices[key]; ok {
+		return p
+	}
+	// Try reverse direction.
+	key = strings.ToLower(to) + "-" + strings.ToLower(from)
+	if p, ok := nsPrices[key]; ok {
+		return p
+	}
+	return 0
+}
+
 // SearchNS searches NS (Dutch Railways) for train trips between two cities.
 // date must be in YYYY-MM-DD format. currency is used for the output GroundRoute.
 func SearchNS(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
@@ -202,6 +235,10 @@ func parseNSTrips(trips []nsTrip, fromStation, toStation nsStation, currency str
 			if cents > 0 {
 				price = float64(cents) / 100.0
 			}
+		}
+		// Fall back to fixed fare lookup when the API returns no price.
+		if price == 0 {
+			price = lookupNSPrice(fromStation.City, toStation.City)
 		}
 
 		duration := trip.PlannedDurationInMinutes

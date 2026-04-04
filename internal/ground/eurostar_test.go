@@ -203,6 +203,167 @@ func TestEurostarNotSearchedForNonEurostarCities(t *testing.T) {
 	}
 }
 
+func TestEurostarBuildTimetableBody(t *testing.T) {
+	raw, err := eurostarBuildTimetableBody("7015400", "8727100", "2026-04-10")
+	if err != nil {
+		t.Fatalf("eurostarBuildTimetableBody: %v", err)
+	}
+
+	var body eurostarGQLBody
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if body.OperationName != "timetableServices" {
+		t.Errorf("operationName = %q, want timetableServices", body.OperationName)
+	}
+	if !strings.Contains(body.Query, "timetableServices") {
+		t.Error("query should contain timetableServices")
+	}
+	if body.Variables["originUic"] != "7015400" {
+		t.Errorf("originUic = %v, want 7015400", body.Variables["originUic"])
+	}
+	if body.Variables["destinationUic"] != "8727100" {
+		t.Errorf("destinationUic = %v, want 8727100", body.Variables["destinationUic"])
+	}
+	date, _ := body.Variables["date"].(string)
+	if !strings.HasPrefix(date, "2026-04-10") {
+		t.Errorf("date = %q, should start with 2026-04-10", date)
+	}
+}
+
+func TestBuildEurostarRoutes_WithTimetable(t *testing.T) {
+	fromStation := EurostarStation{UIC: "7015400", Name: "London St Pancras", City: "London", Country: "GB"}
+	toStation := EurostarStation{UIC: "8727100", Name: "Paris Gare du Nord", City: "Paris", Country: "FR"}
+
+	gqlResp := eurostarGQLResponse{}
+	gqlResp.Data.CheapestFaresSearch = []struct {
+		CheapestFares []struct {
+			Date  string  `json:"date"`
+			Price float64 `json:"price"`
+		} `json:"cheapestFares"`
+	}{
+		{
+			CheapestFares: []struct {
+				Date  string  `json:"date"`
+				Price float64 `json:"price"`
+			}{
+				{Date: "2026-04-10", Price: 49.00},
+			},
+		},
+	}
+
+	timetable := []eurostarTimetableEntry{
+		{TrainNumber: "9002", DepartureTime: "2026-04-10 06:31:00", ArrivalTime: "2026-04-10 09:47:00"},
+		{TrainNumber: "9010", DepartureTime: "2026-04-10 08:31:00", ArrivalTime: "2026-04-10 11:47:00"},
+	}
+
+	routes, err := buildEurostarRoutes(gqlResp, fromStation, toStation, "GBP", false, timetable)
+	if err != nil {
+		t.Fatalf("buildEurostarRoutes: %v", err)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("expected 2 routes (one per train), got %d", len(routes))
+	}
+	for i, r := range routes {
+		if r.Price != 49.00 {
+			t.Errorf("routes[%d].Price = %.2f, want 49.00", i, r.Price)
+		}
+		if r.Departure.City != "London" {
+			t.Errorf("routes[%d].Departure.City = %q, want London", i, r.Departure.City)
+		}
+		if r.Arrival.City != "Paris" {
+			t.Errorf("routes[%d].Arrival.City = %q, want Paris", i, r.Arrival.City)
+		}
+		if r.Duration <= 0 {
+			t.Errorf("routes[%d].Duration = %d, should be > 0", i, r.Duration)
+		}
+	}
+	if routes[0].Departure.Time != "2026-04-10 06:31:00" {
+		t.Errorf("routes[0].Departure.Time = %q, want 2026-04-10 06:31:00", routes[0].Departure.Time)
+	}
+	if routes[1].Departure.Time != "2026-04-10 08:31:00" {
+		t.Errorf("routes[1].Departure.Time = %q, want 2026-04-10 08:31:00", routes[1].Departure.Time)
+	}
+}
+
+func TestBuildEurostarRoutes_NoTimetable(t *testing.T) {
+	fromStation := EurostarStation{UIC: "7015400", Name: "London St Pancras", City: "London", Country: "GB"}
+	toStation := EurostarStation{UIC: "8727100", Name: "Paris Gare du Nord", City: "Paris", Country: "FR"}
+
+	gqlResp := eurostarGQLResponse{}
+	gqlResp.Data.CheapestFaresSearch = []struct {
+		CheapestFares []struct {
+			Date  string  `json:"date"`
+			Price float64 `json:"price"`
+		} `json:"cheapestFares"`
+	}{
+		{
+			CheapestFares: []struct {
+				Date  string  `json:"date"`
+				Price float64 `json:"price"`
+			}{
+				{Date: "2026-06-01", Price: 59.00},
+				{Date: "2026-06-02", Price: 65.00},
+			},
+		},
+	}
+
+	routes, err := buildEurostarRoutes(gqlResp, fromStation, toStation, "GBP", false, nil)
+	if err != nil {
+		t.Fatalf("buildEurostarRoutes: %v", err)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("expected 2 routes, got %d", len(routes))
+	}
+	// Without timetable, times should be formatted dates like "Jun 01".
+	if routes[0].Departure.Time != "Jun 01" {
+		t.Errorf("routes[0].Departure.Time = %q, want Jun 01", routes[0].Departure.Time)
+	}
+	if routes[1].Departure.Time != "Jun 02" {
+		t.Errorf("routes[1].Departure.Time = %q, want Jun 02", routes[1].Departure.Time)
+	}
+}
+
+func TestBuildEurostarRoutes_TimetableDifferentDate(t *testing.T) {
+	// Timetable trains on a different date should not pollute the fare's date.
+	fromStation := EurostarStation{UIC: "7015400", Name: "London St Pancras", City: "London", Country: "GB"}
+	toStation := EurostarStation{UIC: "8727100", Name: "Paris Gare du Nord", City: "Paris", Country: "FR"}
+
+	gqlResp := eurostarGQLResponse{}
+	gqlResp.Data.CheapestFaresSearch = []struct {
+		CheapestFares []struct {
+			Date  string  `json:"date"`
+			Price float64 `json:"price"`
+		} `json:"cheapestFares"`
+	}{
+		{
+			CheapestFares: []struct {
+				Date  string  `json:"date"`
+				Price float64 `json:"price"`
+			}{
+				{Date: "2026-04-10", Price: 49.00},
+			},
+		},
+	}
+
+	// Timetable only has trains on a different date — should fall back to "Apr 10" display.
+	timetable := []eurostarTimetableEntry{
+		{TrainNumber: "9002", DepartureTime: "2026-04-11 06:31:00", ArrivalTime: "2026-04-11 09:47:00"},
+	}
+
+	routes, err := buildEurostarRoutes(gqlResp, fromStation, toStation, "GBP", false, timetable)
+	if err != nil {
+		t.Fatalf("buildEurostarRoutes: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route (fallback), got %d", len(routes))
+	}
+	if routes[0].Departure.Time != "Apr 10" {
+		t.Errorf("Departure.Time = %q, want Apr 10", routes[0].Departure.Time)
+	}
+}
+
 func TestAllEurostarStationsHaveRequiredFields(t *testing.T) {
 	for city, station := range eurostarStations {
 		if station.UIC == "" {
