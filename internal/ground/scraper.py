@@ -88,15 +88,25 @@ def main():
                 user_agent=(
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/133.0.0.0 Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 ),
+                # Override sec-ch-ua headers so they don't contain "HeadlessChrome",
+                # which Datadome and other bot-detection services use as a signal.
+                extra_http_headers={
+                    "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"macOS"',
+                },
                 locale="en-GB",
                 viewport={"width": 1280, "height": 800},
             )
-            # Mask webdriver flag to reduce bot detection.
-            context.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-            )
+            # Mask webdriver flag and add additional browser signals to reduce bot detection.
+            context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-GB', 'en']});
+                window.chrome = {runtime: {}};
+            """)
             page = context.new_page()
             result = fn(page, from_city, to_city, date, currency)
             browser.close()
@@ -161,7 +171,10 @@ def scrape_trainline(page, from_city, to_city, date, currency):
     _apply_stealth(page)
 
     # Navigate to homepage first — establishes Datadome cookies / session.
-    page.goto("https://www.thetrainline.com", wait_until="networkidle", timeout=25000)
+    # Use domcontentloaded to avoid waiting for analytics/tracking requests that
+    # keep the page in non-idle state indefinitely.
+    page.goto("https://www.thetrainline.com", wait_until="domcontentloaded", timeout=25000)
+    page.wait_for_timeout(2000)  # Allow Datadome challenge scripts to run
     _dismiss_cookies(page)
 
     # Call the journey-search API from the authenticated page context.
@@ -610,32 +623,71 @@ def scrape_sncf(page, from_city, to_city, date, currency):
 
     _apply_stealth(page)
 
-    # Navigate to homepage to establish Datadome session/cookies.
-    page.goto("https://www.sncf-connect.com/en-en", wait_until="networkidle", timeout=25000)
-    _dismiss_cookies(page)
-
     booking_url = (
         f"https://www.sncf-connect.com/en-en/result/train"
         f"/{from_code}/{to_code}/{date}"
     )
 
+    # Capture the x-bff-key header that the SPA injects into all BFF requests.
+    # This key is required for the BFF API to return data (401 without it).
+    bff_key_holder = {}
+    http_statuses = {}
+
+    def _capture_request(req):
+        bff_key = req.headers.get("x-bff-key", "")
+        if bff_key:
+            bff_key_holder["key"] = bff_key
+
+    def _capture_response_status(resp):
+        if resp.url.startswith("https://www.sncf-connect.com"):
+            http_statuses[resp.url] = resp.status
+
+    page.on("request", _capture_request)
+    page.on("response", _capture_response_status)
+
     # Intercept XHR calls made by the SPA to discover the live API path/shape.
     api_responses = {}
-    def _capture_response(resp):
+    def _capture_api_response(resp):
         url = resp.url
-        if "/bff/api/" in url or "/api/railway/" in url or "/api/v" in url:
+        if "/bff/api/" in url or "/api/railway/" in url:
             if resp.status == 200:
                 try:
                     body = resp.json()
                     api_responses[url] = body
                 except Exception:
                     pass
-    page.on("response", _capture_response)
+    page.on("response", _capture_api_response)
 
-    # Navigate to the search results page to trigger real API calls.
+    # Step 1: Navigate to homepage to establish Datadome session/cookies.
+    # Use domcontentloaded to avoid waiting for the Datadome challenge to resolve.
+    homepage_status = None
     try:
-        page.goto(booking_url, wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(3000)  # Allow SPA to finish rendering
+        page.goto(
+            "https://www.sncf-connect.com/en-en",
+            wait_until="domcontentloaded",
+            timeout=25000,
+        )
+        page.wait_for_timeout(3000)  # Allow Datadome challenge to process
+        homepage_status = http_statuses.get("https://www.sncf-connect.com/en-en")
+    except Exception:
+        pass
+
+    # If the homepage returned 403 (Datadome block), we cannot proceed.
+    if homepage_status == 403:
+        raise RuntimeError(
+            "sncf: homepage blocked by Datadome (HTTP 403). "
+            "The headless browser was detected as a bot. "
+            "Try running with playwright-stealth installed: pip install playwright-stealth"
+        )
+
+    _dismiss_cookies(page)
+
+    bff_key = bff_key_holder.get("key", "")
+
+    # Step 2: Navigate to the search results page to trigger real API calls.
+    try:
+        page.goto(booking_url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(4000)  # Allow SPA to finish making API calls
     except Exception:
         pass
 
@@ -645,8 +697,15 @@ def scrape_sncf(page, from_city, to_city, date, currency):
         if routes:
             return routes
 
-    # Fallback: call known BFF endpoints directly from page context
-    # (session cookies are already established from the navigation above).
+    # Step 3: Call known BFF endpoints directly from page context.
+    # Use the x-bff-key if we captured it; without it most endpoints return 401.
+    bff_headers_json = json.dumps({
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        **({"x-bff-key": bff_key} if bff_key else {}),
+    })
+
+    api_errors = []
     for api_path, method, body_fn in _SNCF_API_PATHS:
         try:
             body_json = json.dumps(body_fn(from_code, to_code, date))
@@ -654,26 +713,33 @@ def scrape_sncf(page, from_city, to_city, date, currency):
             async () => {{
                 const r = await fetch('{api_path}', {{
                     method: '{method}',
-                    headers: {{'Content-Type': 'application/json', 'Accept': 'application/json'}},
+                    headers: {bff_headers_json},
                     body: {json.dumps(body_json)}
                 }});
-                if (r.status !== 200) return JSON.stringify({{_httpError: r.status}});
+                if (r.status !== 200) {{
+                    const t = await r.text();
+                    return JSON.stringify({{_httpError: r.status, _body: t.substring(0, 100)}});
+                }}
                 const d = await r.json();
                 return JSON.stringify(d);
             }}
             """)
             data = json.loads(result)
             if data.get("_httpError"):
+                api_errors.append(f"{api_path}: HTTP {data['_httpError']}")
                 continue
             routes = _parse_sncf_response(data, from_city, to_city, date, currency, booking_url)
             if routes:
                 return routes
-        except Exception:
+        except Exception as e:
+            api_errors.append(f"{api_path}: {e}")
             continue
 
+    err_summary = "; ".join(api_errors[:3]) if api_errors else "no errors logged"
     raise RuntimeError(
-        f"sncf: no results from API (checked {len(_SNCF_API_PATHS)} endpoints + XHR intercept). "
-        f"The BFF API path may have changed."
+        f"sncf: no results from API (checked {len(_SNCF_API_PATHS)} endpoints + XHR intercept, "
+        f"bff_key={'present' if bff_key else 'missing'}). "
+        f"Errors: {err_summary}"
     )
 
 
@@ -841,11 +907,22 @@ def scrape_renfe(page, from_city, to_city, date, currency):
 
     from_num = _RENFE_STATION_NUMERIC.get(from_code)
     to_num = _RENFE_STATION_NUMERIC.get(to_code)
+    if not from_num or not to_num:
+        raise ValueError(
+            f"no Renfe numeric station ID for {from_city!r} (code {from_code!r}) "
+            f"or {to_city!r} (code {to_code!r})"
+        )
 
     _apply_stealth(page)
 
-    # Navigate to renfe.com to get session cookies and bypass bot detection.
-    page.goto("https://www.renfe.com/es/en", wait_until="networkidle", timeout=25000)
+    # Navigate to venta.renfe.com to establish session cookies.
+    # This is required so that CORS-protected wsrestcorp.renfe.es requests succeed.
+    page.goto(
+        "https://venta.renfe.com/vol/buscarTren.do?Idioma=en&Pais=UK",
+        wait_until="domcontentloaded",
+        timeout=25000,
+    )
+    page.wait_for_timeout(2000)
     _dismiss_cookies(page)
 
     booking_url = (
@@ -853,14 +930,11 @@ def scrape_renfe(page, from_city, to_city, date, currency):
         f"?origen={from_code}&destino={to_code}&fechaIda={date}&nroPasajeros=1"
     )
 
-    # Intercept API calls triggered by the Renfe SPA.
+    # Intercept any API responses triggered during navigation (in case the SPA
+    # already makes the wsrestcorp call when the component loads).
     api_responses = {}
     def _capture(resp):
-        if resp.status == 200 and (
-            "venta.renfe.com" in resp.url or
-            "/api/" in resp.url or
-            "horarios.renfe.com" in resp.url
-        ):
+        if resp.status == 200 and "wsrestcorp.renfe.es" in resp.url:
             try:
                 body = resp.json()
                 api_responses[resp.url] = body
@@ -868,98 +942,105 @@ def scrape_renfe(page, from_city, to_city, date, currency):
                 pass
     page.on("response", _capture)
 
-    # Navigate to the results page to trigger real API calls.
-    try:
-        page.goto(booking_url, wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(3000)
-    except Exception:
-        pass
+    # Primary: call the wsrestcorp.renfe.es price calendar API from page context.
+    # This is the same endpoint called by the rf-buscador-ld web component when the
+    # date picker opens.  The salesChannel must be {codApp: "VLP"} — the web
+    # component passes exactly this value (discovered from p-43c1f6bd.entry.js).
+    result = page.evaluate(f"""
+    async () => {{
+        const params = {{
+            originId: {json.dumps(from_num)},
+            destinyId: {json.dumps(to_num)},
+            initDate: {json.dumps(date)},
+            endDate: {json.dumps(date)},
+            salesChannel: {{codApp: "VLP"}}
+        }};
+        const r = await fetch(
+            'https://wsrestcorp.renfe.es/api/wsrviajeros/vhi_priceCalendar',
+            {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                }},
+                body: JSON.stringify(params)
+            }}
+        );
+        if (r.status !== 200) {{
+            const t = await r.text();
+            return JSON.stringify({{_httpError: r.status, _body: t.substring(0, 200)}});
+        }}
+        const d = await r.json();
+        return JSON.stringify(d);
+    }}
+    """)
+    data = json.loads(result)
 
-    # Parse any intercepted API responses.
-    for resp_url, resp_data in api_responses.items():
-        routes = _parse_renfe_response(resp_data, from_city, to_city, date, currency, booking_url)
+    if not data.get("_httpError"):
+        routes = _parse_renfe_price_calendar(data, from_city, to_city, date, currency, booking_url)
         if routes:
             return routes
 
-    # Fallback: try known Renfe API endpoints from page context.
-    # Format YYYYMMDD for the horarios API.
-    date_compact = date.replace("-", "")
-
-    api_attempts = []
-
-    # venta.renfe.com availability endpoint.
-    if from_num and to_num:
-        api_attempts.append((
-            "POST",
-            "https://venta.renfe.com/vol/buscarTren.do",
-            json.dumps({
-                "origenEstacion": from_num,
-                "destinoEstacion": to_num,
-                "fechaViaje": date_compact,
-                "tipoBusqueda": "O",
-                "numAdultos": 1,
-                "numNinos": 0,
-                "numJovenes": 0,
-                "numMayores": 0,
-                "codPromocion": "",
-            }),
-        ))
-
-    # horarios.renfe.com timetable (public, no auth, JSON).
-    api_attempts.append((
-        "GET",
-        (
-            f"https://horarios.renfe.com/cer/hjcer310.jsp"
-            f"?nucleo=10&i=s&o={from_code}&d={to_code}"
-            f"&df={date_compact}&ho=00&hd=24&TXTInfo="
-        ),
-        None,
-    ))
-
-    for method, url_str, body_str in api_attempts:
-        try:
-            if method == "POST":
-                js = f"""
-                async () => {{
-                    const r = await fetch({json.dumps(url_str)}, {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json', 'Accept': 'application/json'}},
-                        body: {json.dumps(body_str)}
-                    }});
-                    if (r.status !== 200) return JSON.stringify({{_httpError: r.status}});
-                    const d = await r.json();
-                    return JSON.stringify(d);
-                }}
-                """
-            else:
-                js = f"""
-                async () => {{
-                    const r = await fetch({json.dumps(url_str)}, {{
-                        headers: {{'Accept': 'application/json, text/javascript, */*'}}
-                    }});
-                    if (r.status !== 200) return JSON.stringify({{_httpError: r.status}});
-                    const t = await r.text();
-                    try {{ return JSON.stringify(JSON.parse(t)); }}
-                    catch(e) {{ return JSON.stringify({{_raw: t.substring(0, 3000)}}); }}
-                }}
-                """
-            result = page.evaluate(js)
-            data = json.loads(result)
-            if data.get("_httpError"):
-                continue
-            if data.get("_raw"):
-                # horarios API returns JSONP or HTML — skip for now.
-                continue
-            routes = _parse_renfe_response(data, from_city, to_city, date, currency, booking_url)
-            if routes:
-                return routes
-        except Exception:
-            continue
+    # If the primary API failed, log a useful error.
+    if data.get("_httpError"):
+        raise RuntimeError(
+            f"renfe: wsrestcorp API returned HTTP {data['_httpError']} for "
+            f"{from_city}->{to_city} on {date}. Body: {data.get('_body', '')}"
+        )
 
     raise RuntimeError(
-        f"renfe: no results found for {from_city}->{to_city} on {date}. "
-        f"API endpoint or session may have changed."
+        f"renfe: price calendar API returned no journeys for {from_city}->{to_city} on {date}. "
+        f"Response: {json.dumps(data)[:200]}"
     )
+
+
+def _parse_renfe_price_calendar(data, from_city, to_city, date, currency, booking_url):
+    """Parse the wsrestcorp vhi_priceCalendar response into route objects.
+
+    The response shape:
+        {
+          "origin": {"name": "...", "extId": "60000"},
+          "destination": {"name": "...", "extId": "71801"},
+          "journeysPriceCalendar": [
+            {"date": "2026-04-10", "minPriceAvailable": true, "minPrice": 36}
+          ]
+        }
+
+    Since this API only returns a minimum price per day (not individual trains),
+    we synthesise a single route with the cheapest available price.  Callers can
+    click booking_url for full schedule details.
+    """
+    journeys = data.get("journeysPriceCalendar", [])
+    if not journeys:
+        return []
+
+    # Find the entry for the requested date.
+    entry = next((j for j in journeys if j.get("date") == date), None)
+    if entry is None and journeys:
+        # Fall back to the first available entry if date not found.
+        entry = journeys[0]
+
+    if entry is None:
+        return []
+
+    if not entry.get("minPriceAvailable", False):
+        return []
+
+    price = entry.get("minPrice", 0)
+    if not price or price <= 0:
+        return []
+
+    return [{
+        "price": float(price),
+        "currency": "EUR",
+        "departure": f"{date}T06:00:00",
+        "arrival": "",
+        "duration": 0,
+        "type": "train",
+        "provider": "renfe",
+        "transfers": 0,
+        "booking_url": booking_url,
+    }]
 
 
 def _parse_renfe_response(data, from_city, to_city, date, currency, booking_url):
