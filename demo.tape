@@ -55,7 +55,7 @@ Show
 Type "# Where's cheap from Amsterdam this weekend?"
 Enter
 Sleep 300ms
-Type "trvl explore AMS --from 2026-06-12 --to 2026-06-14 --currency EUR"
+Type "trvl explore AMS --from 2026-06-12 --to 2026-06-14 --currency EUR 2>/dev/null"
 Enter
 Sleep 10s
 
@@ -92,7 +92,7 @@ Sleep 300ms
 Type "# One search: flights + hotel + total cost"
 Enter
 Sleep 300ms
-Type "trvl trip AMS PRG --depart 2026-06-15 --return 2026-06-18 --currency EUR"
+Type "trvl trip AMS PRG --depart 2026-06-15 --return 2026-06-18 --currency EUR 2>/dev/null"
 Enter
 Sleep 12s
 
@@ -122,7 +122,7 @@ Sleep 300ms
 Type "# After Prague — bus or train to Vienna from EUR 9.90"
 Enter
 Sleep 300ms
-Type "trvl ground Prague Vienna 2026-06-18 --currency EUR"
+Type "trvl ground Prague Vienna 2026-06-18 --currency EUR 2>/dev/null"
 Enter
 Sleep 8s
 
