@@ -614,7 +614,7 @@ func TestPricesCmd_Flags(t *testing.T) {
 	}{
 		{"checkin", ""},
 		{"checkout", ""},
-		{"currency", "USD"},
+		{"currency", ""},
 	}
 	for _, tt := range flags {
 		f := cmd.Flags().Lookup(tt.name)

@@ -29,7 +29,7 @@ Examples:
 
 	cmd.Flags().String("checkin", "", "Check-in date (YYYY-MM-DD, required)")
 	cmd.Flags().String("checkout", "", "Check-out date (YYYY-MM-DD, required)")
-	cmd.Flags().String("currency", "USD", "Currency code (e.g. USD, EUR)")
+	cmd.Flags().String("currency", "", "Currency code (e.g. EUR, USD). Empty = API default")
 
 	_ = cmd.MarkFlagRequired("checkin")
 	_ = cmd.MarkFlagRequired("checkout")
