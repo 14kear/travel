@@ -32,7 +32,7 @@ Sleep 15s
 # Google APIs — spaced out after trip has its results cached
 Type "trvl explore AMS --currency EUR 2>/dev/null"
 Enter
-Sleep 25s
+Sleep 45s
 Type "trvl dates AMS PRG --from 2026-06-10 --to 2026-06-20 --currency EUR 2>/dev/null"
 Enter
 Sleep 15s

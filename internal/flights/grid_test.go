@@ -133,7 +133,7 @@ func TestParsePriceGridResponse_ValidData(t *testing.T) {
 			if c.Price != 250 {
 				t.Errorf("cell price: got %v, want 250", c.Price)
 			}
-			if c.Currency != "EUR" {
+			if c.Currency != "" { // Currency stamped by SearchPriceGrid, not parser
 				t.Errorf("cell currency: got %q, want EUR", c.Currency)
 			}
 			break
@@ -187,8 +187,8 @@ func TestParseGridOffer_Valid(t *testing.T) {
 	if cell.Price != 299 {
 		t.Errorf("price = %v", cell.Price)
 	}
-	if cell.Currency != "EUR" {
-		t.Errorf("currency = %q", cell.Currency)
+	if cell.Currency != "" { // Currency stamped by SearchPriceGrid, not parser
+		t.Errorf("currency = %q, want empty (stamped later)", cell.Currency)
 	}
 }
 
