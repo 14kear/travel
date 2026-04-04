@@ -262,8 +262,32 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 	return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly)
 }
 
+// eurostarRouteDuration returns the typical journey duration in minutes for a
+// Eurostar city pair. Durations are approximate scheduled times.
+func eurostarRouteDuration(fromCity, toCity string) int {
+	key := strings.ToLower(fromCity) + "-" + strings.ToLower(toCity)
+	switch key {
+	case "london-paris", "paris-london":
+		return 135 // 2h 15m
+	case "london-brussels", "brussels-london":
+		return 120 // 2h 00m
+	case "london-amsterdam", "amsterdam-london":
+		return 195 // 3h 15m
+	case "london-rotterdam", "rotterdam-london":
+		return 180 // 3h 00m
+	case "london-cologne", "cologne-london":
+		return 240 // 4h 00m
+	default:
+		return 135 // default to London–Paris
+	}
+}
+
 // buildEurostarRoutes converts a parsed GraphQL response into GroundRoute values.
+// The cheapestFaresSearch API returns daily cheapest prices (one per date), not
+// individual train departures, so departure/arrival times are shown as formatted
+// dates (e.g. "Jun 01") and duration is set from known scheduled times.
 func buildEurostarRoutes(gqlResp eurostarGQLResponse, fromStation, toStation EurostarStation, currency string, snapOnly bool) ([]models.GroundRoute, error) {
+	duration := eurostarRouteDuration(fromStation.City, toStation.City)
 	var routes []models.GroundRoute
 	for _, search := range gqlResp.Data.CheapestFaresSearch {
 		for _, fare := range search.CheapestFares {
@@ -274,20 +298,27 @@ func buildEurostarRoutes(gqlResp eurostarGQLResponse, fromStation, toStation Eur
 			if snapOnly {
 				provider = "eurostar_snap"
 			}
+			// Format date as "Jan 02" for cleaner display — this is a daily
+			// cheapest price, not a specific train departure time.
+			displayDate := fare.Date
+			if t, err := time.Parse("2006-01-02", fare.Date); err == nil {
+				displayDate = t.Format("Jan 02")
+			}
 			route := models.GroundRoute{
 				Provider: provider,
 				Type:     "train",
 				Price:    fare.Price,
 				Currency: strings.ToUpper(currency),
+				Duration: duration,
 				Departure: models.GroundStop{
 					City:    fromStation.City,
 					Station: fromStation.Name,
-					Time:    fare.Date,
+					Time:    displayDate,
 				},
 				Arrival: models.GroundStop{
 					City:    toStation.City,
 					Station: toStation.Name,
-					Time:    fare.Date,
+					Time:    displayDate,
 				},
 				BookingURL: buildEurostarBookingURL(fromStation.UIC, toStation.UIC, fare.Date),
 			}

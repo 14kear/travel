@@ -239,9 +239,9 @@ type oebbFareSet struct {
 }
 
 type oebbFare struct {
-	Name   string  `json:"name"`
-	Price  int     `json:"price"`  // cents
-	Cur    string  `json:"cur"`
+	Name  string `json:"name"`
+	Price int    `json:"prc"` // cents — HAFAS uses "prc" not "price"
+	Cur   string `json:"cur"`
 }
 
 // SearchOebb searches ÖBB (Austrian Federal Railways) for train journeys between two cities.

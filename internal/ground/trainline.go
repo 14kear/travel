@@ -210,7 +210,6 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
-		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 		req.Header.Set("Origin", "https://www.thetrainline.com")
 		req.Header.Set("Referer", "https://www.thetrainline.com/")
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
