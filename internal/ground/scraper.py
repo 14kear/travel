@@ -17,6 +17,22 @@ import json
 import sys
 import re
 
+try:
+    from playwright_stealth import stealth_sync
+    _STEALTH_AVAILABLE = True
+except ImportError:
+    stealth_sync = None
+    _STEALTH_AVAILABLE = False
+
+
+def _apply_stealth(page):
+    """Apply playwright-stealth patches to a page if available."""
+    if _STEALTH_AVAILABLE and stealth_sync is not None:
+        try:
+            stealth_sync(page)
+        except Exception:
+            pass
+
 
 def main():
     try:
@@ -148,6 +164,7 @@ def scrape_trainline(page, from_city, to_city, date, currency):
         f"&lang=en"
     )
 
+    _apply_stealth(page)
     page.goto(url, timeout=30000, wait_until="domcontentloaded")
     _dismiss_cookies(page)
 
@@ -306,16 +323,62 @@ def scrape_oebb(page, from_city, to_city, date, currency):
     if not from_id or not to_id:
         raise ValueError(f"no ÖBB station ID for {from_city!r} or {to_city!r}")
 
-    url = (
-        "https://shop.oebbtickets.at/en/ticket"
-        f"?stationOrigExtId={from_id}"
-        f"&stationDestExtId={to_id}"
-        f"&outwardDate={date}"
-        f"&passengers=ADULT"
-    )
-
-    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+    _apply_stealth(page)
+    page.goto("https://shop.oebbtickets.at/en/ticket", wait_until="networkidle", timeout=25000)
     _dismiss_cookies(page)
+
+    # Fill origin field.
+    from_input = page.query_selector(
+        'input[data-testid*="from"], input[placeholder*="From"], '
+        'input[aria-label*="from" i], input[aria-label*="departure" i], '
+        'input[name*="origin" i], input[id*="origin" i]'
+    )
+    if from_input:
+        from_input.click()
+        from_input.fill(from_city)
+        page.wait_for_timeout(1500)
+        suggestion = page.query_selector(
+            '[data-testid*="suggestion"] li, .auto-suggest li, [role="option"], '
+            'ul[class*="suggest"] li, ul[class*="autocomplete"] li'
+        )
+        if suggestion:
+            suggestion.click()
+        else:
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("Enter")
+        page.wait_for_timeout(500)
+
+    # Fill destination field.
+    to_input = page.query_selector(
+        'input[data-testid*="to"], input[placeholder*="To"], '
+        'input[aria-label*=" to" i], input[aria-label*="arrival" i], '
+        'input[name*="destination" i], input[id*="destination" i]'
+    )
+    if to_input:
+        to_input.click()
+        to_input.fill(to_city)
+        page.wait_for_timeout(1500)
+        suggestion = page.query_selector(
+            '[data-testid*="suggestion"] li, .auto-suggest li, [role="option"], '
+            'ul[class*="suggest"] li, ul[class*="autocomplete"] li'
+        )
+        if suggestion:
+            suggestion.click()
+        else:
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("Enter")
+        page.wait_for_timeout(500)
+
+    # Click the search/submit button.
+    search_btn = page.query_selector(
+        'button[data-testid*="search"], button[type="submit"], '
+        'button[class*="search" i], button[aria-label*="search" i]'
+    )
+    if search_btn:
+        search_btn.click()
+
+    # Wait for results to appear.
+    page.wait_for_timeout(10000)
 
     # Wait for connection/result list.
     result_selectors = [
@@ -330,7 +393,7 @@ def scrape_oebb(page, from_city, to_city, date, currency):
     loaded_sel = None
     for sel in result_selectors:
         try:
-            page.wait_for_selector(sel, timeout=20000)
+            page.wait_for_selector(sel, timeout=8000)
             loaded_sel = sel
             break
         except Exception:
@@ -447,6 +510,7 @@ def scrape_sncf(page, from_city, to_city, date, currency):
 
     url = f"https://www.sncf-connect.com/en-en/results/train/{from_code}/{to_code}/{date}"
 
+    _apply_stealth(page)
     page.goto(url, timeout=30000, wait_until="domcontentloaded")
     _dismiss_cookies(page)
 
