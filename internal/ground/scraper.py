@@ -18,18 +18,18 @@ import sys
 import re
 
 try:
-    from playwright_stealth import stealth_sync
+    from playwright_stealth import Stealth as _Stealth
     _STEALTH_AVAILABLE = True
 except ImportError:
-    stealth_sync = None
+    _Stealth = None
     _STEALTH_AVAILABLE = False
 
 
 def _apply_stealth(page):
     """Apply playwright-stealth patches to a page if available."""
-    if _STEALTH_AVAILABLE and stealth_sync is not None:
+    if _STEALTH_AVAILABLE and _Stealth is not None:
         try:
-            stealth_sync(page)
+            _Stealth().apply_stealth_sync(page)
         except Exception:
             pass
 
@@ -97,9 +97,13 @@ def main():
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
             page = context.new_page()
-            routes = fn(page, from_city, to_city, date, currency)
+            result = fn(page, from_city, to_city, date, currency)
             browser.close()
-            out(routes)
+            # Scrapers may return either a list of routes or a dict {routes, error}.
+            if isinstance(result, dict):
+                out(result.get("routes", []), result.get("error"))
+            else:
+                out(result)
     except Exception as e:
         out([], f"{provider} scraper error: {e}")
 
@@ -153,123 +157,145 @@ def scrape_trainline(page, from_city, to_city, date, currency):
     if not from_id or not to_id:
         raise ValueError(f"no Trainline station ID for {from_city!r} or {to_city!r}")
 
-    url = (
-        "https://www.thetrainline.com/book/results"
-        f"?journeySearchType=single"
-        f"&origin=urn%3Atrainline%3Ageneric%3Aloc%3A{from_id}"
-        f"&destination=urn%3Atrainline%3Ageneric%3Aloc%3A{to_id}"
-        f"&outwardDate={date}T06%3A00%3A00"
-        f"&outwardDateType=departAfter"
-        f"&passengers%5B%5D=1996-01-01"
-        f"&lang=en"
-    )
-
     _apply_stealth(page)
-    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+
+    # Navigate to homepage first — establishes Datadome cookies / session.
+    page.goto("https://www.thetrainline.com", wait_until="networkidle", timeout=25000)
     _dismiss_cookies(page)
 
-    # Wait for journey result cards — try multiple selectors.
-    result_selectors = [
-        "[data-test='search-result-card']",
-        "[data-testid='journey-leg']",
-        "[data-test='journey-card']",
-        ".journey-result",
-        "[class*='JourneyResult']",
-        "[class*='journeyResult']",
-        "[class*='SearchResult']",
-    ]
-    loaded_sel = None
-    for sel in result_selectors:
-        try:
-            page.wait_for_selector(sel, timeout=20000)
-            loaded_sel = sel
-            break
-        except Exception:
-            continue
+    # Call the journey-search API from the authenticated page context.
+    result = page.evaluate(f"""
+    async () => {{
+        const r = await fetch('/api/journey-search/', {{
+            method: 'POST',
+            headers: {{
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'x-version': '4.46.32109'
+            }},
+            body: JSON.stringify({{
+                passengers: [{{dateOfBirth: '1996-01-01', cardIds: []}}],
+                isEurope: true,
+                cards: [],
+                transitDefinitions: [{{
+                    direction: 'outward',
+                    origin: 'urn:trainline:generic:loc:{from_id}',
+                    destination: 'urn:trainline:generic:loc:{to_id}',
+                    journeyDate: {{type: 'departAfter', time: '{date}T06:00:00'}}
+                }}],
+                type: 'single',
+                maximumJourneys: 5,
+                includeRealtime: true,
+                transportModes: ['mixed'],
+                directSearch: false
+            }})
+        }});
 
-    if loaded_sel is None:
-        # Dump page title to help debugging.
-        raise RuntimeError(f"no result cards found on Trainline page (title: {page.title()!r})")
+        if (r.status !== 200) {{
+            const t = await r.text();
+            return JSON.stringify({{error: 'HTTP ' + r.status + ': ' + t.substring(0, 200)}});
+        }}
+
+        const d = await r.json();
+        const journeys = (d.data && d.data.journeySearch && d.data.journeySearch.journeys)
+            ? Object.values(d.data.journeySearch.journeys)
+            : (d.journeys || []);
+        const legs = (d.data && d.data.journeySearch && d.data.journeySearch.legs) || {{}};
+        const fares = (d.data && d.data.journeySearch && d.data.journeySearch.journeyFares) || {{}};
+
+        return JSON.stringify({{
+            count: journeys.length,
+            journeys: journeys.slice(0, 8).map(j => {{
+                const legCount = (j.legs || []).length;
+                const fareEntry = fares[j.id];
+                let price = null;
+                let priceCur = '{currency}';
+                if (fareEntry && fareEntry.fares && fareEntry.fares.length > 0) {{
+                    const cheapest = fareEntry.fares.reduce((a, b) =>
+                        (a.price && b.price && a.price.amount < b.price.amount) ? a : b);
+                    if (cheapest.price) {{
+                        price = cheapest.price.amount / 100;
+                        priceCur = cheapest.price.currencyCode || priceCur;
+                    }}
+                }}
+                return {{
+                    dep: j.departureTime,
+                    arr: j.arrivalTime,
+                    dur: j.duration,
+                    legs: legCount,
+                    price: price,
+                    priceCur: priceCur
+                }};
+            }})
+        }});
+    }}
+    """)
+
+    data = json.loads(result)
+    if data.get("error"):
+        raise RuntimeError(f"trainline api: {data['error']}")
+
+    booking_url = (
+        f"https://www.thetrainline.com/book/trains/"
+        f"{from_city.lower().replace(' ', '-')}/"
+        f"{to_city.lower().replace(' ', '-')}/"
+        f"{date}"
+    )
 
     routes = []
-    cards = page.query_selector_all(loaded_sel)
-
-    for card in cards[:10]:
-        try:
-            route = _parse_trainline_card(card, from_city, to_city, date, currency)
-            if route:
-                routes.append(route)
-        except Exception:
+    for j in data.get("journeys", []):
+        price = j.get("price") or 0.0
+        if price <= 0:
             continue
+        dep = j.get("dep") or ""
+        arr = j.get("arr") or ""
+        dur_str = j.get("dur") or ""
+        legs = j.get("legs") or 1
+        price_cur = j.get("priceCur") or currency
+
+        # Parse ISO8601 duration string (PT2H15M) into minutes.
+        duration = _parse_iso_duration(dur_str)
+
+        routes.append({
+            "price": float(price),
+            "currency": price_cur,
+            "departure": dep,
+            "arrival": arr,
+            "duration": duration,
+            "type": "train",
+            "provider": "trainline",
+            "transfers": max(0, legs - 1),
+            "booking_url": booking_url,
+        })
 
     return routes
 
 
 def _parse_trainline_card(card, from_city, to_city, date, currency):
-    """Extract price/time data from a single Trainline journey card."""
-    text = card.inner_text()
-    if not text:
-        return None
+    """Legacy DOM card parser — superseded by the JS API path in scrape_trainline.
 
-    # Extract price — look for £ / € / $ followed by digits.
-    price = 0.0
-    price_cur = currency
-    price_m = re.search(r"([£€\$])\s*([\d,]+(?:\.\d{2})?)", text)
-    if price_m:
-        sym = price_m.group(1)
-        price = float(price_m.group(2).replace(",", ""))
-        price_cur = {"£": "GBP", "€": "EUR", "$": "USD"}.get(sym, currency)
+    Kept for reference. scrape_trainline now calls /api/journey-search/ directly
+    from the page context after navigating to the homepage, which avoids Datadome
+    detection and returns structured JSON instead of requiring DOM scraping.
 
-    if price <= 0:
-        return None
+    The new approach:
+      1. page.goto("https://www.thetrainline.com") — establishes session cookies.
+      2. page.evaluate(fetch('/api/journey-search/', ...)) — calls the internal API.
+      3. Parse the JSON response directly — no DOM selectors needed.
 
-    # Extract times — HH:MM pattern.
-    times = re.findall(r"\b(\d{1,2}:\d{2})\b", text)
-    departure = times[0] if len(times) >= 1 else ""
-    arrival = times[1] if len(times) >= 2 else ""
-
-    # Derive departure/arrival ISO strings.
-    dep_iso = f"{date}T{departure}:00" if departure else date
-    arr_iso = f"{date}T{arrival}:00" if arrival else date
-
-    # Duration — look for "Xh Ym" or "Xh" or similar.
-    duration = 0
-    dur_m = re.search(r"(\d+)\s*h(?:rs?)?\s*(?:(\d+)\s*m(?:in)?s?)?", text, re.IGNORECASE)
-    if dur_m:
-        duration = int(dur_m.group(1)) * 60 + int(dur_m.group(2) or 0)
-
-    # Transfers — look for "direct" or "N change(s)".
-    transfers = 0
-    if re.search(r"\bdirect\b", text, re.IGNORECASE):
-        transfers = 0
-    else:
-        chg_m = re.search(r"(\d+)\s+change", text, re.IGNORECASE)
-        if chg_m:
-            transfers = int(chg_m.group(1))
-
-    # Provider — try to find carrier name.
-    provider = "trainline"
-    for carrier in ("Eurostar", "Thalys", "TGV", "Intercity", "ICE", "Ouigo", "SNCF"):
-        if carrier.lower() in text.lower():
-            provider = carrier.lower()
-            break
-
-    return {
-        "price": price,
-        "currency": price_cur,
-        "departure": dep_iso,
-        "arrival": arr_iso,
-        "duration": duration,
-        "type": "train",
-        "provider": provider,
-        "transfers": transfers,
-        "booking_url": (
-            f"https://www.thetrainline.com/book/trains/"
-            f"{from_city.lower().replace(' ','-')}/"
-            f"{to_city.lower().replace(' ','-')}/"
-            f"{date}"
-        ),
-    }
+    Retained fields for backwards-compat documentation:
+      price      -> d.data.journeySearch.journeyFares[id].fares[0].price.amount / 100
+      currency   -> fares[0].price.currencyCode
+      departure  -> journey.departureTime (ISO-8601)
+      arrival    -> journey.arrivalTime   (ISO-8601)
+      duration   -> _parse_iso_duration(journey.duration)
+      transfers  -> len(journey.legs) - 1
+      provider   -> "trainline"
+      booking_url -> https://www.thetrainline.com/book/trains/{from}/{to}/{date}
+    """
+    # Not called — scrape_trainline uses page.evaluate() / JS API directly.
+    _ = (card, from_city, to_city, date, currency)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -323,151 +349,196 @@ def scrape_oebb(page, from_city, to_city, date, currency):
     if not from_id or not to_id:
         raise ValueError(f"no ÖBB station ID for {from_city!r} or {to_city!r}")
 
+    # Look up the HAFAS internal numeric IDs (subset used by the timetable API).
+    # The OEBB_SHOP_STATIONS map stores EVA/UIC string IDs used for booking URLs.
+    # The timetable API uses integer station numbers derived from those EVA codes.
+    OEBB_HAFAS_NUMBERS = {
+        "vienna": (1290401, "Wien Hbf"),
+        "wien": (1290401, "Wien Hbf"),
+        "salzburg": (1290301, "Salzburg Hbf"),
+        "innsbruck": (1290201, "Innsbruck Hbf"),
+        "graz": (1290601, "Graz Hbf"),
+        "linz": (1290501, "Linz Hbf"),
+        "munich": (1280401, "München Hbf"),
+        "münchen": (1280401, "München Hbf"),
+        "berlin": (8011160, "Berlin Hbf"),
+        "frankfurt": (8000105, "Frankfurt(Main)Hbf"),
+        "hamburg": (8002549, "Hamburg Hbf"),
+        "zurich": (8503000, "Zürich HB"),
+        "zürich": (8503000, "Zürich HB"),
+        "geneva": (8501008, "Genève"),
+        "basel": (8500010, "Basel SBB"),
+        "venice": (8300137, "Venezia Santa Lucia"),
+        "milan": (8300046, "Milano Centrale"),
+        "rome": (8300003, "Roma Termini"),
+        "budapest": (5500017, "Budapest-Keleti"),
+        "prague": (5400014, "Praha hl.n."),
+        "praha": (5400014, "Praha hl.n."),
+        "bratislava": (5600002, "Bratislava hl.st."),
+        "ljubljana": (7900001, "Ljubljana"),
+        "zagreb": (7800001, "Zagreb Gl.kol."),
+        "warsaw": (5100028, "Warszawa Centralna"),
+        "krakow": (5100066, "Kraków Główny"),
+    }
+
+    from_hafas = OEBB_HAFAS_NUMBERS.get(from_city.lower())
+    to_hafas = OEBB_HAFAS_NUMBERS.get(to_city.lower())
+    if not from_hafas or not to_hafas:
+        raise ValueError(f"no ÖBB HAFAS number for {from_city!r} or {to_city!r}")
+
+    from_num, from_name = from_hafas
+    to_num, to_name = to_hafas
+
     _apply_stealth(page)
+
+    # Capture the anonymousToken the SPA fetches on page load.
+    # Re-requesting it would create a new session and invalidate the existing one (HTTP 440).
+    token_holder = {}
+    def _capture_token(resp):
+        if "/api/domain/v1/anonymousToken" in resp.url:
+            try:
+                d = resp.json()
+                token_holder["token"] = d.get("access_token", "")
+            except Exception:
+                pass
+    page.on("response", _capture_token)
+
+    # Navigate to the ticket page — SPA fetches anonymousToken and sets session cookies.
     page.goto("https://shop.oebbtickets.at/en/ticket", wait_until="networkidle", timeout=25000)
     _dismiss_cookies(page)
 
-    # Fill origin field.
-    from_input = page.query_selector(
-        'input[data-testid*="from"], input[placeholder*="From"], '
-        'input[aria-label*="from" i], input[aria-label*="departure" i], '
-        'input[name*="origin" i], input[id*="origin" i]'
+    accesstoken = token_holder.get("token", "")
+    if not accesstoken:
+        raise RuntimeError("oebb: could not capture anonymousToken from page load")
+
+    # Three-step flow using the already-established session:
+    #  1. POST /api/offer/v2/travelActions  -> travelActionId
+    #  2. POST /api/hafas/v4/timetable      -> connections + IDs + durations (ms)
+    #  3. GET  /api/offer/v1/prices         -> price per connectionId
+    result = page.evaluate(f"""
+    async () => {{
+        const accesstoken = {json.dumps(accesstoken)};
+        const hdrs = {{
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/plain, */*',
+            'accesstoken': accesstoken,
+            'channel': 'inet',
+            'clientid': '1',
+            'clientversion': '2.4.11709-TSPNEU-153089-2',
+            'isoffernew': 'true',
+            'lang': 'en'
+        }};
+
+        // Step 1: get travelActionId for timetable search
+        const ta = await fetch('/api/offer/v2/travelActions', {{
+            method: 'POST',
+            headers: hdrs,
+            body: JSON.stringify({{
+                departureTime: true,
+                from: {{number: {from_num}, name: '{from_name}'}},
+                to: {{number: {to_num}, name: '{to_name}'}},
+                datetime: '{date}T08:00:00.000',
+                customerVias: [],
+                travelActionTypes: ['timetable'],
+                filter: {{productTypes: [], history: false, maxEntries: 1, channel: 'inet'}}
+            }})
+        }});
+        if (ta.status !== 200) {{
+            const t = await ta.text();
+            return JSON.stringify({{error: 'travelActions HTTP ' + ta.status + ': ' + t.substring(0, 200)}});
+        }}
+        const taData = await ta.json();
+        const travelActionId = taData.travelActions && taData.travelActions[0] && taData.travelActions[0].id;
+        if (!travelActionId) {{
+            return JSON.stringify({{error: 'no travelActionId: ' + JSON.stringify(taData).substring(0,200)}});
+        }}
+
+        // Step 2: fetch timetable connections
+        const tt = await fetch('/api/hafas/v4/timetable', {{
+            method: 'POST',
+            headers: hdrs,
+            body: JSON.stringify({{
+                travelActionId: travelActionId,
+                datetimeDeparture: '{date}T08:00:00.000',
+                filter: {{regionaltrains: false, direct: false, wheelchair: false, bikes: false, trains: false, motorail: false, connections: []}},
+                passengers: [{{me: false, remembered: false, markedForDeath: false, type: 'ADULT', id: 1, cards: [], relations: [], isSelected: true}}],
+                count: 6,
+                from: {{number: {from_num}, name: '{from_name}'}},
+                to: {{number: {to_num}, name: '{to_name}'}},
+                timeout: {{}}
+            }})
+        }});
+        if (tt.status !== 200) {{
+            const t = await tt.text();
+            return JSON.stringify({{error: 'timetable HTTP ' + tt.status + ': ' + t.substring(0, 300)}});
+        }}
+        const ttData = await tt.json();
+        const conns = (ttData.connections || []).slice(0, 6);
+        if (conns.length === 0) {{
+            return JSON.stringify({{error: 'no connections', raw: JSON.stringify(ttData).substring(0, 300)}});
+        }}
+
+        // Step 3: fetch prices for all connection IDs
+        const ids = conns.map(c => c.id).filter(Boolean);
+        const priceUrl = '/api/offer/v1/prices?' + ids.map(id => 'connectionIds[]=' + encodeURIComponent(id)).join('&') + '&sortType=DEPARTURE&bestPriceId=undefined';
+        const pr = await fetch(priceUrl, {{headers: {{'Accept': 'application/json', 'accesstoken': accesstoken, 'channel': 'inet', 'clientid': '1', 'isoffernew': 'true'}}}});
+        let priceMap = {{}};
+        if (pr.status === 200) {{
+            const prData = await pr.json();
+            (prData.offers || []).forEach(o => {{ priceMap[o.connectionId] = o.price; }});
+        }}
+
+        return JSON.stringify({{
+            count: conns.length,
+            connections: conns.map(c => ({{
+                id: c.id,
+                dep: c.from && c.from.departure,
+                arr: c.to && c.to.arrival,
+                durMs: c.duration,
+                sections: c.sections ? c.sections.length : 1,
+                price: priceMap[c.id] || null
+            }}))
+        }});
+    }}
+    """)
+
+    data = json.loads(result)
+    if data.get("error"):
+        raise RuntimeError(f"oebb api: {data['error']}")
+
+    booking_url = (
+        f"https://tickets.oebb.at/en/ticket"
+        f"?stationOrigExtId={from_id}"
+        f"&stationDestExtId={to_id}"
+        f"&outwardDate={date}"
     )
-    if from_input:
-        from_input.click()
-        from_input.fill(from_city)
-        page.wait_for_timeout(1500)
-        suggestion = page.query_selector(
-            '[data-testid*="suggestion"] li, .auto-suggest li, [role="option"], '
-            'ul[class*="suggest"] li, ul[class*="autocomplete"] li'
-        )
-        if suggestion:
-            suggestion.click()
-        else:
-            page.keyboard.press("ArrowDown")
-            page.keyboard.press("Enter")
-        page.wait_for_timeout(500)
-
-    # Fill destination field.
-    to_input = page.query_selector(
-        'input[data-testid*="to"], input[placeholder*="To"], '
-        'input[aria-label*=" to" i], input[aria-label*="arrival" i], '
-        'input[name*="destination" i], input[id*="destination" i]'
-    )
-    if to_input:
-        to_input.click()
-        to_input.fill(to_city)
-        page.wait_for_timeout(1500)
-        suggestion = page.query_selector(
-            '[data-testid*="suggestion"] li, .auto-suggest li, [role="option"], '
-            'ul[class*="suggest"] li, ul[class*="autocomplete"] li'
-        )
-        if suggestion:
-            suggestion.click()
-        else:
-            page.keyboard.press("ArrowDown")
-            page.keyboard.press("Enter")
-        page.wait_for_timeout(500)
-
-    # Click the search/submit button.
-    search_btn = page.query_selector(
-        'button[data-testid*="search"], button[type="submit"], '
-        'button[class*="search" i], button[aria-label*="search" i]'
-    )
-    if search_btn:
-        search_btn.click()
-
-    # Wait for results to appear.
-    page.wait_for_timeout(10000)
-
-    # Wait for connection/result list.
-    result_selectors = [
-        "[class*='connection']",
-        "[class*='Connection']",
-        "[class*='journey']",
-        "[class*='Journey']",
-        ".result-item",
-        "[data-testid*='journey']",
-        "[data-testid*='connection']",
-    ]
-    loaded_sel = None
-    for sel in result_selectors:
-        try:
-            page.wait_for_selector(sel, timeout=8000)
-            loaded_sel = sel
-            break
-        except Exception:
-            continue
-
-    if loaded_sel is None:
-        raise RuntimeError(f"no connection cards found on ÖBB page (title: {page.title()!r})")
 
     routes = []
-    cards = page.query_selector_all(loaded_sel)
-
-    for card in cards[:10]:
-        try:
-            route = _parse_oebb_card(card, from_city, to_city, date, currency, from_id, to_id)
-            if route:
-                routes.append(route)
-        except Exception:
+    for c in data.get("connections", []):
+        price = c.get("price") or 0.0
+        if price <= 0:
             continue
+        dep = c.get("dep") or ""
+        arr = c.get("arr") or ""
+        dur_ms = c.get("durMs") or 0
+        sections = c.get("sections") or 1
+
+        # Duration comes as milliseconds from the HAFAS API.
+        duration = int(dur_ms) // 60000
+
+        routes.append({
+            "price": float(price),
+            "currency": "EUR",
+            "departure": dep,
+            "arrival": arr,
+            "duration": duration,
+            "type": "train",
+            "provider": "oebb",
+            "transfers": max(0, sections - 1),
+            "booking_url": booking_url,
+        })
 
     return routes
-
-
-def _parse_oebb_card(card, from_city, to_city, date, currency, from_id, to_id):
-    text = card.inner_text()
-    if not text:
-        return None
-
-    # Extract price — EUR with comma or dot separator.
-    price = 0.0
-    price_cur = "EUR"
-    price_m = re.search(r"([€])\s*([\d,]+(?:[.,]\d{2})?)|(\d+[.,]\d{2})\s*€", text)
-    if price_m:
-        raw = (price_m.group(2) or price_m.group(3) or "").replace(",", ".")
-        try:
-            price = float(raw)
-        except ValueError:
-            price = 0.0
-
-    if price <= 0:
-        return None
-
-    times = re.findall(r"\b(\d{1,2}:\d{2})\b", text)
-    departure = times[0] if len(times) >= 1 else ""
-    arrival = times[1] if len(times) >= 2 else ""
-
-    dep_iso = f"{date}T{departure}:00" if departure else date
-    arr_iso = f"{date}T{arrival}:00" if arrival else date
-
-    duration = 0
-    dur_m = re.search(r"(\d+)\s*h(?:rs?)?\s*(?:(\d+)\s*m(?:in)?s?)?", text, re.IGNORECASE)
-    if dur_m:
-        duration = int(dur_m.group(1)) * 60 + int(dur_m.group(2) or 0)
-
-    transfers = 0
-    chg_m = re.search(r"(\d+)\s+(?:change|transfer|Umstieg)", text, re.IGNORECASE)
-    if chg_m:
-        transfers = int(chg_m.group(1))
-
-    return {
-        "price": price,
-        "currency": price_cur,
-        "departure": dep_iso,
-        "arrival": arr_iso,
-        "duration": duration,
-        "type": "train",
-        "provider": "oebb",
-        "transfers": transfers,
-        "booking_url": (
-            f"https://tickets.oebb.at/en/ticket"
-            f"?stationOrigExtId={from_id}"
-            f"&stationDestExtId={to_id}"
-            f"&outwardDate={date}"
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +679,18 @@ def _parse_sncf_card(card, from_city, to_city, date, currency, from_code, to_cod
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _parse_iso_duration(s):
+    """Parse ISO 8601 duration string (PT2H15M, PT45M, P0DT3H) into minutes."""
+    if not s:
+        return 0
+    m = re.search(r"(?:(\d+)H)?(?:(\d+)M)?", s)
+    if m:
+        hours = int(m.group(1) or 0)
+        mins = int(m.group(2) or 0)
+        return hours * 60 + mins
+    return 0
+
 
 def _dismiss_cookies(page):
     """Accept cookie banners — try common button patterns."""
