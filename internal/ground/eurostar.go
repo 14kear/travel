@@ -73,33 +73,41 @@ func HasEurostarRoute(from, to string) bool {
 	return fromOK && toOK
 }
 
-// eurostarGraphQLQuery builds the cheapestFaresSearch GraphQL query.
-// If snapOnly is true, adds productFamiliesSearch: "SNAP" to filter for
+// eurostarGQLBody is the full GraphQL request body sent to the Eurostar gateway.
+type eurostarGQLBody struct {
+	OperationName string                 `json:"operationName"`
+	Variables     map[string]interface{} `json:"variables"`
+	Query         string                 `json:"query"`
+}
+
+// eurostarBuildBody builds the cheapestFaresSearch GraphQL request body.
+// If snapOnly is true, uses productFamiliesSearch: ["SNAP"] to filter for
 // Eurostar Snap last-minute deals (released ~1 week before travel).
-func eurostarGraphQLQuery(originUIC, destUIC, startDate, endDate, currency string, snapOnly bool) string {
-	productFilter := ""
+// Regular fares use ["PUB_STANDARD", "RED_PUB_STANDARD"].
+func eurostarBuildBody(originUIC, destUIC, startDate, endDate, currency string, snapOnly bool) ([]byte, error) {
+	productFamilies := []string{"PUB_STANDARD", "RED_PUB_STANDARD"}
 	if snapOnly {
-		productFilter = `productFamiliesSearch: "SNAP"`
+		productFamilies = []string{"SNAP"}
 	}
-	// Wrapped in explicit `query` keyword to ensure compatibility with all GraphQL
-	// gateway implementations (anonymous shorthand `{ ... }` is rejected by some).
-	return fmt.Sprintf(`query {
-  cheapestFaresSearch(
-    cheapestFaresLists: [{
-      origin: %q
-      destination: %q
-      direction: OUTBOUND
-      startDate: %q
-      endDate: %q
-    }]
-    numberOfPassenger: 1
-    mainPassengerType: { type: "ADULT" }
-    %s
-    currency: %s
-  ) {
-    cheapestFares { date price }
-  }
-}`, originUIC, destUIC, startDate, endDate, productFilter, strings.ToUpper(currency))
+	variables := map[string]interface{}{
+		"cheapestFaresLists": []map[string]string{{
+			"origin":      originUIC,
+			"destination": destUIC,
+			"startDate":   startDate,
+			"endDate":     endDate,
+			"journeyType": "RETURN",
+			"direction":   "OUTBOUND",
+		}},
+		"currency":              strings.ToUpper(currency),
+		"numberOfPassenger":     1,
+		"productFamiliesSearch": productFamilies,
+	}
+	body := eurostarGQLBody{
+		OperationName: "cheapestFaresSearch",
+		Variables:     variables,
+		Query:         `query cheapestFaresSearch($numberOfPassenger: Int, $productFamiliesSearch: [String!], $currency: Currency!, $cheapestFaresLists: [CheapestFaresList!]!) { cheapestFaresSearch(numberOfPassenger: $numberOfPassenger, productFamiliesSearch: $productFamiliesSearch, currency: $currency, cheapestFaresLists: $cheapestFaresLists) { cheapestFares { date price __typename } __typename } }`,
+	}
+	return json.Marshal(body)
 }
 
 // eurostarGQLResponse is the expected GraphQL response structure.
@@ -134,8 +142,7 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		currency = "GBP"
 	}
 
-	query := eurostarGraphQLQuery(fromStation.UIC, toStation.UIC, startDate, endDate, currency, snapOnly)
-	body, err := json.Marshal(map[string]string{"query": query})
+	body, err := eurostarBuildBody(fromStation.UIC, toStation.UIC, startDate, endDate, currency, snapOnly)
 	if err != nil {
 		return nil, fmt.Errorf("eurostar marshal query: %w", err)
 	}
@@ -153,14 +160,13 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept", "*/*")
 		req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
 		req.Header.Set("Origin", "https://www.eurostar.com")
 		req.Header.Set("Referer", "https://www.eurostar.com/")
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-		req.Header.Set("x-api-key", "")        // placeholder — Eurostar may require this; harmless if empty
-		req.Header.Set("x-locale", "en-GB")    // locale hint used by Eurostar's BFF
-		req.Header.Set("x-version", "1.0.0")   // version header observed in browser traffic
+		req.Header.Set("x-platform", "web")
+		req.Header.Set("x-market-code", "uk")
 		if cookieHeader != "" {
 			req.Header.Set("Cookie", cookieHeader)
 		}
@@ -168,7 +174,7 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 	}
 
 	slog.Debug("eurostar search", "from", fromStation.City, "to", toStation.City,
-		"start", startDate, "end", endDate)
+		"start", startDate, "end", endDate, "snap", snapOnly)
 
 	req, err := newEurostarRequest("")
 	if err != nil {

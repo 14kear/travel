@@ -1,6 +1,7 @@
 package ground
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -83,46 +84,83 @@ func TestHasEurostarRoute(t *testing.T) {
 	}
 }
 
-func TestEurostarGraphQLQuery(t *testing.T) {
-	q := eurostarGraphQLQuery("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", false)
-
-	checks := []string{
-		`origin: "7015400"`,
-		`destination: "8727100"`,
-		`startDate: "2026-04-10"`,
-		`endDate: "2026-04-30"`,
-		`currency: GBP`,
-		`direction: OUTBOUND`,
-		`numberOfPassenger: 1`,
-		`type: "ADULT"`,
-		`cheapestFares { date price }`,
+func TestEurostarBuildBody(t *testing.T) {
+	raw, err := eurostarBuildBody("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", false)
+	if err != nil {
+		t.Fatalf("eurostarBuildBody: %v", err)
 	}
 
-	for _, check := range checks {
-		if !strings.Contains(q, check) {
-			t.Errorf("query missing %q", check)
+	var body eurostarGQLBody
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if body.OperationName != "cheapestFaresSearch" {
+		t.Errorf("operationName = %q, want %q", body.OperationName, "cheapestFaresSearch")
+	}
+	if !strings.Contains(body.Query, "cheapestFaresSearch") {
+		t.Error("query should contain cheapestFaresSearch")
+	}
+	if !strings.Contains(body.Query, "$cheapestFaresLists") {
+		t.Error("query should use $cheapestFaresLists variable")
+	}
+	if body.Variables["currency"] != "GBP" {
+		t.Errorf("currency = %v, want GBP", body.Variables["currency"])
+	}
+	faresRaw, ok := body.Variables["cheapestFaresLists"].([]interface{})
+	if !ok || len(faresRaw) != 1 {
+		t.Fatalf("cheapestFaresLists variable malformed: %v", body.Variables["cheapestFaresLists"])
+	}
+	fare, ok := faresRaw[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("cheapestFaresLists[0] malformed: %v", faresRaw[0])
+	}
+	for field, want := range map[string]string{
+		"origin":      "7015400",
+		"destination": "8727100",
+		"startDate":   "2026-04-10",
+		"endDate":     "2026-04-30",
+		"direction":   "OUTBOUND",
+	} {
+		if got, _ := fare[field].(string); got != want {
+			t.Errorf("cheapestFaresLists[0][%q] = %q, want %q", field, got, want)
 		}
 	}
 }
 
-func TestEurostarGraphQLQuery_CurrencyUppercase(t *testing.T) {
-	q := eurostarGraphQLQuery("7015400", "8727100", "2026-04-10", "2026-04-30", "eur", false)
-	if !strings.Contains(q, "currency: EUR") {
-		t.Error("currency should be uppercased")
+func TestEurostarBuildBody_CurrencyUppercase(t *testing.T) {
+	raw, err := eurostarBuildBody("7015400", "8727100", "2026-04-10", "2026-04-30", "eur", false)
+	if err != nil {
+		t.Fatalf("eurostarBuildBody: %v", err)
+	}
+	if !strings.Contains(string(raw), `"EUR"`) {
+		t.Error("currency should be uppercased to EUR")
 	}
 }
 
-func TestEurostarGraphQLQuery_SnapFilter(t *testing.T) {
-	q := eurostarGraphQLQuery("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", true)
-	if !strings.Contains(q, `productFamiliesSearch: "SNAP"`) {
-		t.Error("snap query should contain productFamiliesSearch SNAP filter")
+func TestEurostarBuildBody_SnapFilter(t *testing.T) {
+	raw, err := eurostarBuildBody("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", true)
+	if err != nil {
+		t.Fatalf("eurostarBuildBody: %v", err)
+	}
+	if !strings.Contains(string(raw), `"SNAP"`) {
+		t.Error("snap body should contain SNAP in productFamiliesSearch")
+	}
+	if strings.Contains(string(raw), `"PUB_STANDARD"`) {
+		t.Error("snap body should not contain PUB_STANDARD")
 	}
 }
 
-func TestEurostarGraphQLQuery_NoSnapFilter(t *testing.T) {
-	q := eurostarGraphQLQuery("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", false)
-	if strings.Contains(q, "SNAP") {
-		t.Error("non-snap query should not contain SNAP")
+func TestEurostarBuildBody_NoSnapFilter(t *testing.T) {
+	raw, err := eurostarBuildBody("7015400", "8727100", "2026-04-10", "2026-04-30", "GBP", false)
+	if err != nil {
+		t.Fatalf("eurostarBuildBody: %v", err)
+	}
+	if strings.Contains(string(raw), `"SNAP"`) {
+		t.Error("non-snap body should not contain SNAP")
+	}
+	if !strings.Contains(string(raw), `"PUB_STANDARD"`) {
+		t.Error("non-snap body should contain PUB_STANDARD")
 	}
 }
 

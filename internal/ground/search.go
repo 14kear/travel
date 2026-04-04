@@ -128,13 +128,17 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Eurostar returns cheapest fares for a date range; use the single date
-			// as both start and end to get that day's price.
+			// Eurostar cheapestFaresSearch needs a date range (not a single day).
+			// Use the requested date as start, +7 days as end.
+			endDate := date // fallback
+			if t, err := time.Parse("2006-01-02", date); err == nil {
+				endDate = t.AddDate(0, 0, 7).Format("2006-01-02")
+			}
 			// Try Snap first (preferred — better value), fall back to regular.
-			routes, err := SearchEurostar(ctx, from, to, date, date, opts.Currency, true)
+			routes, err := SearchEurostar(ctx, from, to, date, endDate, opts.Currency, true)
 			if err != nil || len(routes) == 0 {
 				slog.Debug("no eurostar snap fares, trying regular", "err", err)
-				routes, err = SearchEurostar(ctx, from, to, date, date, opts.Currency, false)
+				routes, err = SearchEurostar(ctx, from, to, date, endDate, opts.Currency, false)
 			}
 			results <- providerResult{routes: routes, err: err, name: "eurostar"}
 		}()
