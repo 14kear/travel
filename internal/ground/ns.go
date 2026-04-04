@@ -76,10 +76,11 @@ type nsTripsResponse struct {
 }
 
 type nsTrip struct {
-	Legs        []nsTripLeg  `json:"legs"`
-	OptimalPrice *nsPrice    `json:"optimalPrice,omitempty"`
-	ProductType  string      `json:"productType,omitempty"`
-	Transfers    int         `json:"transfers"`
+	Legs                     []nsTripLeg `json:"legs"`
+	OptimalPrice             *nsPrice    `json:"optimalPrice,omitempty"`
+	ProductType              string      `json:"productType,omitempty"`
+	Transfers                int         `json:"transfers"`
+	PlannedDurationInMinutes int         `json:"plannedDurationInMinutes"`
 }
 
 type nsTripLeg struct {
@@ -203,7 +204,10 @@ func parseNSTrips(trips []nsTrip, fromStation, toStation nsStation, currency str
 			}
 		}
 
-		duration := computeDBDuration(depTime, arrTime)
+		duration := trip.PlannedDurationInMinutes
+		if duration == 0 {
+			duration = computeDBDuration(depTime, arrTime) // fallback
+		}
 
 		// Build per-leg detail.
 		var legs []models.GroundLeg
