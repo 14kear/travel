@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 // AirportNames maps IATA airport codes to city/airport names for the top 200
 // airports worldwide. Used as a fallback when the API response does not include
 // city names (e.g., in explore results).
@@ -208,4 +210,23 @@ func LookupAirportName(code string) string {
 		return name
 	}
 	return code
+}
+
+// ResolveLocationName converts a string that might be an IATA code into a
+// city name suitable for hotel/ground searches. If the input is already a
+// city name (not a 3-letter uppercase IATA code), it is returned as-is.
+// This prevents "PRG" being sent to Google Hotels (which needs "Prague").
+func ResolveLocationName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	// Only resolve if it looks like an IATA code (2-3 uppercase letters).
+	upper := strings.ToUpper(s)
+	if len(upper) <= 3 && upper == s {
+		if name, ok := AirportNames[upper]; ok {
+			return name
+		}
+	}
+	return s
 }

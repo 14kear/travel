@@ -178,7 +178,7 @@ func hotelElicitationSchema(count int, location string) map[string]interface{} {
 // --- Tool handlers ---
 
 func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
-	location := argString(args, "location")
+	location := models.ResolveLocationName(argString(args, "location"))
 	checkIn := argString(args, "check_in")
 	checkOut := argString(args, "check_out")
 

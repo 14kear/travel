@@ -1,8 +1,6 @@
 package models
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestLookupAirportName_Known(t *testing.T) {
 	tests := []struct {
@@ -42,5 +40,28 @@ func TestAirportNames_AllThreeLetterCodes(t *testing.T) {
 		if len(code) != 3 {
 			t.Errorf("airport code %q is not 3 characters", code)
 		}
+	}
+}
+
+func TestResolveLocationName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "known iata code", input: "PRG", want: "Prague"},
+		{name: "trimmed iata code", input: "  HEL  ", want: "Helsinki"},
+		{name: "unknown uppercase code", input: "ZZZ", want: "ZZZ"},
+		{name: "city name passes through", input: "Prague", want: "Prague"},
+		{name: "lowercase code passes through", input: "prg", want: "prg"},
+		{name: "empty string", input: "   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResolveLocationName(tt.input); got != tt.want {
+				t.Fatalf("ResolveLocationName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }

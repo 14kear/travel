@@ -174,6 +174,12 @@ func SearchRegioJet(ctx context.Context, fromCityID, toCityID int, date, currenc
 	}
 	results := wrapper.Routes
 
+	for _, r := range results {
+		if len(r.VehicleTypes) > 0 {
+			slog.Debug("regiojet vehicle types", "departure", r.DepartureTime, "types", r.VehicleTypes)
+		}
+	}
+
 	// Resolve city names for display
 	fromName := resolveCityName(ctx, fromCityID)
 	toName := resolveCityName(ctx, toCityID)
@@ -209,6 +215,17 @@ func SearchRegioJet(ctx context.Context, fromCityID, toCityID int, date, currenc
 			BookingURL: buildRegioJetBookingURL(fromCityID, toCityID, date),
 		}
 		routes = append(routes, route)
+	}
+
+	// Filter to requested date only (RegioJet sometimes returns multi-day results).
+	if date != "" {
+		filtered := routes[:0]
+		for _, r := range routes {
+			if routeDepartsOnDate(r.Departure.Time, date) {
+				filtered = append(filtered, r)
+			}
+		}
+		routes = filtered
 	}
 
 	sort.Slice(routes, func(i, j int) bool {
@@ -251,10 +268,13 @@ func computeRegioJetDuration(depTime, arrTime string) int {
 func classifyVehicleTypes(types []string) string {
 	hasBus, hasTrain := false, false
 	for _, t := range types {
-		switch strings.ToUpper(t) {
-		case "BUS":
+		upper := strings.ToUpper(t)
+		switch {
+		case upper == "BUS":
 			hasBus = true
-		case "TRAIN":
+		case upper == "TRAIN" || upper == "RAIL" || upper == "RAILJET" ||
+			upper == "REGIOJET" || strings.Contains(upper, "TRAIN") ||
+			strings.Contains(upper, "RAIL"):
 			hasTrain = true
 		}
 	}
@@ -264,10 +284,25 @@ func classifyVehicleTypes(types []string) string {
 	if hasTrain {
 		return "train"
 	}
+	if hasBus {
+		return "bus"
+	}
+	if len(types) > 0 {
+		return strings.ToLower(types[0]) // unknown type, use as-is
+	}
 	return "bus"
 }
 
 func buildRegioJetBookingURL(fromID, toCityID int, date string) string {
 	return fmt.Sprintf("https://www.regiojet.com/en/results/%d/%d/%s",
 		fromID, toCityID, date)
+}
+
+// routeDepartsOnDate checks if a departure time (ISO 8601) falls on the given date (YYYY-MM-DD).
+func routeDepartsOnDate(departureTime, date string) bool {
+	// Extract just the date portion from ISO time like "2026-07-01T15:00:00.000+02:00"
+	if len(departureTime) >= 10 {
+		return departureTime[:10] == date
+	}
+	return true // if we can't parse, keep it
 }

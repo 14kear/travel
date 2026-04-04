@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/ground"
+	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
 func searchGroundTool() ToolDef {
@@ -68,8 +69,8 @@ func groundSearchOutputSchema() interface{} {
 }
 
 func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
-	from := argString(args, "from")
-	to := argString(args, "to")
+	from := models.ResolveLocationName(argString(args, "from"))
+	to := models.ResolveLocationName(argString(args, "to"))
 	date := argString(args, "date")
 
 	if from == "" || to == "" || date == "" {

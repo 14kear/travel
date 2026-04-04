@@ -310,7 +310,12 @@ func TestClassifyVehicleTypes(t *testing.T) {
 	}{
 		{[]string{"BUS"}, "bus"},
 		{[]string{"TRAIN"}, "train"},
+		{[]string{"RAILJET"}, "train"},
+		{[]string{"regiojet"}, "train"},
+		{[]string{"night train"}, "train"},
 		{[]string{"BUS", "TRAIN"}, "mixed"},
+		{[]string{"BUS", "RAILJET"}, "mixed"},
+		{[]string{"TRAM"}, "tram"},
 		{[]string{}, "bus"}, // default
 	}
 
@@ -319,6 +324,42 @@ func TestClassifyVehicleTypes(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("classifyVehicleTypes(%v) = %q, want %q", tt.types, got, tt.want)
 		}
+	}
+}
+
+func TestRouteDepartsOnDate(t *testing.T) {
+	tests := []struct {
+		name          string
+		departureTime string
+		date          string
+		want          bool
+	}{
+		{
+			name:          "matching iso timestamp",
+			departureTime: "2026-07-01T15:00:00.000+02:00",
+			date:          "2026-07-01",
+			want:          true,
+		},
+		{
+			name:          "different date",
+			departureTime: "2026-07-02T00:05:00.000+02:00",
+			date:          "2026-07-01",
+			want:          false,
+		},
+		{
+			name:          "short unparseable timestamp is kept",
+			departureTime: "invalid",
+			date:          "2026-07-01",
+			want:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := routeDepartsOnDate(tt.departureTime, tt.date); got != tt.want {
+				t.Fatalf("routeDepartsOnDate(%q, %q) = %v, want %v", tt.departureTime, tt.date, got, tt.want)
+			}
+		})
 	}
 }
 

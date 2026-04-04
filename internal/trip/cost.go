@@ -111,8 +111,9 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 		Adults: 1,
 	})
 
-	// Search hotels.
-	hotelResult, hotelErr := hotels.SearchHotels(ctx, input.Destination, hotels.HotelSearchOptions{
+	// Search hotels — resolve IATA to city name (Google needs "Prague" not "PRG").
+	hotelLocation := models.ResolveLocationName(input.Destination)
+	hotelResult, hotelErr := hotels.SearchHotels(ctx, hotelLocation, hotels.HotelSearchOptions{
 		CheckIn:  input.DepartDate,
 		CheckOut: input.ReturnDate,
 		Guests:   input.Guests,
