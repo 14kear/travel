@@ -106,6 +106,12 @@ func SearchPriceGrid(ctx context.Context, origin, dest string, opts GridOptions)
 		}, fmt.Errorf("parse grid response: %w", err)
 	}
 
+	// Detect the actual API currency and stamp all cells.
+	apiCurrency := DetectSourceCurrency(ctx, origin, dest)
+	for i := range cells {
+		cells[i].Currency = apiCurrency
+	}
+
 	// Collect unique departure and return dates.
 	depSet := make(map[string]bool)
 	retSet := make(map[string]bool)
@@ -285,6 +291,6 @@ func parseGridOffer(raw json.RawMessage) *models.GridCell {
 		DepartureDate: depDate,
 		ReturnDate:    retDate,
 		Price:         price,
-		Currency:      "EUR",
+		Currency:      "", // Filled by caller via DetectSourceCurrency
 	}
 }

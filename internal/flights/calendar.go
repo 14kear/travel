@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
@@ -340,7 +341,7 @@ func scanForPrices(v any, results *[]models.DatePriceResult) {
 								dp := models.DatePriceResult{
 									Date:     dateStr,
 									Price:    price,
-									Currency: "EUR",
+									Currency: "", // Filled later via detectSourceCurrency
 								}
 								if retDate, ok := val[1].(string); ok {
 									if _, err := time.Parse("2006-01-02", retDate); err == nil {
@@ -366,11 +367,31 @@ func scanForPrices(v any, results *[]models.DatePriceResult) {
 	}
 }
 
+// sourceCurrencyCache caches the detected API currency per session.
+// The currency depends on IP location, not route, so one detection is enough.
+var sourceCurrencyCache struct {
+	sync.RWMutex
+	currency string
+}
+
 // DetectSourceCurrency is the exported variant of detectSourceCurrency.
-// It uses a date 7 days from now by default.
+// It caches the result since the API currency depends on IP, not route.
 func DetectSourceCurrency(ctx context.Context, origin, dest string) string {
+	sourceCurrencyCache.RLock()
+	if c := sourceCurrencyCache.currency; c != "" {
+		sourceCurrencyCache.RUnlock()
+		return c
+	}
+	sourceCurrencyCache.RUnlock()
+
 	date := time.Now().AddDate(0, 0, 7).Format("2006-01-02")
-	return detectSourceCurrency(ctx, origin, dest, date)
+	detected := detectSourceCurrency(ctx, origin, dest, date)
+
+	sourceCurrencyCache.Lock()
+	sourceCurrencyCache.currency = detected
+	sourceCurrencyCache.Unlock()
+
+	return detected
 }
 
 // detectSourceCurrency does a quick flight search to discover the raw currency
