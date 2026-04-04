@@ -56,11 +56,12 @@ Enter
 Sleep 300ms
 Type "trvl explore AMS --currency EUR"
 Enter
-Sleep 8s
+Sleep 10s
 
-Type ""
+# clear before next command so deals table gets full screen
+Type "clear"
 Enter
-Sleep 1500ms
+Sleep 300ms
 
 Type "# Any hot deals from Amsterdam?"
 Enter
@@ -69,39 +70,39 @@ Type "trvl deals --from Amsterdam --hours 72"
 Enter
 Sleep 8s
 
-Type ""
-Enter
-Sleep 1500ms
-
 # ═══════════════════════════════════════════════════════════
 # ACT 2: Planning — "Prague! When's cheapest?"
 # ═══════════════════════════════════════════════════════════
+
+Type "clear"
+Enter
+Sleep 300ms
 
 Type "# Cheapest dates to fly AMS -> Prague"
 Enter
 Sleep 300ms
 Type "trvl dates AMS PRG --from 2026-06-10 --to 2026-06-20 --currency EUR"
 Enter
-Sleep 6s
+Sleep 8s
 
 Type ""
 Enter
-Sleep 1500ms
+Sleep 500ms
 
 Type "# Round-trip price matrix: every departure x return combo"
 Enter
 Sleep 300ms
 Type "trvl grid AMS PRG --depart-from 2026-06-13 --depart-to 2026-06-16 --return-from 2026-06-17 --return-to 2026-06-20 --currency EUR"
 Enter
-Sleep 8s
-
-Type ""
-Enter
-Sleep 1500ms
+Sleep 10s
 
 # ═══════════════════════════════════════════════════════════
 # ACT 3: Booking — "Plan the whole trip in one search"
 # ═══════════════════════════════════════════════════════════
+
+Type "clear"
+Enter
+Sleep 300ms
 
 Type "# One search: flights + hotel + cost summary"
 Enter
@@ -110,9 +111,9 @@ Type "trvl trip AMS PRG --depart 2026-06-15 --return 2026-06-18 --currency EUR"
 Enter
 Sleep 12s
 
-Type ""
+Type "clear"
 Enter
-Sleep 1500ms
+Sleep 300ms
 
 Type "# More options? Search AMS *and* EIN airports at once"
 Enter
@@ -121,13 +122,13 @@ Type "trvl flights AMS,EIN PRG 2026-06-15 --stops 1 --currency EUR"
 Enter
 Sleep 8s
 
-Type ""
-Enter
-Sleep 1500ms
-
 # ═══════════════════════════════════════════════════════════
 # ACT 4: Travel onward + monitor
 # ═══════════════════════════════════════════════════════════
+
+Type "clear"
+Enter
+Sleep 300ms
 
 Type "# After Prague — train or bus to Vienna?"
 Enter
@@ -136,27 +137,27 @@ Type "trvl ground Prague Vienna 2026-06-18 --currency EUR"
 Enter
 Sleep 8s
 
-Type ""
+Type "clear"
 Enter
-Sleep 1500ms
+Sleep 300ms
 
 Type "# Track the route — alert me if price drops below 80"
 Enter
 Sleep 300ms
 Type "trvl watch add AMS PRG --below 80 --currency EUR"
 Enter
-Sleep 2s
+Sleep 3s
 
 Type ""
 Enter
-Sleep 1000ms
+Sleep 500ms
 
 Type "# What's Prague like? Weather, holidays, currency, safety"
 Enter
 Sleep 300ms
 Type "trvl destination Prague"
 Enter
-Sleep 8s
+Sleep 10s
 
 Type ""
 Enter
