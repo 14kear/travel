@@ -57,6 +57,36 @@ func TestHandleSearchGround_NilArgs(t *testing.T) {
 	}
 }
 
+func TestHandleSearchAirportTransfers_MissingAll(t *testing.T) {
+	_, _, err := handleSearchAirportTransfers(map[string]any{}, nil, nil)
+	if err == nil {
+		t.Error("expected error for missing airport_code/destination/date")
+	}
+}
+
+func TestHandleSearchAirportTransfers_InvalidAirportCode(t *testing.T) {
+	_, _, err := handleSearchAirportTransfers(map[string]any{
+		"airport_code": "XX",
+		"destination":  "Hotel Lutetia Paris",
+		"date":         "2026-07-01",
+	}, nil, nil)
+	if err == nil {
+		t.Error("expected error for invalid airport code")
+	}
+}
+
+func TestHandleSearchAirportTransfers_InvalidArrivalTime(t *testing.T) {
+	_, _, err := handleSearchAirportTransfers(map[string]any{
+		"airport_code": "CDG",
+		"destination":  "Hotel Lutetia Paris",
+		"date":         "2026-07-01",
+		"arrival_time": "bad",
+	}, nil, nil)
+	if err == nil {
+		t.Error("expected error for invalid arrival time")
+	}
+}
+
 // ============================================================
 // handleTripCost error paths
 // ============================================================

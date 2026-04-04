@@ -65,3 +65,25 @@ func TestResolveLocationName(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveAirportCity(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "airport override", input: "CDG", want: "Paris"},
+		{name: "trimmed override", input: "  JFK  ", want: "New York"},
+		{name: "plain airport name fallback", input: "AMS", want: "Amsterdam"},
+		{name: "unknown code passes through", input: "ZZZ", want: "ZZZ"},
+		{name: "empty string", input: "   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResolveAirportCity(tt.input); got != tt.want {
+				t.Fatalf("ResolveAirportCity(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

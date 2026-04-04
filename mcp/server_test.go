@@ -124,27 +124,28 @@ func TestToolsList(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	if len(result.Tools) != 16 {
-		t.Fatalf("expected 16 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 17 {
+		t.Fatalf("expected 17 tools, got %d", len(result.Tools))
 	}
 
 	expected := map[string]bool{
-		"search_flights":       false,
-		"search_dates":         false,
-		"search_hotels":        false,
-		"hotel_prices":         false,
-		"hotel_reviews":        false,
-		"destination_info":     false,
-		"calculate_trip_cost":  false,
-		"weekend_getaway":      false,
-		"suggest_dates":        false,
-		"optimize_multi_city":  false,
-		"nearby_places":        false,
-		"travel_guide":         false,
-		"local_events":         false,
-		"search_ground":        false,
-		"search_restaurants":   false,
-		"search_deals":         false,
+		"search_flights":           false,
+		"search_dates":             false,
+		"search_hotels":            false,
+		"hotel_prices":             false,
+		"hotel_reviews":            false,
+		"destination_info":         false,
+		"calculate_trip_cost":      false,
+		"weekend_getaway":          false,
+		"suggest_dates":            false,
+		"optimize_multi_city":      false,
+		"nearby_places":            false,
+		"travel_guide":             false,
+		"local_events":             false,
+		"search_ground":            false,
+		"search_airport_transfers": false,
+		"search_restaurants":       false,
+		"search_deals":             false,
 	}
 	for _, tool := range result.Tools {
 		if _, ok := expected[tool.Name]; !ok {

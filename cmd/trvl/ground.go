@@ -15,9 +15,9 @@ import (
 
 func groundCmd() *cobra.Command {
 	var (
-		currency  string
-		providers string
-		maxPrice  float64
+		currency   string
+		providers  string
+		maxPrice   float64
 		typeFilter string
 	)
 
@@ -85,10 +85,20 @@ func printGroundTable(ctx context.Context, targetCurrency string, result *models
 		return nil
 	}
 
-	// Convert prices if --currency specified.
+	providerCount, provList, rows := prepareGroundRows(ctx, targetCurrency, result.Routes)
+	models.Banner(os.Stdout, "🚂", fmt.Sprintf("Ground Transport · %d providers", providerCount),
+		fmt.Sprintf("Found %d routes (%s)", result.Count, strings.Join(provList, ", ")))
+	fmt.Println()
+
+	headers := []string{"Price", "Duration", "Type", "Provider", "Transfers", "Departs", "Arrives", "Seats"}
+	models.FormatTable(os.Stdout, headers, rows)
+	return nil
+}
+
+func prepareGroundRows(ctx context.Context, targetCurrency string, routes []models.GroundRoute) (int, []string, [][]string) {
 	if targetCurrency != "" {
-		for i := range result.Routes {
-			r := &result.Routes[i]
+		for i := range routes {
+			r := &routes[i]
 			if r.Currency != targetCurrency && r.Price > 0 {
 				converted, cur := destinations.ConvertCurrency(ctx, r.Price, r.Currency, targetCurrency)
 				r.Price = math.Round(converted*100) / 100
@@ -101,23 +111,17 @@ func printGroundTable(ctx context.Context, targetCurrency string, result *models
 		}
 	}
 
-	// Count unique providers
 	providers := map[string]bool{}
-	for _, r := range result.Routes {
+	for _, r := range routes {
 		providers[r.Provider] = true
 	}
 	provList := make([]string, 0, len(providers))
 	for p := range providers {
 		provList = append(provList, p)
 	}
-	models.Banner(os.Stdout, "🚂", fmt.Sprintf("Ground Transport · %d providers", len(providers)),
-		fmt.Sprintf("Found %d routes (%s)", result.Count, strings.Join(provList, ", ")))
-	fmt.Println()
 
-	headers := []string{"Price", "Duration", "Type", "Provider", "Transfers", "Departs", "Arrives", "Seats"}
-	var rows [][]string
-
-	for _, r := range result.Routes {
+	rows := make([][]string, 0, len(routes))
+	for _, r := range routes {
 		price := "-"
 		if r.Price > 0 {
 			price = fmt.Sprintf("%s %.2f", r.Currency, r.Price)
@@ -155,8 +159,7 @@ func printGroundTable(ctx context.Context, targetCurrency string, result *models
 		})
 	}
 
-	models.FormatTable(os.Stdout, headers, rows)
-	return nil
+	return len(providers), provList, rows
 }
 
 func formatGroundTime(isoTime string) string {

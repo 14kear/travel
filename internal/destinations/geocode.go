@@ -24,6 +24,7 @@ type GeoResult struct {
 	Lon         float64
 	DisplayName string
 	CountryCode string // ISO 3166-1 alpha-2 (uppercase)
+	Locality    string
 }
 
 // nominatimResult represents a single result from the Nominatim API.
@@ -120,5 +121,15 @@ func nominatimLookup(ctx context.Context, query string) (GeoResult, error) {
 		Lon:         lon,
 		DisplayName: r.DisplayName,
 		CountryCode: cc,
+		Locality:    extractLocality(r.Address),
 	}, nil
+}
+
+func extractLocality(address map[string]string) string {
+	for _, key := range []string{"city", "town", "village", "municipality", "county", "state_district", "state"} {
+		if value := strings.TrimSpace(address[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }

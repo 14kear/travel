@@ -143,6 +143,7 @@ That's it. Your AI assistant now has 16 travel tools available. Just ask natural
 | **travel_guide** | Wikivoyage travel guide for a city | Neighbourhoods, getting around, safety |
 | **local_events** | Find events during your trip dates | Concerts, festivals, exhibitions |
 | **search_ground** | Search buses and trains (6 providers) | Prague -> Vienna, May 3rd, trains only |
+| **search_airport_transfers** | Search airport-to-hotel or airport-to-city ground transport | CDG -> Hotel Lutetia Paris, after 14:30 |
 | **search_restaurants** | Find restaurants near a location (Google Maps) | Barcelona, italian cuisine |
 | **search_deals** | Travel deals from 4 RSS feeds (error fares, flash sales) | Deals from HEL under EUR 400 |
 
@@ -152,7 +153,7 @@ That's it. Your AI assistant now has 16 travel tools available. Just ask natural
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all 15 tool responses |
+| **Output schemas** | Full JSON Schema validation for all 17 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels`, `where-should-i-go` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides |
 | **Elicitation** | Interactive parameter collection when dates are missing |
@@ -206,7 +207,7 @@ https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 20 commands:
+trvl also works as a standalone CLI tool with 21 commands:
 
 ### Flights
 
@@ -312,6 +313,8 @@ trvl train Prague Vienna 2026-07-01 --type train      # Trains only
 trvl ground Prague Vienna 2026-07-01 --provider regiojet  # RegioJet only
 trvl ground Paris Lyon 2026-07-01 --provider sncf     # SNCF TGV only
 trvl ground Prague Vienna 2026-07-01 --max-price 20   # Under EUR 20
+trvl airport-transfer CDG "Hotel Lutetia Paris" 2026-07-01
+trvl airport-transfer LHR "Paddington Station" 2026-07-01 --arrival-after 14:30
 ```
 
 ### Price Watch
@@ -380,8 +383,8 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
 | **Data** | Real-time from 7 Google endpoints + FlixBus + RegioJet + Eurostar + Deutsche Bahn + SNCF + Transitous + 11 free APIs + Google Maps |
 | **Auth** | None required. Optional free API keys for events/restaurant ratings. |
-| **MCP** | Full v2025-11-25 — 16 tools, 4 prompts, resources, structured content, sampling |
-| **CLI** | 20 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
+| **MCP** | Full v2025-11-25 — 17 tools, 4 prompts, resources, structured content, sampling |
+| **CLI** | 21 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 30+ hacks auto-applied: nearby airports, throw-away returns, hotel splits |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |

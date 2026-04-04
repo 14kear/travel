@@ -25,6 +25,7 @@ func registerTools(s *Server) {
 		travelGuideTool(),
 		localEventsTool(),
 		searchGroundTool(),
+		searchAirportTransfersTool(),
 		searchRestaurantsTool(),
 		searchDealsTool(),
 	}
@@ -42,6 +43,7 @@ func registerTools(s *Server) {
 	s.handlers["travel_guide"] = s.wrapHandler(handleTravelGuide)
 	s.handlers["local_events"] = s.wrapHandler(handleLocalEvents)
 	s.handlers["search_ground"] = s.wrapHandler(handleSearchGround)
+	s.handlers["search_airport_transfers"] = s.wrapHandler(handleSearchAirportTransfers)
 	s.handlers["search_restaurants"] = s.wrapHandler(handleSearchRestaurants)
 	s.handlers["search_deals"] = s.wrapHandler(handleSearchDeals)
 }

@@ -217,6 +217,35 @@ var AirportNames = map[string]string{
 	"MBJ": "Montego Bay",
 }
 
+// airportSearchCities maps airport codes with airport-qualified display names to
+// provider-friendly city names for broader ground searches.
+var airportSearchCities = map[string]string{
+	"CDG": "Paris",
+	"ORY": "Paris",
+	"LHR": "London",
+	"LGW": "London",
+	"STN": "London",
+	"LTN": "London",
+	"SEN": "London",
+	"FCO": "Rome",
+	"MXP": "Milan",
+	"LIN": "Milan",
+	"BGY": "Milan",
+	"SAW": "Istanbul",
+	"JFK": "New York",
+	"LGA": "New York",
+	"NRT": "Tokyo",
+	"HND": "Tokyo",
+	"KIX": "Osaka",
+	"ICN": "Seoul",
+	"PEK": "Beijing",
+	"PKX": "Beijing",
+	"PVG": "Shanghai",
+	"BKK": "Bangkok",
+	"DMK": "Bangkok",
+	"DPS": "Denpasar",
+}
+
 // LookupAirportName returns the city/airport name for an IATA code.
 // Returns the code itself if no match is found.
 func LookupAirportName(code string) string {
@@ -224,6 +253,19 @@ func LookupAirportName(code string) string {
 		return name
 	}
 	return code
+}
+
+// ResolveAirportCity converts an airport code into a provider-friendly city
+// name for broader ground transport searches.
+func ResolveAirportCity(code string) string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return ""
+	}
+	if city, ok := airportSearchCities[code]; ok {
+		return city
+	}
+	return LookupAirportName(code)
 }
 
 // ResolveLocationName converts a string that might be an IATA code into a

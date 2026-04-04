@@ -50,6 +50,7 @@ func init() {
 	rootCmd.AddCommand(eventsCmd())
 	rootCmd.AddCommand(restaurantsCmd)
 	rootCmd.AddCommand(groundCmd())
+	rootCmd.AddCommand(airportTransferCmd())
 	rootCmd.AddCommand(tripCmd())
 	rootCmd.AddCommand(dealsCmd())
 	rootCmd.AddCommand(watchCmd())

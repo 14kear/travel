@@ -264,6 +264,44 @@ func TestColorizeRating(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// airport-transfer command
+// ---------------------------------------------------------------------------
+
+func TestAirportTransferCmd_RequiresThreeArgs(t *testing.T) {
+	cmd := airportTransferCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"CDG"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error with only 1 arg")
+	}
+}
+
+func TestAirportTransferCmd_Flags(t *testing.T) {
+	cmd := airportTransferCmd()
+	flags := []struct {
+		name     string
+		defValue string
+	}{
+		{"currency", ""},
+		{"provider", ""},
+		{"max-price", "0"},
+		{"type", ""},
+		{"arrival-after", ""},
+	}
+	for _, tt := range flags {
+		f := cmd.Flags().Lookup(tt.name)
+		if f == nil {
+			t.Errorf("airport-transfer missing --%s flag", tt.name)
+			continue
+		}
+		if f.DefValue != tt.defValue {
+			t.Errorf("airport-transfer --%s default = %q, want %q", tt.name, f.DefValue, tt.defValue)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ground command
 // ---------------------------------------------------------------------------
 
