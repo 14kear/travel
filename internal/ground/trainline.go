@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/time/rate"
 )
@@ -182,22 +183,72 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 		return nil, fmt.Errorf("trainline rate limiter: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, trainlineSearchURL, bytes.NewReader(body))
+	// newTrainlineRequest builds a POST request with the standard Trainline headers.
+	// cookieHeader is optional; pass "" to omit.
+	newTrainlineRequest := func(cookieHeader string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, trainlineSearchURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "CaptainTrain/1574360965(web) (Ember 3.5.1)")
+		req.Header.Set("Host", "www.trainline.eu")
+		if cookieHeader != "" {
+			req.Header.Set("Cookie", cookieHeader)
+		}
+		return req, nil
+	}
+
+	slog.Debug("trainline search", "from", from, "to", to, "date", date)
+
+	req, err := newTrainlineRequest("")
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "CaptainTrain/1574360965(web) (Ember 3.5.1)")
-	req.Header.Set("Host", "www.trainline.eu")
-
-	slog.Debug("trainline search", "from", from, "to", to, "date", date)
 
 	resp, err := trainlineClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("trainline search: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+
+		// Attempt retry with browser cookies.
+		cookieHeader := cookies.BrowserCookies("trainline.eu")
+		if cookieHeader != "" {
+			slog.Debug("retrying trainline with browser cookies")
+			req2, err2 := newTrainlineRequest(cookieHeader)
+			if err2 != nil {
+				return nil, fmt.Errorf("trainline retry build: %w", err2)
+			}
+			resp2, err2 := trainlineClient.Do(req2)
+			if err2 != nil {
+				return nil, fmt.Errorf("trainline retry: %w", err2)
+			}
+			defer resp2.Body.Close()
+			if resp2.StatusCode == http.StatusOK {
+				respBody, err3 := io.ReadAll(io.LimitReader(resp2.Body, 5*1024*1024))
+				if err3 != nil {
+					return nil, fmt.Errorf("trainline read: %w", err3)
+				}
+				var tlResp trainlineSearchResponse
+				if err3 = json.Unmarshal(respBody, &tlResp); err3 != nil {
+					return nil, fmt.Errorf("trainline decode: %w", err3)
+				}
+				return parseTrainlineResults(tlResp, from, to, currency)
+			}
+		}
+
+		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
+		if isCaptcha {
+			slog.Warn("trainline requires browser verification", "captcha_url", captchaURL)
+		}
+		return nil, fmt.Errorf("trainline: HTTP 403: %s", firstBody)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

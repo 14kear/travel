@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/time/rate"
 )
@@ -123,16 +124,29 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 		return nil, fmt.Errorf("sncf rate limiter: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	// newSNCFRequest builds a GET request with standard SNCF headers.
+	// cookieHeader is optional; pass "" to omit.
+	newSNCFRequest := func(cookieHeader string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "trvl/1.0 (travel agent; github.com/MikkoParkkola/trvl)")
+		req.Header.Set("Origin", "https://www.sncf-connect.com")
+		req.Header.Set("Referer", "https://www.sncf-connect.com/")
+		if cookieHeader != "" {
+			req.Header.Set("Cookie", cookieHeader)
+		}
+		return req, nil
+	}
+
+	slog.Debug("sncf search", "from", fromStation.City, "to", toStation.City, "date", date)
+
+	req, err := newSNCFRequest("")
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "trvl/1.0 (travel agent; github.com/MikkoParkkola/trvl)")
-	req.Header.Set("Origin", "https://www.sncf-connect.com")
-	req.Header.Set("Referer", "https://www.sncf-connect.com/")
-
-	slog.Debug("sncf search", "from", fromStation.City, "to", toStation.City, "date", date)
 
 	resp, err := sncfClient.Do(req)
 	if err != nil {
@@ -140,13 +154,48 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden {
+		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+
+		// Attempt retry with browser cookies.
+		cookieHeader := cookies.BrowserCookies("sncf-connect.com")
+		if cookieHeader != "" {
+			slog.Debug("retrying sncf with browser cookies")
+			req2, err2 := newSNCFRequest(cookieHeader)
+			if err2 != nil {
+				return nil, fmt.Errorf("sncf retry build: %w", err2)
+			}
+			resp2, err2 := sncfClient.Do(req2)
+			if err2 != nil {
+				return nil, fmt.Errorf("sncf retry: %w", err2)
+			}
+			defer resp2.Body.Close()
+			if resp2.StatusCode == http.StatusOK {
+				return parseSNCFResponse(resp2.Body, fromStation, toStation, date, currency)
+			}
+		}
+
+		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
+		if isCaptcha {
+			slog.Warn("sncf requires browser verification", "captcha_url", captchaURL)
+		}
+		return nil, fmt.Errorf("sncf search: HTTP 403: %s", firstBody)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("sncf search: HTTP %d: %s", resp.StatusCode, respBody)
 	}
 
+	return parseSNCFResponse(resp.Body, fromStation, toStation, date, currency)
+}
+
+// parseSNCFResponse decodes the calendar JSON body and returns GroundRoute values
+// for the requested date.
+func parseSNCFResponse(body io.Reader, fromStation, toStation SNCFStation, date, currency string) ([]models.GroundRoute, error) {
 	var calEntries []sncfCalendarResponse
-	if err := json.NewDecoder(resp.Body).Decode(&calEntries); err != nil {
+	if err := json.NewDecoder(body).Decode(&calEntries); err != nil {
 		return nil, fmt.Errorf("sncf decode: %w", err)
 	}
 

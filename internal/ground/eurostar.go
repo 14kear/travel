@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/time/rate"
 )
@@ -142,23 +143,72 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		return nil, fmt.Errorf("eurostar rate limiter: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, eurostarGateway, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+	// newEurostarRequest builds a POST request with standard Eurostar headers.
+	// cookieHeader is optional; pass "" to omit.
+	newEurostarRequest := func(cookieHeader string) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, eurostarGateway, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "https://www.eurostar.com")
+		req.Header.Set("Referer", "https://www.eurostar.com/")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+		if cookieHeader != "" {
+			req.Header.Set("Cookie", cookieHeader)
+		}
+		return req, nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", "https://www.eurostar.com")
-	req.Header.Set("Referer", "https://www.eurostar.com/")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 	slog.Debug("eurostar search", "from", fromStation.City, "to", toStation.City,
 		"start", startDate, "end", endDate)
+
+	req, err := newEurostarRequest("")
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := eurostarClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("eurostar search: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		resp.Body.Close()
+
+		// Attempt retry with browser cookies.
+		cookieHeader := cookies.BrowserCookies("eurostar.com")
+		if cookieHeader != "" {
+			slog.Debug("retrying eurostar with browser cookies")
+			req2, err2 := newEurostarRequest(cookieHeader)
+			if err2 != nil {
+				return nil, fmt.Errorf("eurostar retry build: %w", err2)
+			}
+			resp2, err2 := eurostarClient.Do(req2)
+			if err2 != nil {
+				return nil, fmt.Errorf("eurostar retry: %w", err2)
+			}
+			defer resp2.Body.Close()
+			if resp2.StatusCode == http.StatusOK {
+				var gqlResp eurostarGQLResponse
+				if err3 := json.NewDecoder(resp2.Body).Decode(&gqlResp); err3 != nil {
+					return nil, fmt.Errorf("eurostar decode: %w", err3)
+				}
+				if len(gqlResp.Errors) > 0 {
+					return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
+				}
+				return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly)
+			}
+		}
+
+		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
+		if isCaptcha {
+			slog.Warn("eurostar requires browser verification", "captcha_url", captchaURL)
+		}
+		return nil, fmt.Errorf("eurostar search: HTTP 403: %s", firstBody)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -174,6 +224,11 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
 	}
 
+	return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly)
+}
+
+// buildEurostarRoutes converts a parsed GraphQL response into GroundRoute values.
+func buildEurostarRoutes(gqlResp eurostarGQLResponse, fromStation, toStation EurostarStation, currency string, snapOnly bool) ([]models.GroundRoute, error) {
 	var routes []models.GroundRoute
 	for _, search := range gqlResp.Data.CheapestFaresSearch {
 		for _, fare := range search.CheapestFares {
@@ -204,7 +259,6 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 			routes = append(routes, route)
 		}
 	}
-
 	return routes, nil
 }
 
