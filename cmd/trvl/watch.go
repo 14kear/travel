@@ -103,7 +103,7 @@ Examples:
 			mode := ""
 			switch {
 			case w.IsRouteWatch():
-				mode = fmt.Sprintf("route watch (next 60 days)")
+				mode = "route watch (next 60 days)"
 			case w.IsDateRange():
 				mode = fmt.Sprintf("date range %s to %s", w.DepartFrom, w.DepartTo)
 			default:

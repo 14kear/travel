@@ -5,12 +5,12 @@ package destinations
 
 // Mutable URL variables (package-level constants replaced with vars for testability).
 var (
-	nominatimAPIURL     = nominatimURL
-	openMeteoAPIURL     = openMeteoURL
-	restCountriesAPIURL = restCountriesURL
-	nagerDateAPIURL     = nagerDateURL
+	nominatimAPIURL      = nominatimURL
+	openMeteoAPIURL      = openMeteoURL
+	restCountriesAPIURL  = restCountriesURL
+	nagerDateAPIURL      = nagerDateURL
 	travelAdvisoryAPIURL = travelAdvisoryURL
-	exchangeRateAPIURL  = exchangeRateURL
+	exchangeRateAPIURL   = exchangeRateURL
 )
 
 // setTestNominatimURL overrides the Nominatim URL and returns the previous value.
@@ -80,20 +80,6 @@ func setTestTicketmasterURL(url string) string {
 func setTestFoursquareURL(url string) string {
 	prev := foursquareAPIURL
 	foursquareAPIURL = url
-	return prev
-}
-
-// setTestGoogleMapsURL overrides the Google Maps search URL and returns the previous value.
-func setTestGoogleMapsURL(url string) string {
-	prev := googleMapsAPIURL
-	googleMapsAPIURL = url
-	return prev
-}
-
-// setTestGoogleSearchURL overrides the Google search URL and returns the previous value.
-func setTestGoogleSearchURL(url string) string {
-	prev := googleSearchAPIURL
-	googleSearchAPIURL = url
 	return prev
 }
 

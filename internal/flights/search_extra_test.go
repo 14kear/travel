@@ -292,13 +292,11 @@ func TestToFloat(t *testing.T) {
 		t.Errorf("toFloat(42.5) = (%v, %v)", f, ok)
 	}
 
-	f, ok = jsonutil.ToFloat(nil)
-	if ok {
+	if _, ok := jsonutil.ToFloat(nil); ok {
 		t.Error("expected ok=false for nil")
 	}
 
-	f, ok = jsonutil.ToFloat("not a number")
-	if ok {
+	if _, ok := jsonutil.ToFloat("not a number"); ok {
 		t.Error("expected ok=false for string")
 	}
 }

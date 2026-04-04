@@ -16,10 +16,8 @@ import (
 )
 
 const geoapifyPlacesURL = "https://api.geoapify.com/v2/places"
-const geoapifyIsolineURL = "https://api.geoapify.com/v1/isoline"
 
 var geoapifyPlacesAPIURL = geoapifyPlacesURL
-var geoapifyIsolineAPIURL = geoapifyIsolineURL
 
 // geoapifyCache stores walkable POI results.
 var geoapifyCache = struct {
@@ -36,16 +34,16 @@ const geoapifyCacheTTL = 1 * time.Hour
 
 // geoapifyCategoryMap maps user-facing categories to Geoapify categories.
 var geoapifyCategoryMap = map[string]string{
-	"restaurant": "catering.restaurant",
-	"cafe":       "catering.cafe",
-	"bar":        "catering.bar",
-	"pharmacy":   "healthcare.pharmacy",
-	"atm":        "service.financial.atm",
-	"bank":       "service.financial.bank",
+	"restaurant":  "catering.restaurant",
+	"cafe":        "catering.cafe",
+	"bar":         "catering.bar",
+	"pharmacy":    "healthcare.pharmacy",
+	"atm":         "service.financial.atm",
+	"bank":        "service.financial.bank",
 	"supermarket": "commercial.supermarket",
-	"hospital":   "healthcare.hospital",
-	"museum":     "entertainment.museum",
-	"attraction": "tourism.attraction",
+	"hospital":    "healthcare.hospital",
+	"museum":      "entertainment.museum",
+	"attraction":  "tourism.attraction",
 }
 
 // geoapifyPlacesResponse is the JSON shape from the Geoapify Places API.

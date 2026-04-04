@@ -23,19 +23,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// logger is the package-level structured logger for batchexec operations.
-var logger = slog.Default()
-
 // Endpoint constants for Google Travel APIs.
 // The hl (language) and gl (country) parameters control the currency and locale
 // of results. Without them, Google uses IP-based geolocation which may return
 // unexpected currencies (e.g., PLN when connecting from Poland).
 const (
-	FlightsURL          = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults?hl=en"
-	ExploreURL          = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetExploreDestinations?hl=en"
-	CalendarGraphURL    = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetCalendarGraph?hl=en"
-	CalendarGridURL     = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetCalendarGrid?hl=en"
-	HotelsURL           = "https://www.google.com/_/TravelFrontendUi/data/batchexecute?hl=en"
+	FlightsURL       = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults?hl=en"
+	ExploreURL       = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetExploreDestinations?hl=en"
+	CalendarGraphURL = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetCalendarGraph?hl=en"
+	CalendarGridURL  = "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetCalendarGrid?hl=en"
+	HotelsURL        = "https://www.google.com/_/TravelFrontendUi/data/batchexecute?hl=en"
 )
 
 // chromeUA is a recent Chrome User-Agent string.
@@ -58,10 +55,10 @@ const (
 // It includes a token bucket rate limiter, retry with exponential backoff,
 // and an in-memory response cache.
 type Client struct {
-	http     *http.Client
-	limiter  *rate.Limiter
-	cache    *cache.Cache
-	noCache  bool
+	http    *http.Client
+	limiter *rate.Limiter
+	cache   *cache.Cache
+	noCache bool
 }
 
 // NewClient creates a Client that impersonates Chrome's TLS fingerprint.

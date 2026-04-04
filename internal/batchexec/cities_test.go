@@ -5,17 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"golang.org/x/time/rate"
 )
-
-// newCityTestClient creates a Client that uses a plain HTTP transport for tests.
-func newCityTestClient(url string) *Client {
-	return &Client{
-		http:    &http.Client{},
-		limiter: rate.NewLimiter(rate.Limit(1000), 1),
-	}
-}
 
 // --- ResetCityCache ---
 

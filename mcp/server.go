@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/watch"
@@ -48,9 +47,8 @@ type Server struct {
 	notifyWriter io.Writer
 	notifyMu     sync.Mutex
 
-	// For elicitation: reader and writer set during ServeStdio.
+	// For elicitation: reader set during ServeStdio.
 	elicitReader *bufio.Scanner
-	elicitID     atomic.Int64
 
 	// Session state for trip planning.
 	tripState  TripState
@@ -447,7 +445,7 @@ func completeAirport(prefix string) []string {
 func toUpper(s string) string {
 	b := make([]byte, len(s))
 	for i := range len(s) {
-	 	c := s[i]
+		c := s[i]
 		if c >= 'a' && c <= 'z' {
 			c -= 32
 		}

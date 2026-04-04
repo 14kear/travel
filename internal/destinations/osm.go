@@ -38,20 +38,6 @@ var osmRateLimiter = struct {
 	lastReq time.Time
 }{}
 
-// osmAmenityCategories lists valid amenity= values for the Overpass query.
-var osmAmenityCategories = map[string]bool{
-	"restaurant":  true,
-	"cafe":        true,
-	"bar":         true,
-	"pharmacy":    true,
-	"atm":         true,
-	"bank":        true,
-	"supermarket": true,
-	"hospital":    true,
-	"police":      true,
-	"museum":      true,
-}
-
 // osmTourismCategories lists valid tourism= values for the Overpass query.
 var osmTourismCategories = map[string]bool{
 	"hotel":      true,
