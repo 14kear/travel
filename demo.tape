@@ -66,7 +66,7 @@ Sleep 300ms
 Type "# Prague looks good! Cheapest dates in June?"
 Enter
 Sleep 300ms
-Type "trvl dates AMS PRG --from 2026-06-10 --to 2026-06-20 --currency EUR"
+Type "trvl dates AMS PRG --from 2026-06-10 --to 2026-06-20 --currency EUR 2>/dev/null"
 Enter
 Sleep 8s
 
@@ -77,7 +77,7 @@ Sleep 500ms
 Type "# Round-trip price matrix: every departure x return combo"
 Enter
 Sleep 300ms
-Type "trvl grid AMS PRG --depart-from 2026-06-13 --depart-to 2026-06-16 --return-from 2026-06-17 --return-to 2026-06-20 --currency EUR"
+Type "trvl grid AMS PRG --depart-from 2026-06-13 --depart-to 2026-06-16 --return-from 2026-06-17 --return-to 2026-06-20 --currency EUR 2>/dev/null"
 Enter
 Sleep 10s
 
@@ -107,7 +107,7 @@ Sleep 300ms
 Type "# Search AMS *and* Eindhoven at once — find the cheapest"
 Enter
 Sleep 300ms
-Type "trvl flights AMS,EIN PRG 2026-06-15 --stops 1 --currency EUR"
+Type "trvl flights AMS,EIN PRG 2026-06-15 --stops 1 --currency EUR 2>/dev/null"
 Enter
 Sleep 8s
 
@@ -119,7 +119,7 @@ Type "clear"
 Enter
 Sleep 300ms
 
-Type "# After Prague — bus or train to Vienna from EUR 9.90"
+Type "# After Prague — trains and buses to Vienna from EUR 9.90"
 Enter
 Sleep 300ms
 Type "trvl ground Prague Vienna 2026-06-18 --currency EUR 2>/dev/null"
@@ -144,14 +144,14 @@ Sleep 500ms
 Type "# What's Prague like? Weather, holidays, currency"
 Enter
 Sleep 300ms
-Type "trvl destination Prague"
+Type "trvl destination Prague 2>/dev/null"
 Enter
 Sleep 10s
 
 Type ""
 Enter
 Sleep 1500ms
-Type "# 16 MCP tools · 22 CLI commands · 6 ground providers · No API keys"
+Type "# 18 MCP tools · 22 CLI commands · 9 ground providers · No API keys"
 Enter
 Sleep 400ms
 Type "# github.com/MikkoParkkola/trvl"
