@@ -184,6 +184,16 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		}()
 	}
 
+	// ÖBB (Austrian Federal Railways) — Austria and neighbouring countries.
+	if useProvider("oebb") && HasOebbRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchOebb(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "oebb"}
+		}()
+	}
+
 	// Transitous — coordinate-based, always available as a fallback.
 	// Requires geocoding city names to coordinates; skipped if geocoding fails.
 	if useProvider("transitous") {
@@ -276,7 +286,7 @@ func filterUnavailableGroundRoutes(routes []models.GroundRoute) []models.GroundR
 	filtered := routes[:0]
 	for _, route := range routes {
 		// Keep routes with prices, plus schedule-only providers (transitous, db).
-		if route.Price > 0 || strings.EqualFold(route.Provider, "transitous") || strings.EqualFold(route.Provider, "db") || strings.EqualFold(route.Provider, "ns") {
+		if route.Price > 0 || strings.EqualFold(route.Provider, "transitous") || strings.EqualFold(route.Provider, "db") || strings.EqualFold(route.Provider, "ns") || strings.EqualFold(route.Provider, "oebb") {
 			filtered = append(filtered, route)
 		}
 	}

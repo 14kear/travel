@@ -17,90 +17,17 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// trainlineSearchURL — trainline.eu requires auth (422), thetrainline.com returns 404.
-// The API may need browser session tokens. Chrome TLS + headers bypass Datadome,
-// but the search endpoint itself rejects unauthenticated requests.
-const trainlineSearchURL = "https://www.trainline.eu/api/v5_1/search"
+const trainlineSearchURL = "https://www.thetrainline.com/api/journey-search/"
 
 // trainlineLimiter: 5 req/min to be respectful
 var trainlineLimiter = rate.NewLimiter(rate.Every(12*time.Second), 1)
 
-// trainlineClient is a shared HTTP client for Trainline.
-// Uses Chrome TLS fingerprint via utls to bypass Datadome bot detection.
+// trainlineClient uses Chrome TLS fingerprint to bypass Datadome bot detection.
 var trainlineClient = batchexec.ChromeHTTPClient()
-
-// trainlineSearchRequest is the JSON request body for Trainline search.
-type trainlineSearchRequest struct {
-	Search trainlineSearch `json:"search"`
-}
-
-type trainlineSearch struct {
-	DepartureDate      string               `json:"departure_date"`
-	ReturnDate         string               `json:"return_date,omitempty"`
-	Passengers         []trainlinePassenger `json:"passengers"`
-	Systems            []string             `json:"systems"`
-	ExchangeablePart   interface{}          `json:"exchangeable_part"`
-	Via                interface{}          `json:"via"`
-	DepartureStationID string               `json:"departure_station_id"`
-	ArrivalStationID   string               `json:"arrival_station_id"`
-}
-
-type trainlinePassenger struct {
-	ID    string   `json:"id"`
-	Age   int      `json:"age"`
-	Cards []string `json:"cards"`
-	Label string   `json:"label"`
-}
-
-// trainlineSearchResponse is the top-level API response.
-type trainlineSearchResponse struct {
-	Trips    []trainlineTrip              `json:"trips"`
-	Segments []trainlineSegment           `json:"segments"`
-	Stations map[string]trainlineStation  `json:"stations"`
-	Folders  []trainlineFolder            `json:"folders"`
-}
-
-type trainlineTrip struct {
-	ID            string   `json:"id"`
-	SegmentIDs    []string `json:"segment_ids"`
-	DepartureDate string   `json:"departure_date"`
-	ArrivalDate   string   `json:"arrival_date"`
-	Duration      int      `json:"duration"` // seconds
-	FolderIDs     []string `json:"folder_ids"`
-}
-
-type trainlineSegment struct {
-	ID                 string `json:"id"`
-	DepartureDate      string `json:"departure_date"`
-	ArrivalDate        string `json:"arrival_date"`
-	DepartureStationID string `json:"departure_station_id"`
-	ArrivalStationID   string `json:"arrival_station_id"`
-	TransportationMean string `json:"transportation_mean"` // "train", "coach", "bus"
-	Carrier            string `json:"carrier"`
-	TrainNumber        string `json:"train_number"`
-	TrainName          string `json:"train_name"`
-}
-
-type trainlineStation struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	City    string  `json:"city"`
-	Country string  `json:"country"`
-	Lat     float64 `json:"latitude"`
-	Lon     float64 `json:"longitude"`
-}
-
-type trainlineFolder struct {
-	ID               string   `json:"id"`
-	TripIDs          []string `json:"trip_ids"`
-	CentsProposition float64  `json:"cents_proposition"`
-	Currency         string   `json:"currency"`
-}
 
 // trainlineStations maps city names to Trainline station IDs.
 // Station IDs from: https://github.com/trainline-eu/stations
 var trainlineStations = map[string]string{
-	// IDs from trainline.eu/api/v5/stations (verified 2026-04-04)
 	"london":     "8267",
 	"paris":      "4916",
 	"amsterdam":  "8657",
@@ -137,6 +64,11 @@ var trainlineStations = map[string]string{
 	"antwerp":    "5929",
 }
 
+// trainlineURN converts a raw station ID to the Trainline URN format.
+func trainlineURN(id string) string {
+	return "urn:trainline:generic:loc:" + id
+}
+
 // LookupTrainlineStation resolves a city name to a Trainline station ID.
 func LookupTrainlineStation(city string) (string, bool) {
 	id, ok := trainlineStations[strings.ToLower(strings.TrimSpace(city))]
@@ -149,7 +81,73 @@ func HasTrainlineStation(city string) bool {
 	return ok
 }
 
-// SearchTrainline searches Trainline for train connections between two cities.
+// trainlineJourneySearchRequest is the JSON body for the journey-search API.
+type trainlineJourneySearchRequest struct {
+	Passengers             []trainlinePassenger    `json:"passengers"`
+	IsEurope               bool                    `json:"isEurope"`
+	Cards                  []any                   `json:"cards"`
+	TransitDefinitions     []trainlineTransitDef   `json:"transitDefinitions"`
+	Type                   string                  `json:"type"`
+	MaximumJourneys        int                     `json:"maximumJourneys"`
+	IncludeRealtime        bool                    `json:"includeRealtime"`
+	TransportModes         []string                `json:"transportModes"`
+	DirectSearch           bool                    `json:"directSearch"`
+	Composition            []string                `json:"composition"`
+	AutoApplyCorporateCodes bool                   `json:"autoApplyCorporateCodes"`
+	Origin                 string                  `json:"origin"`
+	Destination            string                  `json:"destination"`
+}
+
+type trainlinePassenger struct {
+	DateOfBirth string `json:"dateOfBirth"`
+	CardIDs     []any  `json:"cardIds"`
+}
+
+type trainlineTransitDef struct {
+	Direction   string              `json:"direction"`
+	Origin      string              `json:"origin"`
+	Destination string              `json:"destination"`
+	JourneyDate trainlineJourneyDate `json:"journeyDate"`
+}
+
+type trainlineJourneyDate struct {
+	Type string `json:"type"`
+	Time string `json:"time"`
+}
+
+// trainlineJourneySearchResponse is the top-level response from journey-search.
+type trainlineJourneySearchResponse struct {
+	Journeys []trainlineJourney `json:"journeys"`
+	Tickets  []trainlineTicket  `json:"tickets"`
+}
+
+type trainlineJourney struct {
+	ID            string          `json:"id"`
+	DepartureTime string          `json:"departureTime"`
+	ArrivalTime   string          `json:"arrivalTime"`
+	Legs          []trainlineLeg  `json:"legs"`
+	TicketIDs     []string        `json:"ticketIds"`
+}
+
+type trainlineLeg struct {
+	DepartureTime string `json:"departureTime"`
+	ArrivalTime   string `json:"arrivalTime"`
+	TransportMode string `json:"transportMode"`
+	Carrier       string `json:"carrier"`
+}
+
+type trainlineTicket struct {
+	ID         string              `json:"id"`
+	JourneyIDs []string            `json:"journeyIds"`
+	Prices     []trainlinePrice    `json:"prices"`
+}
+
+type trainlinePrice struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// SearchTrainline searches thetrainline.com for train connections between two cities.
 func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
 	fromID, ok := LookupTrainlineStation(from)
 	if !ok {
@@ -160,29 +158,42 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 		return nil, fmt.Errorf("no Trainline station for %q", to)
 	}
 
-	// Parse date to RFC3339 format for Trainline
 	dateTime, err := time.Parse("2006-01-02", date)
 	if err != nil {
 		return nil, fmt.Errorf("invalid date %q: %w", date, err)
 	}
-	departureISO := dateTime.Add(6 * time.Hour).Format("2006-01-02T15:04:05+00:00")
+	departureISO := dateTime.Add(6 * time.Hour).Format("2006-01-02T15:04:05")
 
-	// Build raw request to ensure null fields are properly serialized.
-	reqMap := map[string]any{
-		"search": map[string]any{
-			"departure_date":       departureISO,
-			"departure_station_id": fromID,
-			"arrival_station_id":   toID,
-			"return_date":          nil,
-			"exchangeable_part":    nil,
-			"via":                  nil,
-			"passengers": []map[string]any{
-				{"id": "0", "age": 30, "cards": []any{}, "label": "adult"},
+	originURN := trainlineURN(fromID)
+	destURN := trainlineURN(toID)
+
+	reqBody := trainlineJourneySearchRequest{
+		Passengers:      []trainlinePassenger{{DateOfBirth: "1996-01-01", CardIDs: []any{}}},
+		IsEurope:        true,
+		Cards:           []any{},
+		Type:            "single",
+		MaximumJourneys: 5,
+		IncludeRealtime: true,
+		TransportModes:  []string{"mixed"},
+		DirectSearch:    false,
+		Composition:     []string{"through", "interchangeSplit"},
+		AutoApplyCorporateCodes: false,
+		Origin:          originURN,
+		Destination:     destURN,
+		TransitDefinitions: []trainlineTransitDef{
+			{
+				Direction:   "outward",
+				Origin:      originURN,
+				Destination: destURN,
+				JourneyDate: trainlineJourneyDate{
+					Type: "departAfter",
+					Time: departureISO,
+				},
 			},
 		},
 	}
 
-	body, err := json.Marshal(reqMap)
+	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("trainline marshal: %w", err)
 	}
@@ -191,35 +202,22 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 		return nil, fmt.Errorf("trainline rate limiter: %w", err)
 	}
 
-	// newTrainlineRequest builds a POST request with the standard Trainline headers.
-	// cookieHeader is optional; pass "" to omit.
 	newTrainlineRequest := func(cookieHeader string) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, trainlineSearchURL, bytes.NewReader(body))
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		// Note: don't set Accept-Encoding manually — Go handles it automatically
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-		req.Header.Set("Sec-Ch-Ua", `"Chromium";v="131", "Not_A Brand";v="24"`)
-		req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
-		req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
-		req.Header.Set("Sec-Fetch-Dest", "empty")
-		req.Header.Set("Sec-Fetch-Mode", "cors")
-		req.Header.Set("Sec-Fetch-Site", "same-origin")
-		req.Header.Set("Origin", "https://www.trainline.eu")
-		req.Header.Set("Referer", "https://www.trainline.eu/")
-		req.Header.Set("x-not-a-bot", "i-am-human")
-		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Accept-Language", "en-GB")
+		req.Header.Set("x-version", "4.46.32109")
 		if cookieHeader != "" {
 			req.Header.Set("Cookie", cookieHeader)
 		}
 		return req, nil
 	}
 
-	slog.Debug("trainline search", "from", from, "to", to, "date", date, "body", string(body))
+	slog.Debug("trainline search", "from", from, "to", to, "date", date)
 
 	req, err := newTrainlineRequest("")
 	if err != nil {
@@ -236,8 +234,7 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
 
-		// Attempt retry with browser cookies.
-		cookieHeader := cookies.BrowserCookies("trainline.eu")
+		cookieHeader := cookies.BrowserCookies("thetrainline.com")
 		if cookieHeader != "" {
 			slog.Debug("retrying trainline with browser cookies")
 			req2, err2 := newTrainlineRequest(cookieHeader)
@@ -250,15 +247,7 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 			}
 			defer resp2.Body.Close()
 			if resp2.StatusCode == http.StatusOK {
-				respBody, err3 := io.ReadAll(io.LimitReader(resp2.Body, 5*1024*1024))
-				if err3 != nil {
-					return nil, fmt.Errorf("trainline read: %w", err3)
-				}
-				var tlResp trainlineSearchResponse
-				if err3 = json.Unmarshal(respBody, &tlResp); err3 != nil {
-					return nil, fmt.Errorf("trainline decode: %w", err3)
-				}
-				return parseTrainlineResults(tlResp, from, to, currency)
+				return readAndParseTrainlineResponse(resp2.Body, from, to, date, currency)
 			}
 		}
 
@@ -270,80 +259,67 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("trainline: HTTP %d: %s", resp.StatusCode, respBody)
 	}
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
+	return readAndParseTrainlineResponse(resp.Body, from, to, date, currency)
+}
+
+func readAndParseTrainlineResponse(r io.Reader, from, to, date, currency string) ([]models.GroundRoute, error) {
+	respBody, err := io.ReadAll(io.LimitReader(r, 5*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("trainline read: %w", err)
 	}
+	slog.Debug("trainline raw response", "body", string(respBody[:min(len(respBody), 1024)]))
 
-	var tlResp trainlineSearchResponse
+	var tlResp trainlineJourneySearchResponse
 	if err := json.Unmarshal(respBody, &tlResp); err != nil {
 		return nil, fmt.Errorf("trainline decode: %w", err)
 	}
-
-	return parseTrainlineResults(tlResp, from, to, currency)
+	return parseTrainlineResults(tlResp, from, to, date, currency)
 }
 
-func parseTrainlineResults(resp trainlineSearchResponse, from, to, currency string) ([]models.GroundRoute, error) {
-	// Build segment lookup
-	segmentMap := make(map[string]trainlineSegment)
-	for _, s := range resp.Segments {
-		segmentMap[s.ID] = s
-	}
-
-	// Build price lookup from folders
-	tripPrices := make(map[string]float64)
-	tripCurrencies := make(map[string]string)
-	for _, f := range resp.Folders {
-		for _, tripID := range f.TripIDs {
-			price := f.CentsProposition / 100.0
-			cur := strings.ToUpper(f.Currency)
-			// Keep cheapest price per trip
-			if existing, ok := tripPrices[tripID]; !ok || price < existing {
-				tripPrices[tripID] = price
-				tripCurrencies[tripID] = cur
+func parseTrainlineResults(resp trainlineJourneySearchResponse, from, to, date, currency string) ([]models.GroundRoute, error) {
+	// Build journey->cheapest price map from tickets.
+	journeyPrice := make(map[string]float64)
+	journeyCurrency := make(map[string]string)
+	for _, ticket := range resp.Tickets {
+		if len(ticket.Prices) == 0 {
+			continue
+		}
+		price := ticket.Prices[0].Amount
+		cur := strings.ToUpper(ticket.Prices[0].Currency)
+		for _, jid := range ticket.JourneyIDs {
+			if existing, ok := journeyPrice[jid]; !ok || price < existing {
+				journeyPrice[jid] = price
+				journeyCurrency[jid] = cur
 			}
 		}
 	}
 
 	var routes []models.GroundRoute
-	for _, trip := range resp.Trips {
-		price := tripPrices[trip.ID]
-		cur := tripCurrencies[trip.ID]
+	for _, j := range resp.Journeys {
+		price := journeyPrice[j.ID]
+		cur := journeyCurrency[j.ID]
 		if cur == "" {
 			cur = "EUR"
 		}
 
-		// Determine type from segments
 		routeType := "train"
-		carrier := ""
-		trainNum := ""
-		for _, segID := range trip.SegmentIDs {
-			if seg, ok := segmentMap[segID]; ok {
-				if seg.TransportationMean == "coach" || seg.TransportationMean == "bus" {
+		for _, leg := range j.Legs {
+			mode := strings.ToLower(leg.TransportMode)
+			if strings.Contains(mode, "bus") || strings.Contains(mode, "coach") {
+				if routeType == "train" {
+					routeType = "mixed"
+				} else {
 					routeType = "bus"
-				}
-				if carrier == "" {
-					carrier = seg.Carrier
-					trainNum = seg.TrainName
-					if trainNum == "" {
-						trainNum = seg.TrainNumber
-					}
 				}
 			}
 		}
-		_ = carrier
-		_ = trainNum
 
-		// Parse times
-		depTime := trip.DepartureDate
-		arrTime := trip.ArrivalDate
-		duration := trip.Duration / 60 // seconds to minutes
-
-		transfers := len(trip.SegmentIDs) - 1
+		duration := computeLegDuration(j.DepartureTime, j.ArrivalTime)
+		transfers := len(j.Legs) - 1
 		if transfers < 0 {
 			transfers = 0
 		}
@@ -357,16 +333,16 @@ func parseTrainlineResults(resp trainlineSearchResponse, from, to, currency stri
 			Transfers: transfers,
 			Departure: models.GroundStop{
 				City: from,
-				Time: depTime,
+				Time: j.DepartureTime,
 			},
 			Arrival: models.GroundStop{
 				City: to,
-				Time: arrTime,
+				Time: j.ArrivalTime,
 			},
-			BookingURL: fmt.Sprintf("https://www.trainline.eu/search/%s/%s/%s",
+			BookingURL: fmt.Sprintf("https://www.thetrainline.com/book/trains/%s/%s/%s",
 				strings.ReplaceAll(strings.ToLower(from), " ", "-"),
 				strings.ReplaceAll(strings.ToLower(to), " ", "-"),
-				depTime[:10]),
+				date),
 		}
 		routes = append(routes, route)
 	}
@@ -374,3 +350,4 @@ func parseTrainlineResults(resp trainlineSearchResponse, from, to, currency stri
 	slog.Debug("trainline results", "count", len(routes))
 	return routes, nil
 }
+
