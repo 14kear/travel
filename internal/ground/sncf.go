@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -461,6 +462,9 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 		return cRoutes, nil
 	} else {
 		slog.Debug("sncf curl failed, trying browser scraper", "err", cErr)
+		// Open browser for user to solve CAPTCHA if needed
+		fmt.Fprintf(os.Stderr, "⚠️  SNCF requires verification. Opening browser — please visit the site, then retry.\n")
+		_ = cookies.OpenBrowserForAuth("https://www.sncf-connect.com/en-en")
 	}
 
 	// Secondary: browser scraper (page-context API approach, same as ÖBB).

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -448,7 +449,9 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 
 		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
 		if isCaptcha {
-			slog.Warn("trainline requires browser verification", "captcha_url", captchaURL)
+			slog.Warn("trainline requires browser verification — opening browser", "captcha_url", captchaURL)
+			fmt.Fprintf(os.Stderr, "⚠️  Trainline requires verification. Opening browser — please solve the challenge, then retry.\n")
+			_ = cookies.OpenBrowserForAuth("https://www.thetrainline.com/")
 		}
 
 		// Last resort: browser scraper via Playwright.
