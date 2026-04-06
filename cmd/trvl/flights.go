@@ -11,6 +11,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +42,16 @@ Examples:
   trvl flights HEL NRT 2026-06-15 --cabin business --stops nonstop`,
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			origins := flights.ParseAirports(args[0])
+			originArg := args[0]
+
+			// If the user passes "home" as origin, resolve from preferences.
+			if strings.EqualFold(strings.TrimSpace(originArg), "home") {
+				if prefs, err := preferences.Load(); err == nil && prefs.HomeAirport() != "" {
+					originArg = prefs.HomeAirport()
+				}
+			}
+
+			origins := flights.ParseAirports(originArg)
 			destinations := flights.ParseAirports(args[1])
 			date := args[2]
 

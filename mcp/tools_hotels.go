@@ -8,6 +8,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
 // --- Output schema builders ---
@@ -216,11 +217,28 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling Samplin
 		EnrichAmenities: argBool(args, "enrich_amenities", false),
 	}
 
+	// Apply user preferences when MCP caller hasn't set these explicitly.
+	prefs, _ := preferences.Load()
+	if prefs != nil {
+		if opts.Stars == 0 && prefs.MinHotelStars > 0 {
+			opts.Stars = prefs.MinHotelStars
+		}
+		if opts.MinRating == 0 && prefs.MinHotelRating > 0 {
+			opts.MinRating = prefs.MinHotelRating
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	result, err := hotels.SearchHotels(ctx, location, opts)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Post-filter with preference-based filters (dormitories, en-suite, districts).
+	if prefs != nil {
+		result.Hotels = preferences.FilterHotels(result.Hotels, location, prefs)
+		result.Count = len(result.Hotels)
 	}
 
 	// If many results and client supports elicitation, offer to refine.

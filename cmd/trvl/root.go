@@ -57,7 +57,9 @@ func init() {
 	rootCmd.AddCommand(routeCmd())
 	rootCmd.AddCommand(watchCmd())
 	rootCmd.AddCommand(roomsCmd())
+	rootCmd.AddCommand(hacksCmd())
 	rootCmd.AddCommand(mcpCmd())
+	rootCmd.AddCommand(prefsCmd())
 }
 
 // airportCompletion provides IATA code completion for cobra commands.

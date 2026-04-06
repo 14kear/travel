@@ -61,8 +61,8 @@ func TestHTTPHandler_POST_ToolsList(t *testing.T) {
 	var result ToolsListResult
 	json.Unmarshal(resultJSON, &result)
 
-	if len(result.Tools) != 20 {
-		t.Errorf("expected 20 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 22 {
+		t.Errorf("expected 22 tools, got %d", len(result.Tools))
 	}
 }
 
@@ -401,11 +401,10 @@ func TestToolDefinitions(t *testing.T) {
 			if tool.InputSchema.Type != "object" {
 				t.Errorf("schema type = %q, want object", tool.InputSchema.Type)
 			}
-			if len(tool.InputSchema.Properties) == 0 {
-				t.Error("no properties")
-			}
-			if len(tool.InputSchema.Required) == 0 {
-				t.Error("no required fields")
+			// Tools that take no input (e.g. get_preferences) may have zero
+			// properties and zero required fields — that is intentional.
+			if len(tool.InputSchema.Properties) == 0 && len(tool.InputSchema.Required) > 0 {
+				t.Error("required fields listed but no properties defined")
 			}
 
 			// Verify all required fields exist in properties.
@@ -530,11 +529,11 @@ func TestNewServer(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewServer returned nil")
 	}
-	if len(s.tools) != 20 {
-		t.Errorf("expected 20 tools, got %d", len(s.tools))
+	if len(s.tools) != 22 {
+		t.Errorf("expected 22 tools, got %d", len(s.tools))
 	}
-	if len(s.handlers) != 20 {
-		t.Errorf("expected 20 handlers, got %d", len(s.handlers))
+	if len(s.handlers) != 22 {
+		t.Errorf("expected 22 handlers, got %d", len(s.handlers))
 	}
 }
 

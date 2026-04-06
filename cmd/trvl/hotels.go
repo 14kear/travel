@@ -11,6 +11,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,13 @@ func runHotels(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Load preferences and apply defaults where flags weren't explicitly set.
+	prefs, _ := preferences.Load() // non-fatal; nil prefs means no defaults applied
+
+	if currency == "" && prefs != nil {
+		currency = prefs.DisplayCurrency
+	}
+
 	opts := hotels.HotelSearchOptions{
 		CheckIn:       checkin,
 		CheckOut:      checkout,
@@ -76,7 +84,21 @@ func runHotels(cmd *cobra.Command, args []string) error {
 		MaxDistanceKm: maxDistance,
 	}
 
+	// Apply preference-based filters (only when not already set via flags).
+	if prefs != nil {
+		if opts.Stars == 0 && prefs.MinHotelStars > 0 {
+			opts.Stars = prefs.MinHotelStars
+		}
+		if opts.MinRating == 0 && prefs.MinHotelRating > 0 {
+			opts.MinRating = prefs.MinHotelRating
+		}
+	}
+
 	result, err := hotels.SearchHotels(ctx, location, opts)
+	if err == nil && prefs != nil {
+		result.Hotels = preferences.FilterHotels(result.Hotels, location, prefs)
+		result.Count = len(result.Hotels)
+	}
 	if err != nil {
 		return fmt.Errorf("hotel search: %w", err)
 	}

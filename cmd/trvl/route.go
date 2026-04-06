@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 	"github.com/MikkoParkkola/trvl/internal/route"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,13 @@ Examples:
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), 90*time.Second)
 			defer cancel()
+
+			// Apply display currency from preferences when --currency not specified.
+			if currency == "" {
+				if prefs, err := preferences.Load(); err == nil {
+					currency = prefs.DisplayCurrency
+				}
+			}
 
 			opts := route.Options{
 				DepartAfter:           departAfter,
