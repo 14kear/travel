@@ -15,19 +15,22 @@ import (
 
 func groundCmd() *cobra.Command {
 	var (
-		currency   string
-		providers  string
-		maxPrice   float64
-		typeFilter string
+		currency              string
+		providers             string
+		maxPrice              float64
+		typeFilter            string
+		allowBrowserFallbacks bool
 	)
 
 	cmd := &cobra.Command{
 		Use:     "ground FROM TO DATE",
 		Aliases: []string{"bus", "train"},
-		Short:   "Search bus and train connections (FlixBus, RegioJet)",
-		Long: `Search ground transport (buses and trains) between two cities.
+		Short:   "Search ground routes across API-first bus, train, and ferry providers",
+		Long: `Search ground transport between two cities.
 
-Searches FlixBus and RegioJet in parallel. No API key required.
+Uses API-first providers such as FlixBus, RegioJet, SNCF, Trainline, OBB,
+DB, NS, VR, Tallink, DFDS, Viking Line, Eckerö Line, and Transitous.
+Browser/curl-assisted fallbacks stay disabled unless you opt in.
 
 FROM and TO are city names (e.g. "Prague", "Vienna", "Helsinki").
 DATE is the departure date in YYYY-MM-DD format.
@@ -45,10 +48,11 @@ Examples:
 			date := args[2]
 
 			opts := ground.SearchOptions{
-				Currency: currency,
-				MaxPrice: maxPrice,
-				Type:     typeFilter,
-				NoCache:  noCache,
+				Currency:              currency,
+				MaxPrice:              maxPrice,
+				Type:                  typeFilter,
+				NoCache:               noCache,
+				AllowBrowserFallbacks: allowBrowserFallbacks,
 			}
 			if providers != "" {
 				opts.Providers = strings.Split(providers, ",")
@@ -68,9 +72,10 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&currency, "currency", "", "Convert prices to this currency (e.g. EUR). Empty = provider default")
-	cmd.Flags().StringVar(&providers, "provider", "", "Restrict to providers (flixbus,regiojet)")
+	cmd.Flags().StringVar(&providers, "provider", "", "Restrict to providers (e.g. flixbus,regiojet,trainline,sncf,transitous)")
 	cmd.Flags().Float64Var(&maxPrice, "max-price", 0, "Maximum price filter")
-	cmd.Flags().StringVar(&typeFilter, "type", "", "Filter by type (bus, train)")
+	cmd.Flags().StringVar(&typeFilter, "type", "", "Filter by type (bus, train, ferry)")
+	cmd.Flags().BoolVar(&allowBrowserFallbacks, "allow-browser-fallbacks", false, "Allow browser/curl/cookie-assisted provider fallbacks")
 
 	return cmd
 }

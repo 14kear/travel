@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -133,7 +134,7 @@ func (s *Store) historyPath() string {
 }
 
 func (s *Store) ensureDir() error {
-	return os.MkdirAll(s.dir, 0o755)
+	return os.MkdirAll(s.dir, 0o700)
 }
 
 // Load reads watches and history from disk. If the files do not exist,
@@ -306,5 +307,47 @@ func saveJSON(path string, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		if runtime.GOOS == "windows" {
+			_ = os.Remove(path)
+			if err2 := os.Rename(tmpPath, path); err2 == nil {
+				cleanup = false
+				return nil
+			}
+		}
+		return err
+	}
+
+	cleanup = false
+	return nil
 }

@@ -22,8 +22,9 @@ var weatherCache = struct {
 }{entries: make(map[string]weatherCacheEntry)}
 
 type weatherCacheEntry struct {
-	info    models.WeatherInfo
-	fetched time.Time
+	info     models.WeatherInfo
+	timezone string
+	fetched  time.Time
 }
 
 const weatherCacheTTL = 1 * time.Hour
@@ -48,7 +49,7 @@ func FetchWeather(ctx context.Context, lat, lon float64) (models.WeatherInfo, st
 	weatherCache.RLock()
 	if entry, ok := weatherCache.entries[key]; ok && time.Since(entry.fetched) < weatherCacheTTL {
 		weatherCache.RUnlock()
-		return entry.info, "", nil // timezone not cached, caller should get it from country
+		return entry.info, entry.timezone, nil
 	}
 	weatherCache.RUnlock()
 
@@ -112,7 +113,7 @@ func FetchWeather(ctx context.Context, lat, lon float64) (models.WeatherInfo, st
 	}
 
 	weatherCache.Lock()
-	weatherCache.entries[key] = weatherCacheEntry{info: info, fetched: time.Now()}
+	weatherCache.entries[key] = weatherCacheEntry{info: info, timezone: omResp.Timezone, fetched: time.Now()}
 	weatherCache.Unlock()
 
 	return info, omResp.Timezone, nil

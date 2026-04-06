@@ -15,14 +15,15 @@ import (
 
 func routeCmd() *cobra.Command {
 	var (
-		departAfter  string
-		arriveBy     string
-		maxTransfers int
-		maxPrice     float64
-		currency     string
-		prefer       string
-		avoid        string
-		sortBy       string
+		departAfter           string
+		arriveBy              string
+		maxTransfers          int
+		maxPrice              float64
+		currency              string
+		prefer                string
+		avoid                 string
+		sortBy                string
+		allowBrowserFallbacks bool
 	)
 
 	cmd := &cobra.Command{
@@ -52,14 +53,15 @@ Examples:
 			defer cancel()
 
 			opts := route.Options{
-				DepartAfter:  departAfter,
-				ArriveBy:     arriveBy,
-				MaxTransfers: maxTransfers,
-				MaxPrice:     maxPrice,
-				Currency:     currency,
-				Prefer:       prefer,
-				Avoid:        avoid,
-				SortBy:       sortBy,
+				DepartAfter:           departAfter,
+				ArriveBy:              arriveBy,
+				MaxTransfers:          maxTransfers,
+				MaxPrice:              maxPrice,
+				Currency:              currency,
+				Prefer:                prefer,
+				Avoid:                 avoid,
+				SortBy:                sortBy,
+				AllowBrowserFallbacks: allowBrowserFallbacks,
 			}
 
 			result, err := route.SearchRoute(ctx, origin, dest, date, opts)
@@ -76,13 +78,14 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&departAfter, "depart-after", "", "Depart after this time (HH:MM or ISO 8601)")
-	cmd.Flags().StringVar(&arriveBy, "arrive-by", "", "Arrive before this time")
+	cmd.Flags().StringVar(&arriveBy, "arrive-by", "", "Arrive by this time (HH:MM or ISO 8601)")
 	cmd.Flags().IntVar(&maxTransfers, "max-transfers", 3, "Maximum mode changes")
 	cmd.Flags().Float64Var(&maxPrice, "max-price", 0, "Maximum total price (0 = no limit)")
-	cmd.Flags().StringVar(&currency, "currency", "", "Display currency (default: provider currency)")
+	cmd.Flags().StringVar(&currency, "currency", "", "Display currency (default: EUR)")
 	cmd.Flags().StringVar(&prefer, "prefer", "", "Preferred mode: train, bus, ferry, flight")
 	cmd.Flags().StringVar(&avoid, "avoid", "", "Avoid mode: flight, bus, train, ferry")
 	cmd.Flags().StringVar(&sortBy, "sort", "price", "Sort by: price, duration, transfers")
+	cmd.Flags().BoolVar(&allowBrowserFallbacks, "allow-browser-fallbacks", false, "Allow browser/curl/cookie-assisted ground-provider fallbacks")
 
 	return cmd
 }
@@ -182,4 +185,3 @@ func formatRoutePrice(price float64, currency string) string {
 	rounded := math.Round(price)
 	return fmt.Sprintf("%s %.0f", currency, rounded)
 }
-

@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -39,12 +41,30 @@ type scraperOutput struct {
 // scraperScriptPath returns the absolute path to scraper.py, resolved relative
 // to this source file so it works regardless of the working directory.
 func scraperScriptPath() string {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		// Fallback: assume cwd contains the script.
-		return "scraper.py"
+	if override := strings.TrimSpace(os.Getenv("TRVL_SCRAPER_PATH")); override != "" {
+		return override
 	}
-	return filepath.Join(filepath.Dir(thisFile), "scraper.py")
+
+	var candidates []string
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "scraper.py"),
+			filepath.Join(exeDir, "internal", "ground", "scraper.py"),
+		)
+	}
+	if _, thisFile, _, ok := runtime.Caller(0); ok {
+		candidates = append(candidates, filepath.Join(filepath.Dir(thisFile), "scraper.py"))
+	}
+
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+
+	// Fallback: assume cwd contains the script.
+	return "scraper.py"
 }
 
 // BrowserScrapeRoutes launches the Playwright scraper to fetch live train

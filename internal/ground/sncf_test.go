@@ -152,7 +152,7 @@ func TestSearchSNCF_Integration(t *testing.T) {
 
 	date := time.Now().AddDate(0, 1, 0).Format("2006-01-02")
 
-	routes, err := SearchSNCF(ctx, "Paris", "Lyon", date, "EUR")
+	routes, err := SearchSNCF(ctx, "Paris", "Lyon", date, "EUR", false)
 	if err != nil {
 		// The SNCF API may be behind Cloudflare or temporarily unavailable.
 		t.Skipf("SNCF API unavailable (expected in CI): %v", err)
@@ -181,7 +181,7 @@ func TestSearchSNCF_Integration(t *testing.T) {
 
 func TestSearchSNCF_UnknownStation(t *testing.T) {
 	ctx := context.Background()
-	_, err := SearchSNCF(ctx, "Nonexistent", "Lyon", "2026-04-10", "EUR")
+	_, err := SearchSNCF(ctx, "Nonexistent", "Lyon", "2026-04-10", "EUR", false)
 	if err == nil {
 		t.Error("expected error for unknown station")
 	}

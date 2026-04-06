@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/ground"
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -23,15 +24,16 @@ import (
 
 // Options configures a multi-modal route search.
 type Options struct {
-	DepartAfter  string  // ISO date or datetime
-	ArriveBy     string  // ISO date or datetime
-	MaxTransfers int     // max mode changes (default: 3)
-	MaxPrice     float64 // max total price (0 = no limit)
-	Currency     string  // display currency (default: EUR)
-	Prefer       string  // preferred mode: "train", "bus", "ferry", "flight"
-	Avoid        string  // mode to exclude
-	MaxHubs      int     // max intermediate cities (default: 1 for MVP)
-	SortBy       string  // "price", "duration", "transfers" (default: price)
+	DepartAfter           string  // ISO date or datetime
+	ArriveBy              string  // ISO date or datetime
+	MaxTransfers          int     // max mode changes (default: 3)
+	MaxPrice              float64 // max total price (0 = no limit)
+	Currency              string  // display currency (default: EUR)
+	Prefer                string  // preferred mode: "train", "bus", "ferry", "flight"
+	Avoid                 string  // mode to exclude
+	MaxHubs               int     // max intermediate cities (default: 1 for MVP)
+	SortBy                string  // "price", "duration", "transfers" (default: price)
+	AllowBrowserFallbacks bool
 }
 
 func (o *Options) defaults() {
@@ -47,6 +49,9 @@ func (o *Options) defaults() {
 	if o.SortBy == "" {
 		o.SortBy = "price"
 	}
+	o.Prefer = strings.ToLower(strings.TrimSpace(o.Prefer))
+	o.Avoid = strings.ToLower(strings.TrimSpace(o.Avoid))
+	o.SortBy = strings.ToLower(strings.TrimSpace(o.SortBy))
 }
 
 // SearchRoute finds multi-modal itineraries from origin to destination.
@@ -82,6 +87,8 @@ func SearchRoute(ctx context.Context, origin, destination, date string, opts Opt
 
 	slog.Debug("raw itineraries", "count", len(itineraries))
 
+	itineraries = filterItinerariesByConstraints(itineraries, date, opts)
+
 	// Filter: price limit.
 	if opts.MaxPrice > 0 {
 		filtered := itineraries[:0]
@@ -99,21 +106,25 @@ func SearchRoute(ctx context.Context, origin, destination, date string, opts Opt
 	itineraries = diverseFilter(itineraries)
 
 	// Sort.
-	sortItineraries(itineraries, opts.SortBy)
+	sortItineraries(itineraries, opts)
 
 	// Cap results.
 	if len(itineraries) > 20 {
 		itineraries = itineraries[:20]
 	}
 
-	return &models.RouteSearchResult{
+	result := &models.RouteSearchResult{
 		Success:     len(itineraries) > 0,
 		Origin:      originHub.City,
 		Destination: destHub.City,
 		Date:        date,
 		Count:       len(itineraries),
 		Itineraries: itineraries,
-	}, nil
+	}
+	if !result.Success {
+		result.Error = "no routes matched the requested providers or filters"
+	}
+	return result, nil
 }
 
 // resolveCity converts an IATA code to a city name, or returns the input as-is.
@@ -202,7 +213,7 @@ func fetchAllPaths(ctx context.Context, paths []path, date string, opts Options)
 				defer func() { <-sem }()
 				segCtx, segCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer segCancel()
-				legs := searchFlightLeg(segCtx, from, to, date)
+				legs := searchFlightLeg(segCtx, from, to, date, opts)
 				if len(legs) > 0 {
 					results <- segResult{key: k, flights: legs}
 				}
@@ -210,20 +221,18 @@ func fetchAllPaths(ctx context.Context, paths []path, date string, opts Options)
 		}
 
 		// Ground search (train/bus/ferry).
-		if opts.Avoid != "train" && opts.Avoid != "bus" && opts.Avoid != "ferry" {
-			wg.Add(1)
-			go func(k string, from, to Hub) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				segCtx, segCancel := context.WithTimeout(ctx, 10*time.Second)
-				defer segCancel()
-				legs := searchGroundLeg(segCtx, from, to, date, opts.Currency)
-				if len(legs) > 0 {
-					results <- segResult{key: k, ground: legs}
-				}
-			}(key, seg.from, seg.to)
-		}
+		wg.Add(1)
+		go func(k string, from, to Hub) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			segCtx, segCancel := context.WithTimeout(ctx, 10*time.Second)
+			defer segCancel()
+			legs := searchGroundLeg(segCtx, from, to, date, opts)
+			if len(legs) > 0 {
+				results <- segResult{key: k, ground: legs}
+			}
+		}(key, seg.from, seg.to)
 	}
 
 	go func() {
@@ -249,7 +258,7 @@ func fetchAllPaths(ctx context.Context, paths []path, date string, opts Options)
 }
 
 // searchFlightLeg searches for flights between two hubs.
-func searchFlightLeg(ctx context.Context, from, to Hub, date string) []models.RouteLeg {
+func searchFlightLeg(ctx context.Context, from, to Hub, date string, opts Options) []models.RouteLeg {
 	if len(from.Airports) == 0 || len(to.Airports) == 0 {
 		return nil
 	}
@@ -284,6 +293,13 @@ func searchFlightLeg(ctx context.Context, from, to Hub, date string) []models.Ro
 			depTime = f.Legs[0].DepartureTime
 			arrTime = f.Legs[len(f.Legs)-1].ArrivalTime
 		}
+		price := f.Price
+		currency := f.Currency
+		if opts.Currency != "" && currency != "" && currency != opts.Currency && price > 0 {
+			converted, convertedCurrency := destinations.ConvertCurrency(ctx, price, currency, opts.Currency)
+			price = math.Round(converted*100) / 100
+			currency = convertedCurrency
+		}
 		legs = append(legs, models.RouteLeg{
 			Mode:      "flight",
 			Provider:  airline,
@@ -294,8 +310,8 @@ func searchFlightLeg(ctx context.Context, from, to Hub, date string) []models.Ro
 			Departure: depTime,
 			Arrival:   arrTime,
 			Duration:  f.Duration,
-			Price:     f.Price,
-			Currency:  f.Currency,
+			Price:     price,
+			Currency:  currency,
 			Transfers: f.Stops,
 		})
 	}
@@ -304,9 +320,10 @@ func searchFlightLeg(ctx context.Context, from, to Hub, date string) []models.Ro
 
 // searchGroundLeg searches for ground transport between two hubs.
 // It prefers routes with real prices over schedule-only (price=0) results.
-func searchGroundLeg(ctx context.Context, from, to Hub, date, currency string) []models.RouteLeg {
+func searchGroundLeg(ctx context.Context, from, to Hub, date string, opts Options) []models.RouteLeg {
 	result, err := ground.SearchByName(ctx, from.City, to.City, date, ground.SearchOptions{
-		Currency: currency,
+		Currency:              opts.Currency,
+		AllowBrowserFallbacks: opts.AllowBrowserFallbacks,
 	})
 	if err != nil {
 		slog.Debug("route ground search failed", "from", from.City, "to", to.City, "err", err)
@@ -341,6 +358,17 @@ func searchGroundLeg(ctx context.Context, from, to Hub, date, currency string) [
 
 	var legs []models.RouteLeg
 	for _, r := range selected {
+		if opts.Avoid != "" && strings.EqualFold(r.Type, opts.Avoid) {
+			continue
+		}
+
+		price := r.Price
+		currency := r.Currency
+		if opts.Currency != "" && currency != "" && currency != opts.Currency && price > 0 {
+			converted, convertedCurrency := destinations.ConvertCurrency(ctx, price, currency, opts.Currency)
+			price = math.Round(converted*100) / 100
+			currency = convertedCurrency
+		}
 		legs = append(legs, models.RouteLeg{
 			Mode:       r.Type,
 			Provider:   r.Provider,
@@ -349,8 +377,8 @@ func searchGroundLeg(ctx context.Context, from, to Hub, date, currency string) [
 			Departure:  r.Departure.Time,
 			Arrival:    r.Arrival.Time,
 			Duration:   r.Duration,
-			Price:      r.Price,
-			Currency:   r.Currency,
+			Price:      price,
+			Currency:   currency,
 			Transfers:  r.Transfers,
 			BookingURL: r.BookingURL,
 		})
@@ -528,25 +556,71 @@ func paretoFilter(its []models.RouteItinerary) []models.RouteItinerary {
 	return result
 }
 
+func filterItinerariesByConstraints(its []models.RouteItinerary, date string, opts Options) []models.RouteItinerary {
+	departAfter, hasDepartAfter := parseConstraintTime(date, opts.DepartAfter)
+	arriveBy, hasArriveBy := parseConstraintTime(date, opts.ArriveBy)
+	if !hasDepartAfter && !hasArriveBy {
+		return its
+	}
+
+	filtered := its[:0]
+	for _, it := range its {
+		if hasDepartAfter {
+			depart, ok := parseFlexTime(it.DepartTime)
+			if !ok || depart.Before(departAfter) {
+				continue
+			}
+		}
+		if hasArriveBy {
+			arrive, ok := parseFlexTime(it.ArriveTime)
+			if !ok || arrive.After(arriveBy) {
+				continue
+			}
+		}
+		filtered = append(filtered, it)
+	}
+	return filtered
+}
+
+func itineraryPreferenceRank(it models.RouteItinerary, prefer string) int {
+	if prefer == "" {
+		return 0
+	}
+	for _, leg := range it.Legs {
+		if strings.EqualFold(leg.Mode, prefer) {
+			return 0
+		}
+	}
+	return 1
+}
+
 // sortItineraries sorts by the requested criterion.
-func sortItineraries(its []models.RouteItinerary, sortBy string) {
-	switch sortBy {
-	case "duration":
-		sort.Slice(its, func(i, j int) bool {
+func sortItineraries(its []models.RouteItinerary, opts Options) {
+	sort.Slice(its, func(i, j int) bool {
+		iPref := itineraryPreferenceRank(its[i], opts.Prefer)
+		jPref := itineraryPreferenceRank(its[j], opts.Prefer)
+		if iPref != jPref {
+			return iPref < jPref
+		}
+
+		switch opts.SortBy {
+		case "duration":
+			if its[i].TotalDuration == its[j].TotalDuration {
+				return its[i].TotalPrice < its[j].TotalPrice
+			}
 			return its[i].TotalDuration < its[j].TotalDuration
-		})
-	case "transfers":
-		sort.Slice(its, func(i, j int) bool {
+		case "transfers":
 			if its[i].Transfers == its[j].Transfers {
 				return its[i].TotalPrice < its[j].TotalPrice
 			}
 			return its[i].Transfers < its[j].Transfers
-		})
-	default: // "price"
-		sort.Slice(its, func(i, j int) bool {
+		default: // "price"
+			if its[i].TotalPrice == its[j].TotalPrice {
+				return its[i].TotalDuration < its[j].TotalDuration
+			}
 			return its[i].TotalPrice < its[j].TotalPrice
-		})
-	}
+		}
+	})
 }
 
 // selectDiverseLegs picks the top N flights and top N ground legs to ensure

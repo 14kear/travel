@@ -135,7 +135,7 @@ func TestParetoFilter(t *testing.T) {
 		{TotalPrice: 100, TotalDuration: 300, Transfers: 1}, // dominated by 0
 		{TotalPrice: 80, TotalDuration: 280, Transfers: 0},  // Pareto optimal
 		{TotalPrice: 50, TotalDuration: 600, Transfers: 2},  // Pareto optimal (cheapest)
-		{TotalPrice: 200, TotalDuration: 250, Transfers: 3},  // Pareto optimal (not dominated)
+		{TotalPrice: 200, TotalDuration: 250, Transfers: 3}, // Pareto optimal (not dominated)
 	}
 	filtered := paretoFilter(its)
 	// Should have at least the non-dominated ones.
@@ -157,14 +157,45 @@ func TestSortItineraries(t *testing.T) {
 		{TotalPrice: 100, TotalDuration: 300},
 	}
 
-	sortItineraries(its, "price")
+	sortItineraries(its, Options{SortBy: "price"})
 	if its[0].TotalPrice != 50 {
 		t.Errorf("sort by price: first = %.0f, want 50", its[0].TotalPrice)
 	}
 
-	sortItineraries(its, "duration")
+	sortItineraries(its, Options{SortBy: "duration"})
 	if its[0].TotalDuration != 120 {
 		t.Errorf("sort by duration: first = %d, want 120", its[0].TotalDuration)
+	}
+}
+
+func TestSortItinerariesPreferMode(t *testing.T) {
+	its := []models.RouteItinerary{
+		{TotalPrice: 50, TotalDuration: 600, Legs: []models.RouteLeg{{Mode: "bus"}}},
+		{TotalPrice: 200, TotalDuration: 120, Legs: []models.RouteLeg{{Mode: "train"}}},
+	}
+
+	sortItineraries(its, Options{SortBy: "price", Prefer: "train"})
+	if got := its[0].Legs[0].Mode; got != "train" {
+		t.Fatalf("preferred mode sort picked %q first, want train", got)
+	}
+}
+
+func TestFilterItinerariesByConstraints(t *testing.T) {
+	its := []models.RouteItinerary{
+		{DepartTime: "2026-04-10T08:00:00", ArriveTime: "2026-04-10T12:00:00"},
+		{DepartTime: "2026-04-10T10:00:00", ArriveTime: "2026-04-10T14:00:00"},
+		{DepartTime: "2026-04-10T13:00:00", ArriveTime: "2026-04-10T18:00:00"},
+	}
+
+	filtered := filterItinerariesByConstraints(its, "2026-04-10", Options{
+		DepartAfter: "09:00",
+		ArriveBy:    "15:00",
+	})
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 itinerary after time filtering, got %d", len(filtered))
+	}
+	if got := filtered[0].DepartTime; got != "2026-04-10T10:00:00" {
+		t.Fatalf("kept itinerary depart time = %q, want 2026-04-10T10:00:00", got)
 	}
 }
 

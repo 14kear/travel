@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,11 +48,12 @@ func rateLimitedDo(ctx context.Context, limiter *rate.Limiter, req *http.Request
 
 // SearchOptions configures a ground transport search.
 type SearchOptions struct {
-	Currency  string   // Default: EUR
-	Providers []string // Filter to specific providers; empty = all
-	MaxPrice  float64  // 0 = no limit
-	Type      string   // "bus", "train", or empty for all
-	NoCache   bool     // bypass response cache
+	Currency              string   // Default: EUR
+	Providers             []string // Filter to specific providers; empty = all
+	MaxPrice              float64  // 0 = no limit
+	Type                  string   // "bus", "train", or empty for all
+	NoCache               bool     // bypass response cache
+	AllowBrowserFallbacks bool     // opt in to browser/curl/cookie-assisted providers
 }
 
 // SearchByName searches all providers for ground transport between two cities
@@ -59,6 +62,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	if opts.Currency == "" {
 		opts.Currency = "EUR"
 	}
+	allowBrowserFallbacks := browserFallbacksEnabled(opts)
 
 	// Build cache key from search parameters.
 	providerKey := "all"
@@ -68,7 +72,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		sort.Strings(sorted)
 		providerKey = strings.Join(sorted, ",")
 	}
-	cacheKey := cache.Key("ground", fmt.Sprintf("%s|%s|%s|%s|%s|%.2f|%s", from, to, date, opts.Currency, providerKey, opts.MaxPrice, opts.Type))
+	cacheKey := cache.Key("ground", fmt.Sprintf("%s|%s|%s|%s|%s|%.2f|%s|%t", from, to, date, opts.Currency, providerKey, opts.MaxPrice, opts.Type, allowBrowserFallbacks))
 
 	// Check cache unless bypassed.
 	if !opts.NoCache {
@@ -187,7 +191,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			routes, err := SearchSNCF(ctx, from, to, date, opts.Currency)
+			routes, err := SearchSNCF(ctx, from, to, date, opts.Currency, allowBrowserFallbacks)
 			results <- providerResult{routes: routes, err: err, name: "sncf"}
 		}()
 	}
@@ -197,7 +201,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			routes, err := SearchTrainline(ctx, from, to, date, opts.Currency)
+			routes, err := SearchTrainline(ctx, from, to, date, opts.Currency, allowBrowserFallbacks)
 			results <- providerResult{routes: routes, err: err, name: "trainline"}
 		}()
 	}
@@ -356,6 +360,20 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	return result, nil
+}
+
+func browserFallbacksEnabled(opts SearchOptions) bool {
+	if opts.AllowBrowserFallbacks {
+		return true
+	}
+
+	raw := strings.TrimSpace(os.Getenv("TRVL_ALLOW_BROWSER_FALLBACKS"))
+	if raw == "" {
+		return false
+	}
+
+	enabled, err := strconv.ParseBool(raw)
+	return err == nil && enabled
 }
 
 func deduplicateGroundRoutes(routes []models.GroundRoute) []models.GroundRoute {

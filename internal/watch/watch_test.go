@@ -117,6 +117,49 @@ func TestStorePersistence(t *testing.T) {
 	}
 }
 
+func TestStorePersistenceUsesPrivateAtomicFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "store")
+	store := NewStore(dir)
+
+	id, err := store.Add(Watch{
+		Type:        "flight",
+		Origin:      "HEL",
+		Destination: "BCN",
+		DepartDate:  "2026-07-01",
+		Currency:    "EUR",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := store.RecordPrice(id, 199, "EUR"); err != nil {
+		t.Fatalf("RecordPrice: %v", err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Fatalf("dir perms = %o, want 700", got)
+	}
+
+	for _, name := range []string{"watches.json", "price-history.json"} {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("%s perms = %o, want 600", name, got)
+		}
+	}
+
+	if leftovers, err := filepath.Glob(filepath.Join(dir, "*.tmp-*")); err != nil {
+		t.Fatalf("glob temp files: %v", err)
+	} else if len(leftovers) != 0 {
+		t.Fatalf("unexpected temp files left behind: %v", leftovers)
+	}
+}
+
 func TestStoreLoadEmpty(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)

@@ -437,15 +437,15 @@ func planTripOutputSchema() interface{} {
 				"items": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"price":        map[string]interface{}{"type": "number"},
-						"currency":     map[string]interface{}{"type": "string"},
-						"airline":      map[string]interface{}{"type": "string"},
+						"price":         map[string]interface{}{"type": "number"},
+						"currency":      map[string]interface{}{"type": "string"},
+						"airline":       map[string]interface{}{"type": "string"},
 						"flight_number": map[string]interface{}{"type": "string"},
-						"stops":        map[string]interface{}{"type": "integer"},
-						"duration_min": map[string]interface{}{"type": "integer"},
-						"departure":    map[string]interface{}{"type": "string"},
-						"arrival":      map[string]interface{}{"type": "string"},
-						"route":        map[string]interface{}{"type": "string"},
+						"stops":         map[string]interface{}{"type": "integer"},
+						"duration_min":  map[string]interface{}{"type": "integer"},
+						"departure":     map[string]interface{}{"type": "string"},
+						"arrival":       map[string]interface{}{"type": "string"},
+						"route":         map[string]interface{}{"type": "string"},
 					},
 				},
 			},
@@ -454,15 +454,15 @@ func planTripOutputSchema() interface{} {
 				"items": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"price":        map[string]interface{}{"type": "number"},
-						"currency":     map[string]interface{}{"type": "string"},
-						"airline":      map[string]interface{}{"type": "string"},
+						"price":         map[string]interface{}{"type": "number"},
+						"currency":      map[string]interface{}{"type": "string"},
+						"airline":       map[string]interface{}{"type": "string"},
 						"flight_number": map[string]interface{}{"type": "string"},
-						"stops":        map[string]interface{}{"type": "integer"},
-						"duration_min": map[string]interface{}{"type": "integer"},
-						"departure":    map[string]interface{}{"type": "string"},
-						"arrival":      map[string]interface{}{"type": "string"},
-						"route":        map[string]interface{}{"type": "string"},
+						"stops":         map[string]interface{}{"type": "integer"},
+						"duration_min":  map[string]interface{}{"type": "integer"},
+						"departure":     map[string]interface{}{"type": "string"},
+						"arrival":       map[string]interface{}{"type": "string"},
+						"route":         map[string]interface{}{"type": "string"},
 					},
 				},
 			},
@@ -553,5 +553,11 @@ func handlePlanTrip(args map[string]any, elicit ElicitFunc, sampling SamplingFun
 	}
 
 	data, _ := json.MarshalIndent(result, "", "  ")
+	if !result.Success && (len(result.OutboundFlights) > 0 || len(result.ReturnFlights) > 0 || len(result.Hotels) > 0) {
+		return []ContentBlock{
+			{Type: "text", Text: fmt.Sprintf("Partial trip plan: %s", result.Error)},
+			{Type: "text", Text: string(data)},
+		}, result, nil
+	}
 	return []ContentBlock{{Type: "text", Text: string(data)}}, result, nil
 }

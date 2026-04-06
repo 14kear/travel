@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -132,14 +134,14 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		defer wg.Done()
 		outResult, outErr = flights.SearchFlights(ctx, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
-			Adults: 1,
+			Adults: input.Guests,
 		})
 	}()
 	go func() {
 		defer wg.Done()
 		retResult, retErr = flights.SearchFlights(ctx, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
-			Adults: 1,
+			Adults: input.Guests,
 		})
 	}()
 	go func() {
@@ -171,19 +173,25 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		result.Hotels = extractTopHotels(hotelResult.Hotels, nights, 5)
 	}
 
+	if input.Currency != "" {
+		convertPlanFlights(ctx, result.OutboundFlights, input.Currency)
+		convertPlanFlights(ctx, result.ReturnFlights, input.Currency)
+		convertPlanHotels(ctx, result.Hotels, input.Currency)
+	}
+
 	// Build summary from cheapest options.
 	var cheapOut, cheapRet float64
 	var cheapHotel float64
-	cur := input.Currency
+	cur := choosePlanSummaryCurrency(input.Currency, result)
 
 	if len(result.OutboundFlights) > 0 {
-		cheapOut = result.OutboundFlights[0].Price
+		cheapOut = convertedPlanAmount(ctx, result.OutboundFlights[0].Price, result.OutboundFlights[0].Currency, cur)
 	}
 	if len(result.ReturnFlights) > 0 {
-		cheapRet = result.ReturnFlights[0].Price
+		cheapRet = convertedPlanAmount(ctx, result.ReturnFlights[0].Price, result.ReturnFlights[0].Currency, cur)
 	}
 	if len(result.Hotels) > 0 {
-		cheapHotel = result.Hotels[0].Total
+		cheapHotel = convertedPlanAmount(ctx, result.Hotels[0].Total, result.Hotels[0].Currency, cur)
 	}
 
 	flightsTotal := (cheapOut + cheapRet) * float64(input.Guests)
@@ -202,10 +210,23 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		result.Summary.PerDay = grandTotal / float64(nights)
 	}
 
-	result.Success = len(result.OutboundFlights) > 0 || len(result.Hotels) > 0
+	result.Success = len(result.OutboundFlights) > 0 && len(result.ReturnFlights) > 0 && len(result.Hotels) > 0
 
 	// Collect errors.
 	var errs []string
+	var missing []string
+	if len(result.OutboundFlights) == 0 {
+		missing = append(missing, "outbound flights")
+	}
+	if len(result.ReturnFlights) == 0 {
+		missing = append(missing, "return flights")
+	}
+	if len(result.Hotels) == 0 {
+		missing = append(missing, "hotels")
+	}
+	if len(missing) > 0 {
+		errs = append(errs, "missing "+strings.Join(missing, ", "))
+	}
 	if outErr != nil {
 		errs = append(errs, fmt.Sprintf("outbound: %v", outErr))
 	}
@@ -216,7 +237,7 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		errs = append(errs, fmt.Sprintf("hotels: %v", hotelErr))
 	}
 	if !result.Success && len(errs) > 0 {
-		result.Error = errs[0]
+		result.Error = strings.Join(errs, "; ")
 	}
 
 	return result, nil
@@ -319,4 +340,50 @@ func joinAmenities(amenities []string) string {
 		out += a
 	}
 	return out
+}
+
+func choosePlanSummaryCurrency(requested string, result *PlanResult) string {
+	if requested != "" {
+		return requested
+	}
+	if len(result.OutboundFlights) > 0 && result.OutboundFlights[0].Currency != "" {
+		return result.OutboundFlights[0].Currency
+	}
+	if len(result.ReturnFlights) > 0 && result.ReturnFlights[0].Currency != "" {
+		return result.ReturnFlights[0].Currency
+	}
+	if len(result.Hotels) > 0 && result.Hotels[0].Currency != "" {
+		return result.Hotels[0].Currency
+	}
+	return "EUR"
+}
+
+func convertedPlanAmount(ctx context.Context, amount float64, from, to string) float64 {
+	converted, _ := destinations.ConvertCurrency(ctx, amount, from, to)
+	return math.Round(converted*100) / 100
+}
+
+func convertPlanFlights(ctx context.Context, flights []PlanFlight, currency string) {
+	for i := range flights {
+		if flights[i].Price <= 0 || flights[i].Currency == "" || flights[i].Currency == currency {
+			continue
+		}
+		flights[i].Price = convertedPlanAmount(ctx, flights[i].Price, flights[i].Currency, currency)
+		flights[i].Currency = currency
+	}
+}
+
+func convertPlanHotels(ctx context.Context, hotels []PlanHotel, currency string) {
+	for i := range hotels {
+		if hotels[i].Currency == "" || hotels[i].Currency == currency {
+			continue
+		}
+		if hotels[i].PerNight > 0 {
+			hotels[i].PerNight = convertedPlanAmount(ctx, hotels[i].PerNight, hotels[i].Currency, currency)
+		}
+		if hotels[i].Total > 0 {
+			hotels[i].Total = convertedPlanAmount(ctx, hotels[i].Total, hotels[i].Currency, currency)
+		}
+		hotels[i].Currency = currency
+	}
 }

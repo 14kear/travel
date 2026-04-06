@@ -207,6 +207,7 @@ func trainlineViaCurl(ctx context.Context, fromID, toID, date, currency string) 
 	// Step 1: Seed the cookie jar by visiting the homepage so Datadome sets its
 	// cookie bound to this exact curl TLS session.
 	cookieJarFile := fmt.Sprintf("/tmp/trainline-cookies-%d.txt", time.Now().UnixNano())
+	defer os.Remove(cookieJarFile)
 	seedArgs := append([]string{
 		"-s", "--http2",
 		"-L",                // follow redirects
@@ -261,7 +262,9 @@ func trainlineViaCurl(ctx context.Context, fromID, toID, date, currency string) 
 }
 
 // SearchTrainline searches thetrainline.com for train connections between two cities.
-func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
+// By default it uses the public journey-search API only. Browser/curl-assisted
+// fallbacks are opt-in via allowBrowserFallbacks.
+func SearchTrainline(ctx context.Context, from, to, date, currency string, allowBrowserFallbacks bool) ([]models.GroundRoute, error) {
 	fromID, ok := LookupTrainlineStation(from)
 	if !ok {
 		return nil, fmt.Errorf("no Trainline station for %q", from)
@@ -269,28 +272,6 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 	toID, ok := LookupTrainlineStation(to)
 	if !ok {
 		return nil, fmt.Errorf("no Trainline station for %q", to)
-	}
-
-	// NOTE: HTML scrape disabled — the page embeds exchange rates (9.9, 33.46, 46.94)
-	// which are NOT train prices. The journey-search API requires a datadome cookie
-	// that can only be obtained by executing Datadome's JavaScript challenge in a browser.
-	// When the user visits thetrainline.com once, the cookie is captured automatically.
-
-	// Try 2: curl with Playwright-captured datadome cookie.
-	// macOS curl's BoringSSL TLS fingerprint often passes Datadome's check.
-	if cRoutes, cErr := trainlineViaCurl(ctx, fromID, toID, date, currency); cErr == nil && len(cRoutes) > 0 {
-		// Populate city names that the curl path cannot fill in.
-		for i := range cRoutes {
-			if cRoutes[i].Departure.City == "" {
-				cRoutes[i].Departure.City = from
-			}
-			if cRoutes[i].Arrival.City == "" {
-				cRoutes[i].Arrival.City = to
-			}
-		}
-		return cRoutes, nil
-	} else {
-		slog.Debug("trainline curl failed, falling back to Go HTTP client", "err", cErr)
 	}
 
 	dateTime, err := time.Parse("2006-01-02", date)
@@ -378,6 +359,9 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 	if resp.StatusCode == http.StatusForbidden {
 		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		resp.Body.Close()
+		if !allowBrowserFallbacks {
+			return nil, fmt.Errorf("trainline: HTTP 403: %s", firstBody)
+		}
 
 		// Try 1: extract the datadome cookie that Datadome sets on the 403 response
 		// and immediately retry. Datadome uses this to verify cookie support —
@@ -419,6 +403,13 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 			}
 		}
 
+		if cRoutes, cErr := trainlineViaCurl(ctx, fromID, toID, date, currency); cErr == nil && len(cRoutes) > 0 {
+			populateTrainlineCities(cRoutes, from, to)
+			return cRoutes, nil
+		} else if cErr != nil {
+			slog.Debug("trainline curl fallback failed", "err", cErr)
+		}
+
 		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
 		if isCaptcha {
 			slog.Warn("trainline requires browser verification — opening browser", "captcha_url", captchaURL)
@@ -443,6 +434,17 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string) ([]mo
 	}
 
 	return readAndParseTrainlineResponse(resp.Body, from, to, date, currency)
+}
+
+func populateTrainlineCities(routes []models.GroundRoute, from, to string) {
+	for i := range routes {
+		if routes[i].Departure.City == "" {
+			routes[i].Departure.City = from
+		}
+		if routes[i].Arrival.City == "" {
+			routes[i].Arrival.City = to
+		}
+	}
 }
 
 func readAndParseTrainlineResponse(r io.Reader, from, to, date, currency string) ([]models.GroundRoute, error) {

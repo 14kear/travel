@@ -411,18 +411,12 @@ func firstString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// SearchSNCF searches SNCF for cheapest fares between two stations.
+// SearchSNCF searches SNCF for fares between two stations.
 // from/to are city names (e.g. "Paris", "Lyon"). date is YYYY-MM-DD.
 //
-// Search order:
-//  1. curl-based BFF call: macOS curl uses BoringSSL/Secure Transport which
-//     produces a real browser TLS fingerprint that bypasses Datadome at the
-//     network layer. Tries three known BFF paths.
-//  2. Playwright browser scraper: navigates sncf-connect.com headlessly, captures
-//     the x-bff-key the SPA injects, and calls the BFF from page context.
-//  3. Legacy calendar API: the old public endpoint; returns 403 in most
-//     environments but still works from some networks/IPs.
-func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
+// By default it uses the public calendar API only. Browser/curl-assisted
+// fallbacks are opt-in via allowBrowserFallbacks.
+func SearchSNCF(ctx context.Context, from, to, date, currency string, allowBrowserFallbacks bool) ([]models.GroundRoute, error) {
 	fromStation, ok := LookupSNCFStation(from)
 	if !ok {
 		return nil, fmt.Errorf("no SNCF station for %q", from)
@@ -438,7 +432,18 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 
 	slog.Debug("sncf search", "from", fromStation.City, "to", toStation.City, "date", date)
 
-	// Primary: curl BFF — macOS BoringSSL TLS fingerprint bypasses Datadome.
+	apiRoutes, apiErr := searchSNCFCalendar(ctx, fromStation, toStation, date, currency, allowBrowserFallbacks)
+	if apiErr == nil && len(apiRoutes) > 0 {
+		return apiRoutes, nil
+	}
+	if apiErr != nil {
+		slog.Debug("sncf calendar api failed", "err", apiErr)
+	}
+	if !allowBrowserFallbacks {
+		return nil, apiErr
+	}
+
+	// Optional browser/curl-assisted API fallback.
 	if cRoutes, cErr := sncfViaCurl(ctx, fromStation.Code, toStation.Code, date, currency); cErr == nil && len(cRoutes) > 0 {
 		// Populate city/station names that parseSNCFBFFResponse cannot fill in.
 		for i := range cRoutes {
@@ -453,22 +458,25 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 		}
 		return cRoutes, nil
 	} else {
-		slog.Debug("sncf curl failed, trying browser scraper", "err", cErr)
-		// Open browser for user to solve CAPTCHA if needed
-		fmt.Fprintf(os.Stderr, "⚠️  SNCF requires verification. Opening browser — please visit the site, then retry.\n")
-		_ = cookies.OpenBrowserForAuth("https://www.sncf-connect.com/en-en")
+		slog.Debug("sncf curl fallback failed", "err", cErr)
 	}
 
-	// Secondary: browser scraper (page-context API approach, same as ÖBB).
-	// This navigates to sncf-connect.com, obtains the Datadome session, then
-	// calls the internal BFF endpoints from JavaScript context.
+	fmt.Fprintf(os.Stderr, "⚠️  SNCF browser fallbacks enabled. Opening browser — complete verification, then retry.\n")
+	_ = cookies.OpenBrowserForAuth("https://www.sncf-connect.com/en-en")
+
 	if bRoutes, bErr := BrowserScrapeRoutes(ctx, "sncf", from, to, date, currency); bErr == nil && len(bRoutes) > 0 {
 		return bRoutes, nil
 	} else if bErr != nil {
-		slog.Debug("sncf browser scraper failed, trying calendar API fallback", "err", bErr)
+		slog.Debug("sncf browser scraper failed", "err", bErr)
 	}
 
-	// Fallback: legacy calendar API (may return 403 in most environments).
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	return nil, fmt.Errorf("sncf: no routes found")
+}
+
+func searchSNCFCalendar(ctx context.Context, fromStation, toStation SNCFStation, date, currency string, allowBrowserCookies bool) ([]models.GroundRoute, error) {
 	if err := sncfLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("sncf rate limiter: %w", err)
 	}
@@ -511,27 +519,28 @@ func SearchSNCF(ctx context.Context, from, to, date, currency string) ([]models.
 		firstBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		resp.Body.Close()
 
-		// Try once more with browser cookies before giving up.
-		cookieHeader := cookies.BrowserCookies("sncf-connect.com")
-		if cookieHeader != "" {
-			slog.Debug("retrying sncf calendar api with browser cookies")
-			req2, err2 := newSNCFRequest(cookieHeader)
-			if err2 == nil {
-				if resp2, err2 := sncfClient.Do(req2); err2 == nil {
-					defer resp2.Body.Close()
-					if resp2.StatusCode == http.StatusOK {
-						return parseSNCFResponse(resp2.Body, fromStation, toStation, date, currency)
+		if allowBrowserCookies {
+			cookieHeader := cookies.BrowserCookies("sncf-connect.com")
+			if cookieHeader != "" {
+				slog.Debug("retrying sncf calendar api with browser cookies")
+				req2, err2 := newSNCFRequest(cookieHeader)
+				if err2 == nil {
+					if resp2, err2 := sncfClient.Do(req2); err2 == nil {
+						defer resp2.Body.Close()
+						if resp2.StatusCode == http.StatusOK {
+							return parseSNCFResponse(resp2.Body, fromStation, toStation, date, currency)
+						}
 					}
 				}
 			}
+
+			isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
+			if isCaptcha {
+				slog.Warn("sncf requires browser verification", "captcha_url", captchaURL)
+			}
 		}
 
-		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
-		if isCaptcha {
-			slog.Warn("sncf requires browser verification", "captcha_url", captchaURL)
-		}
-
-		return nil, fmt.Errorf("sncf calendar api: HTTP %d (browser scraper also returned no results)", resp.StatusCode)
+		return nil, fmt.Errorf("sncf calendar api: HTTP %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode != http.StatusOK {

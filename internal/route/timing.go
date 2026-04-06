@@ -1,6 +1,9 @@
 package route
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // MinConnectionTime returns the minimum transfer time between two transport modes.
 // For same-mode connections (train→train), shorter times are allowed.
@@ -20,7 +23,7 @@ var connectionTimes = map[string]time.Duration{
 	// Same mode
 	"flight→flight": 120 * time.Minute, // self-transfer at hub airport
 	"train→train":   30 * time.Minute,
-	"bus→bus":        30 * time.Minute,
+	"bus→bus":       30 * time.Minute,
 	"ferry→ferry":   60 * time.Minute,
 
 	// Ground to flight (need airport transit + check-in)
@@ -57,6 +60,30 @@ func parseFlexTime(s string) (time.Time, bool) {
 			return t, true
 		}
 	}
+	return time.Time{}, false
+}
+
+func parseConstraintTime(date, value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if t, ok := parseFlexTime(value); ok {
+		return t, true
+	}
+
+	day, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	for _, layout := range []string{"15:04", "15:04:05"} {
+		tod, err := time.Parse(layout, value)
+		if err == nil {
+			return time.Date(day.Year(), day.Month(), day.Day(), tod.Hour(), tod.Minute(), tod.Second(), 0, time.UTC), true
+		}
+	}
+
 	return time.Time{}, false
 }
 

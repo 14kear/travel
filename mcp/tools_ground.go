@@ -15,17 +15,18 @@ func searchGroundTool() ToolDef {
 	return ToolDef{
 		Name:        "search_ground",
 		Title:       "Ground Transport Search",
-		Description: "Search bus and train connections between cities. Queries FlixBus and RegioJet in parallel. Free, no API key. Covers most European routes.",
+		Description: "Search bus, train, and ferry connections between cities. Uses API-first providers across Europe, with browser/curl-assisted fallbacks disabled unless explicitly enabled.",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"from":      {Type: "string", Description: "Departure city name (e.g. Prague, Helsinki, Vienna)"},
-				"to":        {Type: "string", Description: "Arrival city name"},
-				"date":      {Type: "string", Description: "Departure date (YYYY-MM-DD)"},
-				"currency":  {Type: "string", Description: "Price currency (default: EUR)"},
-				"type":      {Type: "string", Description: "Filter: bus, train, or empty for all"},
-				"max_price": {Type: "number", Description: "Maximum price filter (0 = no limit)"},
-				"provider":  {Type: "string", Description: "Restrict to provider: flixbus, regiojet, or empty for all"},
+				"from":                    {Type: "string", Description: "Departure city name (e.g. Prague, Helsinki, Vienna)"},
+				"to":                      {Type: "string", Description: "Arrival city name"},
+				"date":                    {Type: "string", Description: "Departure date (YYYY-MM-DD)"},
+				"currency":                {Type: "string", Description: "Price currency (default: EUR)"},
+				"type":                    {Type: "string", Description: "Filter: bus, train, ferry, or empty for all"},
+				"max_price":               {Type: "number", Description: "Maximum price filter (0 = no limit)"},
+				"provider":                {Type: "string", Description: "Restrict to provider: flixbus, regiojet, trainline, sncf, transitous, db, oebb, ns, vr, tallink, dfds, vikingline, eckeroline"},
+				"allow_browser_fallbacks": {Type: "boolean", Description: "Allow browser/curl/cookie-assisted provider fallbacks (default: false)"},
 			},
 			Required: []string{"from", "to", "date"},
 		},
@@ -137,9 +138,10 @@ func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling Samplin
 	defer cancel()
 
 	opts := ground.SearchOptions{
-		Currency: argString(args, "currency"),
-		MaxPrice: argFloat(args, "max_price", 0),
-		Type:     argString(args, "type"),
+		Currency:              argString(args, "currency"),
+		MaxPrice:              argFloat(args, "max_price", 0),
+		Type:                  argString(args, "type"),
+		AllowBrowserFallbacks: argBool(args, "allow_browser_fallbacks", false),
 	}
 	if p := argString(args, "provider"); p != "" {
 		opts.Providers = strings.Split(p, ",")
@@ -151,7 +153,7 @@ func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling Samplin
 	}
 
 	if !result.Success {
-		msg := fmt.Sprintf("No bus/train routes found from %s to %s on %s", from, to, date)
+		msg := fmt.Sprintf("No ground routes found from %s to %s on %s", from, to, date)
 		if result.Error != "" {
 			msg += ": " + result.Error
 		}
@@ -159,7 +161,7 @@ func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling Samplin
 	}
 
 	summary := buildGroundRouteSummary(
-		fmt.Sprintf("Found %d bus/train routes from %s to %s on %s", result.Count, from, to, date),
+		fmt.Sprintf("Found %d ground routes from %s to %s on %s", result.Count, from, to, date),
 		result.Routes,
 	)
 
