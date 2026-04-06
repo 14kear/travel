@@ -340,10 +340,21 @@ func searchGroundLeg(ctx context.Context, from, to Hub, date string, opts Option
 		return nil
 	}
 
+	var allowed []models.GroundRoute
+	for _, r := range result.Routes {
+		if opts.Avoid != "" && strings.EqualFold(r.Type, opts.Avoid) {
+			continue
+		}
+		allowed = append(allowed, r)
+	}
+	if len(allowed) == 0 {
+		return nil
+	}
+
 	// Separate priced routes from schedule-only (price=0) routes.
 	// For multi-modal routing, priced routes are far more useful.
 	var priced, scheduleOnly []models.GroundRoute
-	for _, r := range result.Routes {
+	for _, r := range allowed {
 		if r.Price > 0 {
 			priced = append(priced, r)
 		} else {
@@ -364,10 +375,6 @@ func searchGroundLeg(ctx context.Context, from, to Hub, date string, opts Option
 
 	var legs []models.RouteLeg
 	for _, r := range selected {
-		if opts.Avoid != "" && strings.EqualFold(r.Type, opts.Avoid) {
-			continue
-		}
-
 		price := r.Price
 		currency := r.Currency
 		if opts.Currency != "" && currency != "" && currency != opts.Currency && price > 0 {

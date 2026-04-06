@@ -17,7 +17,8 @@ var rootCmd = &cobra.Command{
 	Short: "Google Flights + Hotels from your terminal. Free, no API keys.",
 	Long: `trvl — real-time flight and hotel search powered by Google's internal APIs.
 
-No API keys. No monthly fees. No scraping. Just fast, free travel data.
+No API keys. No monthly fees. API-first travel search with no scraping by default.
+Optional browser-assisted fallbacks exist only for a few protected providers.
 
   trvl flights JFK LHR 2026-07-01 --cabin business --stops nonstop
   trvl hotels "Tokyo" --checkin 2026-06-15 --checkout 2026-06-18 --stars 4

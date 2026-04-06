@@ -134,32 +134,29 @@ func (s *Server) SendLog(level, message string) {
 	})
 }
 
-// makeElicitFunc returns an ElicitFunc for the current transport mode.
+// makeElicitFunc returns the transport-level elicitation hook.
 //
-// In stdio mode, elicitation is disabled because the elicitation response
-// would be read from the same scanner as ServeStdio's main loop, causing
-// stream desync if a regular request arrives while waiting for the
-// elicitation response. Tool handlers fall back to progressive disclosure
-// suggestions (which already work well) when elicit is nil.
+// Elicitation is currently disabled in practice. Tool handlers fall back to
+// progressive follow-up suggestions when elicit is nil.
 //
-// TODO: To re-enable stdio elicitation, the transport needs stream
-// multiplexing — either a dedicated response channel or tagging messages
-// with correlation IDs so the scanner can route them correctly.
-//
-// Elicitation works correctly in HTTP mode since each request is independent.
+// To re-enable transport-level elicitation, request/response routing needs a
+// dedicated channel or correlation-aware multiplexing so tool prompts cannot
+// desync the main request stream.
 func (s *Server) makeElicitFunc() ElicitFunc {
-	// Disabled in stdio mode to prevent stream desync.
+	// Disabled until transport-level request routing is implemented.
 	return nil
 }
 
-// makeSamplingFunc returns a SamplingFunc if the client declared the sampling
-// capability. Like elicitation, sampling is disabled in stdio mode to prevent
-// stream desync.
+// makeSamplingFunc returns the transport-level sampling hook.
+//
+// Sampling is currently disabled for the same reason as elicitation: the
+// server does not yet multiplex outbound tool requests separately from the
+// primary RPC stream.
 func (s *Server) makeSamplingFunc() SamplingFunc {
 	if s.clientCapabilities.Sampling == nil {
 		return nil
 	}
-	// Disabled in stdio mode to prevent stream desync (same as elicitation).
+	// Disabled until transport-level request routing is implemented.
 	return nil
 }
 
@@ -206,7 +203,10 @@ func (s *Server) handleInitialize(req *Request) *Response {
 		if err := json.Unmarshal(req.Params, &params); err == nil {
 			s.clientCapabilities = params.Capabilities
 			if params.Capabilities.Sampling != nil {
-				s.SendLog("info", "Client supports sampling/createMessage — AI-powered result curation enabled")
+				s.SendLog("info", "Client supports sampling/createMessage; trvl currently keeps transport-level sampling disabled")
+			}
+			if params.Capabilities.Elicitation != nil {
+				s.SendLog("info", "Client supports elicitation/create; trvl currently uses follow-up suggestions instead")
 			}
 		}
 	}

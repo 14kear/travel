@@ -259,6 +259,34 @@ func TestFilterItinerariesByConstraints(t *testing.T) {
 	}
 }
 
+func TestSearchGroundLegAvoidKeepsUnavoidedAlternatives(t *testing.T) {
+	withSearchMocks(t, nil, func(context.Context, string, string, string, ground.SearchOptions) (*models.GroundSearchResult, error) {
+		routes := []models.GroundRoute{
+			{Provider: "bus-1", Type: "bus", Price: 10, Currency: "EUR", Duration: 80},
+			{Provider: "bus-2", Type: "bus", Price: 12, Currency: "EUR", Duration: 82},
+			{Provider: "bus-3", Type: "bus", Price: 14, Currency: "EUR", Duration: 84},
+			{Provider: "bus-4", Type: "bus", Price: 16, Currency: "EUR", Duration: 86},
+			{Provider: "bus-5", Type: "bus", Price: 18, Currency: "EUR", Duration: 88},
+			{Provider: "rail-1", Type: "train", Price: 45, Currency: "EUR", Duration: 70},
+		}
+		return &models.GroundSearchResult{Success: true, Count: len(routes), Routes: routes}, nil
+	}, nil)
+
+	from := Hub{City: "Helsinki"}
+	to := Hub{City: "Tallinn"}
+
+	legs := searchGroundLeg(context.Background(), from, to, "2026-04-10", Options{Avoid: "bus"})
+	if len(legs) != 1 {
+		t.Fatalf("searchGroundLeg returned %d legs, want 1", len(legs))
+	}
+	if got := legs[0].Mode; got != "train" {
+		t.Fatalf("searchGroundLeg kept mode %q, want train", got)
+	}
+	if got := legs[0].Provider; got != "rail-1" {
+		t.Fatalf("searchGroundLeg kept provider %q, want rail-1", got)
+	}
+}
+
 func TestSearchFlightLegConvertsCurrency(t *testing.T) {
 	withSearchMocks(
 		t,
