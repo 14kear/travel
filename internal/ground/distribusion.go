@@ -258,7 +258,8 @@ type distribusionMeta struct {
 func SearchDistribusion(ctx context.Context, from, to, date, currency string) ([]models.GroundRoute, error) {
 	apiKey := os.Getenv("DISTRIBUSION_API_KEY")
 	if apiKey == "" {
-		return nil, nil // silently skip — key not configured
+		slog.Debug("distribusion: DISTRIBUSION_API_KEY not set, skipping")
+		return nil, nil
 	}
 
 	fromCode := distribusionStationCode(from)

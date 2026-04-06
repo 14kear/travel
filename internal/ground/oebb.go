@@ -403,6 +403,7 @@ func oebbShopSearchTimetable(ctx context.Context, token string, fromStation, toS
 // oebbShopGetPrices fetches prices for a batch of connection IDs.
 func oebbShopGetPrices(ctx context.Context, token string, connectionIDs []string) ([]oebbShopOffer, error) {
 	if len(connectionIDs) == 0 {
+		slog.Debug("oebb shop prices: no connection IDs to fetch")
 		return nil, nil
 	}
 
@@ -495,6 +496,7 @@ func SearchOebb(ctx context.Context, from, to, date, currency string) ([]models.
 	slog.Debug("oebb shop timetable", "connections", len(connections))
 
 	if len(connections) == 0 {
+		slog.Debug("oebb shop timetable: no connections returned for route", "from", fromStation.City, "to", toStation.City, "date", date)
 		return nil, nil
 	}
 

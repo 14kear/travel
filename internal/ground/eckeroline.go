@@ -22,6 +22,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"golang.org/x/time/rate"
 )
 
 // eckerolinePorts maps city aliases to Eckerö Line port info.
@@ -62,6 +63,9 @@ var eckerolineSchedules = map[string][]eckerolineScheduleEntry{
 
 // eckerolineBasePrice is the published "from" price (EUR, foot passenger).
 const eckerolineBasePrice = 19.0
+
+// eckerolineLimiter: conservative 5 req/min (one request per 12 seconds).
+var eckerolineLimiter = rate.NewLimiter(rate.Every(12*time.Second), 1)
 
 // eckerolineClient uses Chrome TLS fingerprint to interact with Eckerö Line's website.
 var eckerolineClient = batchexec.ChromeHTTPClient()
@@ -123,9 +127,14 @@ type eckerolineDeparture struct {
 // Flow: GET homepage → extract form_key + session cookie → POST getdepartures.
 // Returns 0 when the API is unavailable (caller falls back to published schedule).
 func tryEckeroLineLive(ctx context.Context, fromCode, toCode, date string) ([]eckerolineDeparture, error) {
+	if err := eckerolineLimiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("eckeroline rate limiter: %w", err)
+	}
+
 	// Step 1: GET homepage to obtain form_key + Magento session cookie.
 	homeReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.eckeroline.fi/", nil)
 	if err != nil {
+		slog.Debug("eckeroline homepage request build failed", "err", err)
 		return nil, nil
 	}
 	homeReq.Header.Set("Accept", "text/html")
@@ -145,6 +154,7 @@ func tryEckeroLineLive(ctx context.Context, fromCode, toCode, date string) ([]ec
 
 	homeBody, err := io.ReadAll(io.LimitReader(homeResp.Body, 512*1024))
 	if err != nil {
+		slog.Debug("eckeroline homepage body read failed", "err", err)
 		return nil, nil
 	}
 
@@ -181,6 +191,7 @@ func tryEckeroLineLive(ctx context.Context, fromCode, toCode, date string) ([]ec
 	depReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		"https://www.eckeroline.fi/checkout/bookingBar/getdepartures", strings.NewReader(payload))
 	if err != nil {
+		slog.Debug("eckeroline getdepartures request build failed", "err", err)
 		return nil, nil
 	}
 	depReq.Header.Set("Content-Type", "application/json")
@@ -203,6 +214,7 @@ func tryEckeroLineLive(ctx context.Context, fromCode, toCode, date string) ([]ec
 
 	body, err := io.ReadAll(io.LimitReader(depResp.Body, 64*1024))
 	if err != nil {
+		slog.Debug("eckeroline getdepartures body read failed", "err", err)
 		return nil, nil
 	}
 
@@ -243,6 +255,7 @@ func SearchEckeroLine(ctx context.Context, from, to, date, currency string) ([]m
 
 	key := fromCode + "-" + toCode
 	if _, ok := eckerolineSchedules[key]; !ok {
+		slog.Debug("eckeroline no schedule for route", "key", key)
 		return nil, nil
 	}
 
