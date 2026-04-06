@@ -16,7 +16,7 @@ cmd/trvl                          CLI entry point (cobra)
   |     +-- internal/jsonutil
   |     +-- internal/models
   |
-  +-- internal/ground             Bus + train search (11 providers in parallel)
+  +-- internal/ground             Bus + train + ferry search (16 providers in parallel)
   |     +-- flixbus.go            FlixBus REST API (global.api.flixbus.com)
   |     +-- regiojet.go           RegioJet REST API (brn-ybus-pubapi.sa.cz)
   |     +-- eurostar.go           Eurostar GraphQL (site-api.eurostar.com)
@@ -28,9 +28,21 @@ cmd/trvl                          CLI entry point (cobra)
   |     +-- trainline.go          Trainline aggregated rail API (browser cookie auth)
   |     +-- renfe.go              Renfe Spanish Railways (Playwright browser scraper)
   |     +-- transitous.go         Transitous/MOTIS2 (routing.spicebus.org)
+  |     +-- tallink.go            Tallink/Silja Line REST API (book.tallink.com) — live prices
+  |     +-- vikingline.go         Viking Line reference schedule — Distribusion API pending
+  |     +-- eckeroline.go         Eckerö Line Magento AJAX API (getdepartures) — live prices
+  |     +-- stenaline.go          Stena Line reference schedule — Distribusion API pending
+  |     +-- dfds.go               DFDS availability API (travel-search-prod.dfds-pax-web.com)
   |     +-- taxi.go               Taxi fare estimates for airport transfers
   |     +-- browser_scraper.go    Shared Playwright browser automation
   |     +-- search.go             Parallel dispatch + result merging
+  |     +-- internal/models
+  |
+  +-- internal/route              Multi-modal routing engine
+  |     +-- router.go             Pareto-optimal itinerary search across all providers
+  |     +-- hubs.go               26 European hub cities for route optimization
+  |     +-- internal/ground
+  |     +-- internal/flights
   |     +-- internal/models
   |
   +-- internal/explore            Destination discovery (GetExploreDestinations)
@@ -146,7 +158,12 @@ User: "ground Prague Vienna 2026-07-01"
           +---> trainline.go     Station search -> journey query (browser cookie auth)
           +---> renfe.go         Browser session -> AVE journey (Playwright)
           +---> transitous.go    Geocode -> MOTIS2 routing (1 req/6s limit)
-          |     (all 11 run in parallel via goroutines)
+          +---> tallink.go       voyage-avails API (1 req/12s limit)
+          +---> vikingline.go    Reference schedule lookup (no network)
+          +---> eckeroline.go    Magento AJAX API (form_key + getdepartures)
+          +---> stenaline.go     Reference schedule lookup (no network)
+          +---> dfds.go          Availability API (1 req/12s limit)
+          |     (all 16 run in parallel via goroutines)
           v
     merge + sort + filter        Combine results, apply --max-price / --type filters
           |
@@ -248,11 +265,11 @@ The tradeoff is maintenance: when Google changes their protocol (rare but possib
 
 ### Why parallel provider search?
 
-When you search "Prague to Vienna", trvl queries all 11 ground providers simultaneously:
+When you search "Prague to Vienna", trvl queries all relevant ground providers simultaneously:
 
 ```
-Sequential: FlixBus(2s) + RegioJet(1s) + DB(3s) + ÖBB(4s) + NS(1s) + VR(1s) + SNCF(2s) + Trainline(2s) + Renfe(4s) + Eurostar(1s) + Transitous(1s) = 22s
-Parallel:   max(all 11 providers)                                                                                                                        = 4s
+Sequential: FlixBus(2s) + RegioJet(1s) + DB(3s) + ÖBB(4s) + NS(1s) + VR(1s) + SNCF(2s) + Trainline(2s) + Renfe(4s) + Eurostar(1s) + Transitous(1s) + ferries(1s) = 23s
+Parallel:   max(all 16 providers)                                                                                                                                   = 4s
 ```
 
 Parallel search gives you the best price across all providers in the time it takes to query the slowest one. The implementation is straightforward Go concurrency: one goroutine per provider, results collected via a channel, merged and sorted after all complete.

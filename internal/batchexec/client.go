@@ -119,12 +119,11 @@ func (c *Client) SetRateLimit(rps float64) {
 }
 
 // dialTLSChromeHTTP1 dials a TCP connection and wraps it with a utls client
-// that impersonates Chrome's TLS ClientHello but forces HTTP/1.1 via ALPN.
+// that impersonates Chrome 146's TLS ClientHello but forces HTTP/1.1 via ALPN.
 //
-// We start from HelloChrome_Auto's spec (Chrome-like cipher suites, extensions,
-// curves, etc.) but override the ALPN extension to only advertise "http/1.1".
-// The UClient is created with HelloCustom so ApplyPreset installs our modified
-// spec rather than ignoring it in favour of a built-in profile.
+// We start from Chrome146Spec() and override the ALPN extension to only advertise
+// "http/1.1". The UClient is created with HelloCustom so ApplyPreset installs our
+// modified spec rather than ignoring it in favour of a built-in profile.
 //
 // Coverage exclusion: creates a raw TLS connection with Chrome fingerprint.
 // Not unit-testable: requires real TCP connection + TLS handshake with remote server.
@@ -145,12 +144,8 @@ func dialTLSChromeHTTP1WithConfig(ctx context.Context, network, addr string, tls
 		return nil, fmt.Errorf("dial tcp: %w", err)
 	}
 
-	// Build a Chrome-like spec but with ALPN forced to HTTP/1.1.
-	spec, err := utls.UTLSIdToSpec(utls.HelloChrome_Auto)
-	if err != nil {
-		rawConn.Close()
-		return nil, fmt.Errorf("utls spec: %w", err)
-	}
+	// Build a Chrome 146 spec but with ALPN forced to HTTP/1.1.
+	spec := Chrome146Spec()
 	for _, ext := range spec.Extensions {
 		if alpn, ok := ext.(*utls.ALPNExtension); ok {
 			alpn.AlpnProtocols = []string{"http/1.1"}
@@ -465,9 +460,17 @@ func (t *chromeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	return t.h1.RoundTrip(req)
 }
 
-// dialTLSChromeH2 dials and performs a Chrome-like TLS handshake advertising
-// both "h2" and "http/1.1" in ALPN — exactly as Chrome 133 does.
-// It uses the HelloChrome_Auto (Chrome 133) spec verbatim, without modifying ALPN.
+// dialTLSChromeH2 dials and performs a Chrome 146 TLS handshake advertising
+// both "h2" and "http/1.1" in ALPN — matching what real Chrome 146 sends.
+// It uses Chrome146Spec() verbatim (ALPN already includes "h2" first).
+//
+// Datadome and similar bot-detection systems fingerprint the TLS ClientHello
+// (JA3/JA4). Chrome 146 uses X25519MLKEM768 for Post-Quantum key exchange and
+// sends a GREASE ECH extension; HelloChrome_Auto resolves to Chrome 133 which
+// produces a different fingerprint and triggers 403s from Datadome-protected sites.
+//
+// Coverage exclusion: creates a raw TLS connection with Chrome fingerprint.
+// Not unit-testable: requires real TCP + TLS handshake. Covered by integration tests.
 func dialTLSChromeH2(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -480,10 +483,12 @@ func dialTLSChromeH2(ctx context.Context, network, addr string) (net.Conn, error
 		return nil, fmt.Errorf("dial tcp: %w", err)
 	}
 
-	// Use HelloChrome_Auto (Chrome 133) spec as-is.
-	// It advertises ["h2", "http/1.1"] in ALPN, which matches what real Chrome sends.
-	// We do NOT override ALPN here — that was the bug in the HTTP/1.1-only path.
-	uConn := utls.UClient(rawConn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+	spec := Chrome146Spec()
+	uConn := utls.UClient(rawConn, &utls.Config{ServerName: host}, utls.HelloCustom)
+	if err := uConn.ApplyPreset(&spec); err != nil {
+		uConn.Close()
+		return nil, fmt.Errorf("apply chrome146 preset: %w", err)
+	}
 
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		uConn.Close()

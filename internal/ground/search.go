@@ -88,7 +88,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan providerResult, 10)
+	results := make(chan providerResult, 17)
 
 	useProvider := func(name string) bool {
 		if len(opts.Providers) == 0 {
@@ -100,6 +100,18 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 			}
 		}
 		return false
+	}
+
+	// Distribusion — ground transport GDS covering bus, ferry, train, airport transfers.
+	// Placed first (before individual providers) since it aggregates 2,000+ carriers.
+	// Requires DISTRIBUSION_API_KEY to be set; silently skipped otherwise.
+	if useProvider("distribusion") && HasDistribusionKey() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchDistribusion(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "distribusion"}
+		}()
 	}
 
 	// FlixBus
@@ -220,6 +232,57 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		}()
 	}
 
+	// Tallink/Silja Line — ferry routes in the Baltic Sea.
+	if useProvider("tallink") && HasTallinkRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchTallink(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "tallink"}
+		}()
+	}
+
+	// Stena Line — ferry routes across the North Sea and Baltic Sea.
+	if useProvider("stenaline") && HasStenaLineRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchStenaLine(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "stenaline"}
+		}()
+	}
+
+	// DFDS — ferry routes across the North Sea and Baltic Sea.
+	if useProvider("dfds") && HasDFDSRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchDFDS(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "dfds"}
+		}()
+	}
+
+	// Viking Line — ferry routes in the Baltic Sea (Helsinki–Tallinn, Helsinki–Stockholm,
+	// Turku–Stockholm, Stockholm–Mariehamn).
+	if useProvider("vikingline") && HasVikingLineRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchVikingLine(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "vikingline"}
+		}()
+	}
+
+	// Eckerö Line — Helsinki ↔ Tallinn ferry (M/S Finlandia).
+	if useProvider("eckeroline") && HasEckeroLineRoute(from, to) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchEckeroLine(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "eckeroline"}
+		}()
+	}
+
 	// Transitous — coordinate-based, always available as a fallback.
 	// Requires geocoding city names to coordinates; skipped if geocoding fails.
 	if useProvider("transitous") {
@@ -312,7 +375,7 @@ func filterUnavailableGroundRoutes(routes []models.GroundRoute) []models.GroundR
 	filtered := routes[:0]
 	for _, route := range routes {
 		// Keep routes with prices, plus schedule-only providers (transitous, db).
-		if route.Price > 0 || strings.EqualFold(route.Provider, "transitous") || strings.EqualFold(route.Provider, "db") || strings.EqualFold(route.Provider, "ns") || strings.EqualFold(route.Provider, "oebb") || strings.EqualFold(route.Provider, "vr") {
+		if route.Price > 0 || strings.EqualFold(route.Provider, "distribusion") || strings.EqualFold(route.Provider, "transitous") || strings.EqualFold(route.Provider, "db") || strings.EqualFold(route.Provider, "ns") || strings.EqualFold(route.Provider, "oebb") || strings.EqualFold(route.Provider, "vr") || strings.EqualFold(route.Provider, "tallink") || strings.EqualFold(route.Provider, "stenaline") || strings.EqualFold(route.Provider, "dfds") || strings.EqualFold(route.Provider, "vikingline") || strings.EqualFold(route.Provider, "eckeroline") {
 			filtered = append(filtered, route)
 		}
 	}

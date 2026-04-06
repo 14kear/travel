@@ -53,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(airportTransferCmd())
 	rootCmd.AddCommand(tripCmd())
 	rootCmd.AddCommand(dealsCmd())
+	rootCmd.AddCommand(routeCmd())
 	rootCmd.AddCommand(watchCmd())
 	rootCmd.AddCommand(mcpCmd())
 }

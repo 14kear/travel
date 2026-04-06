@@ -9,9 +9,9 @@
 
 ![trvl demo](demo.gif)
 
-> **18 travel tools for your AI assistant — flights, hotels, trains, buses, price alerts, destination intel. Free. One binary.**
+> **19 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, destination intel. Free. One binary.**
 >
-> Also works as a standalone CLI with 22 commands.
+> Also works as a standalone CLI with 24 commands.
 
 ### What it looks like
 
@@ -110,7 +110,7 @@ Now Claude knows about trvl in every project — just say "search flights" or "p
 
 ### 4. Ask your AI to search
 
-That's it. Your AI assistant now has 18 travel tools available. Just ask naturally:
+That's it. Your AI assistant now has 19 travel tools available. Just ask naturally:
 
 - *"Search flights from JFK to Tokyo on July 1st, business class"*
 - *"Find hotels in Paris for July 1-5, at least 4 stars"*
@@ -142,11 +142,12 @@ That's it. Your AI assistant now has 18 travel tools available. Just ask natural
 | **nearby_places** | Find points of interest near a location | Restaurants, attractions near hotel |
 | **travel_guide** | Wikivoyage travel guide for a city | Neighbourhoods, getting around, safety |
 | **local_events** | Find events during your trip dates | Concerts, festivals, exhibitions |
-| **search_ground** | Search buses and trains (11 providers) | Prague -> Vienna, May 3rd, trains only |
+| **search_ground** | Search buses, trains and ferries (16 providers) | Prague -> Vienna, May 3rd, trains only |
 | **search_airport_transfers** | Search airport-to-hotel or airport-to-city ground transport, plus taxi estimates | CDG -> Hotel Lutetia Paris, after 14:30 |
 | **search_restaurants** | Find restaurants near a location (Google Maps) | Barcelona, italian cuisine |
 | **search_deals** | Travel deals from 4 RSS feeds (error fares, flash sales) | Deals from HEL under EUR 400 |
 | **plan_trip** | Plan a complete trip — flights + hotel in one parallel search | AMS→PRG, Jun 15–18, EUR |
+| **search_route** | Multi-modal routing combining flights, trains, buses and ferries | Helsinki → Dubrovnik, arrive by 2026-04-10 |
 
 ### MCP Protocol Features (v2025-11-25)
 
@@ -154,7 +155,7 @@ That's it. Your AI assistant now has 18 travel tools available. Just ask natural
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all 18 tool responses |
+| **Output schemas** | Full JSON Schema validation for all 19 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels`, `where-should-i-go` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides |
 | **Elicitation** | Interactive parameter collection when dates are missing |
@@ -163,7 +164,7 @@ That's it. Your AI assistant now has 18 travel tools available. Just ask natural
 
 ## Ground Transport Providers
 
-trvl searches 11 ground transport providers in parallel, covering most of Europe:
+trvl searches 16 ground transport providers in parallel, covering most of Europe:
 
 | Provider | Protocol | Coverage | Starting price | Auth |
 |----------|----------|----------|----------------|------|
@@ -178,6 +179,11 @@ trvl searches 11 ground transport providers in parallel, covering most of Europe
 | **FlixBus** | REST | Pan-European buses (40+ countries) | EUR 5+ | None |
 | **RegioJet** | REST | CZ/SK/AT/HU/DE/PL buses + trains | EUR 5+ | None |
 | **Transitous** | MOTIS2 REST | Pan-European transit (schedule-based fallback) | — | None |
+| **Tallink** | REST API | Baltic Sea ferries (Helsinki, Tallinn, Stockholm, Riga) | EUR 16+ | None |
+| **Viking Line** | Reference schedule | Baltic Sea ferries (Helsinki, Tallinn, Stockholm, Turku) | EUR 22+ | None |
+| **Eckerö Line** | Magento AJAX API | Helsinki ↔ Tallinn (M/S Finlandia) | EUR 19+ | None |
+| **Stena Line** | Reference schedule | North Sea + Baltic (Gothenburg, Kiel, Karlskrona, Gdynia, …) | EUR 25+ | None |
+| **DFDS** | REST API | North Sea + Baltic (Kiel, Amsterdam, Newcastle, Copenhagen, …) | EUR 49+ | None |
 
 Two providers (NS, Digitransit/VR) use public API keys that are embedded in the binary — no signup or personal key is required from the user.
 
@@ -186,7 +192,7 @@ Two providers (NS, Digitransit/VR) use public API keys that are embedded in the 
 | Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
 |---------|------|-----|---------------|------------|------|
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bus/train search | ✅ (11 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe) | ❌ | ❌ | ❌ | ❌ |
+| Bus/train/ferry search | ✅ (16 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Stena Line, DFDS) | ❌ | ❌ | ❌ | ❌ |
 | Price tracking | ✅ (watches with alerts) | ❌ | ❌ | ❌ | ❌ |
 | Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -336,7 +342,7 @@ trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21
 
 ### Buses & Trains
 
-Searches 11 providers in parallel: FlixBus (buses, pan-European), RegioJet (buses+trains, CZ/SK/AT/HU/DE/PL), Eurostar/Snap (trains, London↔Paris/Brussels/Amsterdam/Cologne), Deutsche Bahn (trains, all European rail), ÖBB (trains, Austrian Railjet + cross-border, via browser automation), NS (Dutch railways), VR (Finnish railways, via Digitransit API), SNCF (trains, French TGV/TER), Trainline (aggregated rail across major European operators), Transitous.org (transit routing, pan-European), and Renfe (trains, Spanish AVE high-speed, EUR 36+). Airport transfers also add taxi fare estimates for door-to-door comparisons.
+Searches 16 providers in parallel: FlixBus (buses, pan-European), RegioJet (buses+trains, CZ/SK/AT/HU/DE/PL), Eurostar/Snap (trains, London↔Paris/Brussels/Amsterdam/Cologne), Deutsche Bahn (trains, all European rail), ÖBB (trains, Austrian Railjet + cross-border, via browser automation), NS (Dutch railways), VR (Finnish railways, via Digitransit API), SNCF (trains, French TGV/TER), Trainline (aggregated rail across major European operators), Transitous.org (transit routing, pan-European), Renfe (trains, Spanish AVE high-speed, EUR 36+), Tallink (Baltic Sea ferries, live API), Viking Line (Baltic Sea ferries), Eckerö Line (Helsinki↔Tallinn, live Magento API), Stena Line (North Sea + Baltic ferries), and DFDS (North Sea + Baltic ferries, live availability API). Airport transfers also add taxi fare estimates for door-to-door comparisons.
 
 Trainline, ÖBB, and some other providers require browser cookie auth to bypass CAPTCHA. trvl loads cookies from your browser automatically via `internal/cookies`.
 
@@ -357,6 +363,16 @@ trvl ground Prague Vienna 2026-07-01 --max-price 20       # Under EUR 20
 trvl airport-transfer CDG "Hotel Lutetia Paris" 2026-07-01
 trvl airport-transfer LHR "Paddington Station" 2026-07-01 --arrival-after 14:30
 trvl airport-transfer CDG "Hotel Lutetia Paris" 2026-07-01 --provider taxi
+```
+
+### Multi-Modal Routing
+
+Combines flights, trains, buses and ferries into optimal itineraries across all 16 providers.
+
+```bash
+trvl route Helsinki Dubrovnik --arrive-by 2026-04-10     # Pareto-optimal itineraries
+trvl route HEL TLL --arrive-by 2026-04-06               # Ferry + bus options
+trvl route London Barcelona --arrive-by 2026-07-15       # Eurostar + TGV vs flight
 ```
 
 ### Price Watch
@@ -429,10 +445,10 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | | |
 |---|---|
 | **Binary** | Single static ~15MB. Zero runtime dependencies. |
-| **Data** | Real-time from Google Flights/Hotels/Explore/Maps + 11 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe) + 5 free destination APIs |
+| **Data** | Real-time from Google Flights/Hotels/Explore/Maps + 16 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Stena Line, DFDS) + 5 free destination APIs |
 | **Auth** | No personal API keys required. Two providers (NS, Digitransit/VR) use public keys embedded in the binary. Browser cookies loaded automatically for CAPTCHA-protected providers (Trainline, Eurostar, SNCF, ÖBB). |
-| **MCP** | Full v2025-11-25 — 18 tools, 4 prompts, resources, structured content, sampling |
-| **CLI** | 22 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
+| **MCP** | Full v2025-11-25 — 19 tools, 4 prompts, resources, structured content, sampling |
+| **CLI** | 24 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 30+ hacks auto-applied: nearby airports, throw-away returns, hotel splits |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |

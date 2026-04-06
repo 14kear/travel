@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-05
+
+### Added
+- `trvl route` command and `search_route` MCP tool: multi-modal routing engine combining flights, trains, buses and ferries into Pareto-optimal itineraries — 19th MCP tool
+- Ferry providers (5 new ground transport providers, total now 16):
+  - **Tallink** — live REST API (`book.tallink.com/api/voyage-avails`), real prices from Baltic Sea sailings (Helsinki, Tallinn, Stockholm, Riga, Turku)
+  - **Viking Line** — reference schedule (Baltic Sea: Helsinki, Tallinn, Stockholm, Turku, Mariehamn); will be replaced by Distribusion API
+  - **Eckerö Line** — live Magento AJAX API (`getdepartures` endpoint), Helsinki ↔ Tallinn (M/S Finlandia)
+  - **Stena Line** — reference schedule (North Sea + Baltic: Gothenburg, Kiel, Karlskrona, Gdynia, Travemünde, Liepāja, …); will be replaced by Distribusion API
+  - **DFDS** — live date availability API (`travel-search-prod.dfds-pax-web.com`), North Sea + Baltic (Kiel, Amsterdam, Newcastle, Copenhagen, Kapellskär, Paldiski, …)
+- Chrome 146 TLS fingerprint (Post-Quantum + ECH) for improved provider compatibility
+- 26 European hub cities for route optimization in the routing engine
+- Pareto-optimal itinerary filtering (price vs. duration trade-off)
+
+### Changed
+- Ground transport expanded from 11 to 16 providers (added 5 ferry providers)
+- MCP tools expanded from 18 to 19 (added `search_route`)
+- CLI commands expanded from 22 to 24 (added `route`, `ferry`)
+- Removed HTML scraping fallbacks from Viking Line and Stena Line (replaced with clean reference schedules pending Distribusion integration)
+- Removed HTML scraping fallback from DFDS (availability API + reference schedule sufficient)
+
 ## [0.4.0] - 2026-04-04
 
 ### Added
@@ -117,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Single static binary, zero runtime dependencies
 - MIT license
 
+[0.5.0]: https://github.com/MikkoParkkola/trvl/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MikkoParkkola/trvl/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MikkoParkkola/trvl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MikkoParkkola/trvl/compare/v0.1.0...v0.2.0

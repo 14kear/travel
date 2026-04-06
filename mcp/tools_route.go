@@ -1,0 +1,152 @@
+package mcp
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/route"
+)
+
+func searchRouteTool() ToolDef {
+	return ToolDef{
+		Name:        "search_route",
+		Title:       "Multi-Modal Route Search",
+		Description: "Find optimal multi-modal itineraries combining flights, trains, buses, and ferries. Searches hub cities across Europe for transfer connections. Returns Pareto-optimal options ranked by price, duration, or transfers.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"origin":        {Type: "string", Description: "Origin city name or IATA code (e.g. Helsinki, HEL)"},
+				"destination":   {Type: "string", Description: "Destination city name or IATA code (e.g. Dubrovnik, DBV)"},
+				"date":          {Type: "string", Description: "Travel date (YYYY-MM-DD)"},
+				"max_transfers": {Type: "integer", Description: "Maximum mode changes (default: 3)"},
+				"max_price":     {Type: "number", Description: "Maximum total price (0 = no limit)"},
+				"prefer":        {Type: "string", Description: "Preferred transport mode: train, bus, ferry, flight"},
+				"avoid":         {Type: "string", Description: "Avoid transport mode: flight, bus, train, ferry"},
+				"currency":      {Type: "string", Description: "Display currency (default: EUR)"},
+				"sort":          {Type: "string", Description: "Sort by: price, duration, transfers (default: price)"},
+			},
+			Required: []string{"origin", "destination", "date"},
+		},
+		OutputSchema: routeSearchOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Multi-Modal Route Search",
+			ReadOnlyHint:   true,
+			OpenWorldHint:  true,
+			IdempotentHint: true,
+		},
+	}
+}
+
+func routeSearchOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success":      map[string]interface{}{"type": "boolean"},
+			"origin":       map[string]interface{}{"type": "string"},
+			"destination":  map[string]interface{}{"type": "string"},
+			"date":         map[string]interface{}{"type": "string"},
+			"count":        map[string]interface{}{"type": "integer"},
+			"itineraries":  routeItinerariesOutputSchema(),
+			"error":        map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success", "origin", "destination", "date", "count"},
+	}
+}
+
+func routeItinerariesOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "array",
+		"items": map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"legs":           map[string]interface{}{"type": "array"},
+				"total_price":    map[string]interface{}{"type": "number"},
+				"currency":       map[string]interface{}{"type": "string"},
+				"total_duration": map[string]interface{}{"type": "integer"},
+				"transfers":      map[string]interface{}{"type": "integer"},
+				"depart_time":    map[string]interface{}{"type": "string"},
+				"arrive_time":    map[string]interface{}{"type": "string"},
+			},
+		},
+	}
+}
+
+func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+	origin := argString(args, "origin")
+	dest := argString(args, "destination")
+	date := argString(args, "date")
+
+	if origin == "" || dest == "" || date == "" {
+		return nil, nil, fmt.Errorf("origin, destination, and date are required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	opts := route.Options{
+		MaxTransfers: argInt(args, "max_transfers", 3),
+		MaxPrice:     argFloat(args, "max_price", 0),
+		Currency:     argString(args, "currency"),
+		Prefer:       argString(args, "prefer"),
+		Avoid:        argString(args, "avoid"),
+		SortBy:       argString(args, "sort"),
+	}
+
+	result, err := route.SearchRoute(ctx, origin, dest, date, opts)
+	if err != nil {
+		return []ContentBlock{{Type: "text", Text: fmt.Sprintf("Route search failed: %v", err)}}, nil, nil
+	}
+
+	if !result.Success {
+		msg := fmt.Sprintf("No multi-modal routes found from %s to %s on %s", result.Origin, result.Destination, date)
+		if result.Error != "" {
+			msg += ": " + result.Error
+		}
+		return []ContentBlock{{Type: "text", Text: msg}}, result, nil
+	}
+
+	summary := buildRouteSummary(result)
+	content := []ContentBlock{
+		{Type: "text", Text: summary, Annotations: &ContentAnnotation{Audience: []string{"user"}, Priority: 1.0}},
+		{Type: "text", Text: "Structured data attached.", Annotations: &ContentAnnotation{Audience: []string{"assistant"}, Priority: 0.5}},
+	}
+	return content, result, nil
+}
+
+func buildRouteSummary(result *models.RouteSearchResult) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Found %d multi-modal routes from %s to %s on %s\n\n",
+		result.Count, result.Origin, result.Destination, result.Date))
+
+	for i, it := range result.Itineraries {
+		if i >= 10 {
+			sb.WriteString(fmt.Sprintf("... and %d more\n", result.Count-10))
+			break
+		}
+
+		transferStr := "direct"
+		if it.Transfers > 0 {
+			transferStr = fmt.Sprintf("%d transfers", it.Transfers)
+		}
+
+		sb.WriteString(fmt.Sprintf("Option %d: %s %.0f · %dh%02dm · %s\n",
+			i+1, it.Currency, it.TotalPrice,
+			it.TotalDuration/60, it.TotalDuration%60,
+			transferStr))
+
+		for _, leg := range it.Legs {
+			price := "-"
+			if leg.Price > 0 {
+				price = fmt.Sprintf("%s %.0f", leg.Currency, leg.Price)
+			}
+			sb.WriteString(fmt.Sprintf("  %s %s → %s (%s) %s\n",
+				leg.Mode, leg.From, leg.To, leg.Provider, price))
+		}
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
+}

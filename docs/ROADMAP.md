@@ -1,16 +1,24 @@
 # trvl Roadmap — Power Traveler Features
 
-## Current: 11 providers, 10 with real prices
+## Current: 16 providers, 13 with real prices
 
-## P0: Multi-modal routing
+## DONE: Multi-modal routing (MVP)
 `trvl route HEL DBV --arrive-by 2026-04-10`
-Combine flights + trains + buses + ferries into optimal itineraries.
-All 11 provider APIs already exist — need routing algorithm.
+Combine flights + trains + buses + ferries into Pareto-optimal itineraries.
+26 European hub cities. Pareto filtering on price vs. duration.
 
-## P0: Ferries (Baltic + Mediterranean)
-Tallink API confirmed working: `/api/timetables`, `/api/reservation/summary/v2`
-Session GUID generated client-side, no auth needed.
-Providers: Tallink/Silja, Viking Line, Eckerö, Stena Line, DFDS.
+## DONE: Ferries (Baltic + North Sea)
+5 ferry providers live:
+- Tallink/Silja — live REST API (`book.tallink.com/api/voyage-avails`)
+- Eckerö Line — live Magento AJAX API (`getdepartures`)
+- DFDS — live date availability API (`travel-search-prod.dfds-pax-web.com`)
+- Viking Line — reference schedule (live API pending Distribusion)
+- Stena Line — reference schedule (live API pending Distribusion)
+
+## P0: Distribusion API integration
+Replace Viking Line and Stena Line reference schedules with live prices via
+the Distribusion ferry distribution platform. Covers 50+ ferry operators.
+Contact: distribusion.com/developers
 
 ## P1: Positioning flights
 `trvl position HEL --radius 500km --to BCN`
