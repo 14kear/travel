@@ -98,9 +98,9 @@ claude mcp add trvl --transport stdio -- trvl mcp
 }
 ```
 
-### 3. (Optional) Install Claude Code skills
+### 3. (Optional) Install the bundled Claude Code skill
 
-The repo includes 4 skill files that teach Claude how to use trvl optimally. To install globally:
+The repo includes 1 Claude Code skill file that teaches Claude how to use trvl optimally. To install it globally:
 
 ```bash
 mkdir -p ~/.claude/skills

@@ -42,16 +42,16 @@ If using Claude Desktop instead of Claude Code, add to `~/Library/Application Su
 }
 ```
 
-### Step 3: Install the skills (makes you smarter about travel searches)
+### Step 3: Install the bundled skill (makes you smarter about travel searches)
 
 ```bash
 mkdir -p ~/.claude/skills
-for s in trvl travel-hacks travel-agent travel-agent-compact; do
+for s in trvl; do
   curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
 done
 ```
 
-These skill files teach you how to use trvl optimally whenever the user mentions flights, hotels, travel, or trips.
+This bundled skill file teaches you how to use trvl optimally whenever the user mentions flights, hotels, travel, or trips.
 
 ### Step 4: Verify
 
@@ -63,7 +63,7 @@ trvl flights HEL LHR 2026-07-01 --format json | head -5
 # Expected: JSON with flight results
 ```
 
-Tell the user: "trvl is installed with 31 MCP tools and 5 skills. I can search flights, hotels, destinations, plan trips, find weekend getaways, optimize multi-city routes, find nearby restaurants, check local events, search ground transport, detect travel hacks, check weather forecasts, and look up airline baggage rules. Just ask me anything about travel."
+Tell the user: "trvl is installed with 31 MCP tools and 1 bundled Claude skill. I can search flights, hotels, destinations, plan trips, find weekend getaways, optimize multi-city routes, find nearby restaurants, check local events, search ground transport, detect travel hacks, check weather forecasts, and look up airline baggage rules. Just ask me anything about travel."
 
 ### Step 5: (Optional) Set up free API keys for enhanced data
 

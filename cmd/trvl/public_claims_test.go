@@ -42,8 +42,27 @@ var readmeToolMarkers = []string{
 	"get_baggage_rules",
 }
 
+func bundledSkillMarkdownCount(t *testing.T) int {
+	t.Helper()
+
+	entries, err := os.ReadDir(filepath.Join("..", "..", ".claude", "skills"))
+	if err != nil {
+		t.Fatalf("ReadDir(.claude/skills): %v", err)
+	}
+
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			count++
+		}
+	}
+	return count
+}
+
 func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 	t.Parallel()
+
+	skillCount := bundledSkillMarkdownCount(t)
 
 	checks := []struct {
 		path      string
@@ -59,6 +78,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				"Full v2025-11-25 — 31 tools",
 				"31 commands (+ 6 watch subcommands)",
 				"Full JSON Schema validation for all 31 tool responses",
+				fmt.Sprintf("The repo includes %d Claude Code skill file", skillCount),
 			},
 			forbidden: []string{
 				"29 travel tools for your AI assistant",
@@ -67,15 +87,17 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				"Full v2025-11-25 — 29 tools",
 				"29 commands (+ 6 watch subcommands)",
 				"Full JSON Schema validation for all 29 tool responses",
+				"The repo includes 4 skill files",
 			},
 		},
 		{
 			path: filepath.Join("..", "..", "AGENTS.md"),
 			required: []string{
-				"installed with 31 MCP tools and 5 skills",
-				"You now have 31 MCP tools available.",
+				fmt.Sprintf("trvl is installed with 31 MCP tools and %d bundled Claude skill", skillCount),
 			},
 			forbidden: []string{
+				"trvl is installed with 31 MCP tools and 5 skills",
+				"trvl is installed with 31 MCP tools and 4 skills",
 				"installed with 22 MCP tools and 5 skills",
 				"You now have 22 MCP tools available.",
 			},
