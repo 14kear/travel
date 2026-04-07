@@ -16,3 +16,9 @@ func TestMarketedProviderNamesRemainUnique(t *testing.T) {
 		seen[name] = struct{}{}
 	}
 }
+
+func TestSearchResultBufferCapacityTracksProviderCatalog(t *testing.T) {
+	if got, want := searchResultBufferCapacity(), MarketedProviderCount()+1; got != want {
+		t.Fatalf("search result buffer capacity = %d, want %d", got, want)
+	}
+}

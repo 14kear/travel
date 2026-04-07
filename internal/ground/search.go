@@ -92,7 +92,7 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan providerResult, 17)
+	results := make(chan providerResult, searchResultBufferCapacity())
 
 	useProvider := func(name string) bool {
 		if len(opts.Providers) == 0 {

@@ -193,6 +193,26 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				"Bus/train (6 providers)",
 			},
 		},
+		{
+			path: filepath.Join("..", "..", "docs", "ARCHITECTURE.md"),
+			required: []string{
+				fmt.Sprintf("Bus + train + ferry search (%d providers in parallel)", groundProviderCount),
+				fmt.Sprintf("max(all %d providers)", groundProviderCount),
+			},
+			forbidden: []string{
+				"Bus + train + ferry search (11 providers in parallel)",
+				"max(all 11 providers)",
+			},
+		},
+		{
+			path: filepath.Join("..", "..", "docs", "ROADMAP.md"),
+			required: []string{
+				fmt.Sprintf("## Current: %d providers", groundProviderCount),
+			},
+			forbidden: []string{
+				"## Current: 11 providers",
+			},
+		},
 	}
 
 	for _, check := range checks {

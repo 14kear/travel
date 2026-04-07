@@ -30,3 +30,8 @@ func MarketedProviderNames() []string {
 func MarketedProviderCount() int {
 	return len(marketedProviderNames)
 }
+
+func searchResultBufferCapacity() int {
+	// Eurostar fan-out can emit both regular and snap results in parallel.
+	return MarketedProviderCount() + 1
+}
