@@ -63,7 +63,7 @@ func restaurantSearchOutputSchema() interface{} {
 	}
 }
 
-func handleSearchRestaurants(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchRestaurants(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	location := argString(args, "location")
 	if location == "" {
 		return nil, nil, fmt.Errorf("location is required")

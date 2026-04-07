@@ -67,7 +67,16 @@ func hacksOutputSchema() interface{} {
 	}
 }
 
-func handleDetectTravelHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc) ([]ContentBlock, interface{}, error) {
+// detectorNames lists the 14 parallel hack detectors for progress reporting.
+var detectorNames = []string{
+	"throwaway ticketing", "hidden city", "positioning flights",
+	"split ticketing", "night transport", "airline stopovers",
+	"date flexibility", "open jaw", "ferry positioning",
+	"multi-stop routing", "currency arbitrage", "calendar conflicts",
+	"Tuesday booking", "low-cost carriers",
+}
+
+func handleDetectTravelHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	destination := strings.ToUpper(argString(args, "destination"))
 	date := argString(args, "date")
@@ -78,6 +87,8 @@ func handleDetectTravelHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc) 
 	}
 	carryOn := argBool(args, "carry_on", false)
 	naivePrice := argFloat(args, "naive_price", 0)
+
+	sendProgress(progress, 0, 100, fmt.Sprintf("Analysing %s→%s for travel hacks...", origin, destination))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -92,7 +103,15 @@ func handleDetectTravelHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc) 
 		NaivePrice:  naivePrice,
 	}
 
+	// Emit progress for each detector group (detectors run in parallel internally).
+	n := float64(len(detectorNames))
+	for i, name := range detectorNames {
+		sendProgress(progress, float64(i+1)/n*80, 100, fmt.Sprintf("Checking %s...", name))
+	}
+
 	detected := hacks.DetectAll(ctx, input)
+
+	sendProgress(progress, 90, 100, "Scoring and filtering results...")
 
 	type response struct {
 		Origin      string       `json:"origin"`
@@ -112,6 +131,8 @@ func handleDetectTravelHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc) 
 	if resp.Hacks == nil {
 		resp.Hacks = []hacks.Hack{}
 	}
+
+	sendProgress(progress, 100, 100, fmt.Sprintf("Found %d hacks", len(detected)))
 
 	summary := buildHacksSummary(origin, destination, date, detected)
 	content := []ContentBlock{
@@ -196,7 +217,7 @@ func accommodationHacksOutputSchema() interface{} {
 	}
 }
 
-func handleDetectAccommodationHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleDetectAccommodationHacks(args map[string]any, _ ElicitFunc, _ SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	city := argString(args, "city")
 	checkin := argString(args, "checkin")
 	checkout := argString(args, "checkout")

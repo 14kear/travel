@@ -125,7 +125,7 @@ func airportTransferOutputSchema() interface{} {
 	}
 }
 
-func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	from := models.ResolveLocationName(argString(args, "from"))
 	to := models.ResolveLocationName(argString(args, "to"))
 	date := argString(args, "date")
@@ -173,7 +173,7 @@ func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling Samplin
 	return content, result, nil
 }
 
-func handleSearchAirportTransfers(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchAirportTransfers(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	input := trip.AirportTransferInput{
 		AirportCode: argString(args, "airport_code"),
 		Destination: argString(args, "destination"),

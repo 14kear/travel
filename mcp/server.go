@@ -58,19 +58,25 @@ type Server struct {
 
 	// Watch store for price tracking resources.
 	watchStore *watch.Store
+
+	// Resource subscriptions: map from URI to true.
+	subsMu sync.Mutex
+	subs   map[string]bool
 }
 
 // ToolHandler processes a tool call and returns content blocks, optional
 // structured content, and an error.
 // The elicit parameter may be nil if the client does not support elicitation.
 // The sampling parameter may be nil if the client does not support sampling.
-type ToolHandler func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error)
+// The progress parameter may be nil if notifications are not available (HTTP).
+type ToolHandler func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error)
 
 // NewServer creates a new MCP server with the standard trvl tools registered.
 func NewServer() *Server {
 	s := &Server{
 		handlers:   make(map[string]ToolHandler),
 		priceCache: newPriceCache(),
+		subs:       make(map[string]bool),
 	}
 
 	// Initialize watch store (best-effort; nil store is handled gracefully).
@@ -160,6 +166,21 @@ func (s *Server) makeSamplingFunc() SamplingFunc {
 	return nil
 }
 
+// makeProgressFunc returns a ProgressFunc that sends notifications/progress
+// for the given token. The function is fire-and-forget; errors are discarded.
+// Returns nil if there is no notification writer (HTTP transport or not started).
+func (s *Server) makeProgressFunc(token string) ProgressFunc {
+	s.notifyMu.Lock()
+	hasWriter := s.notifyWriter != nil
+	s.notifyMu.Unlock()
+	if !hasWriter {
+		return nil
+	}
+	return func(progress, total float64, message string) {
+		s.SendProgress(token, progress, total, message)
+	}
+}
+
 // HandleRequest processes a single JSON-RPC request and returns the response.
 func (s *Server) HandleRequest(req *Request) *Response {
 	switch req.Method {
@@ -187,6 +208,10 @@ func (s *Server) HandleRequest(req *Request) *Response {
 		return s.handleResourcesList(req)
 	case "resources/read":
 		return s.handleResourcesRead(req)
+	case "resources/subscribe":
+		return s.handleResourcesSubscribe(req)
+	case "resources/unsubscribe":
+		return s.handleResourcesUnsubscribe(req)
 	default:
 		return &Response{
 			JSONRPC: "2.0",
@@ -219,7 +244,7 @@ func (s *Server) handleInitialize(req *Request) *Response {
 			Capabilities: Capabilities{
 				Tools:     &ToolsCapability{ListChanged: false},
 				Prompts:   &PromptsCapability{ListChanged: false},
-				Resources: &ResourcesCapability{Subscribe: false, ListChanged: false},
+				Resources: &ResourcesCapability{Subscribe: true, ListChanged: true},
 				Logging:   &LoggingCapability{},
 			},
 			ServerInfo: ServerInfo{
@@ -260,11 +285,13 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 	// Log the tool call.
 	s.SendLog("info", fmt.Sprintf("Calling tool: %s", params.Name))
 
-	// Build elicit and sampling functions based on client capabilities.
+	// Build elicit, sampling, and progress functions based on client capabilities.
 	elicit := s.makeElicitFunc()
 	sampling := s.makeSamplingFunc()
+	progressToken := fmt.Sprintf("%s-%v", params.Name, req.ID)
+	progress := s.makeProgressFunc(progressToken)
 
-	content, structured, err := handler(params.Arguments, elicit, sampling)
+	content, structured, err := handler(params.Arguments, elicit, sampling, progress)
 	if err != nil {
 		return &Response{
 			JSONRPC: "2.0",
@@ -354,6 +381,46 @@ func (s *Server) handleResourcesRead(req *Request) *Response {
 		ID:      req.ID,
 		Result:  result,
 	}
+}
+
+// --- Resource subscription handlers ---
+
+func (s *Server) handleResourcesSubscribe(req *Request) *Response {
+	var params ResourcesReadParams
+	if req.Params != nil {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params.URI != "" {
+		s.subsMu.Lock()
+		s.subs[params.URI] = true
+		s.subsMu.Unlock()
+	}
+	return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+}
+
+func (s *Server) handleResourcesUnsubscribe(req *Request) *Response {
+	var params ResourcesReadParams
+	if req.Params != nil {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params.URI != "" {
+		s.subsMu.Lock()
+		delete(s.subs, params.URI)
+		s.subsMu.Unlock()
+	}
+	return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
+}
+
+// SendResourceUpdated sends a notifications/resources/updated notification to
+// all clients that have subscribed to the given URI. Fire-and-forget.
+func (s *Server) SendResourceUpdated(uri string) {
+	s.subsMu.Lock()
+	subscribed := s.subs[uri]
+	s.subsMu.Unlock()
+	if !subscribed {
+		return
+	}
+	_ = s.SendNotification("notifications/resources/updated", map[string]string{"uri": uri})
 }
 
 // --- logging/setLevel handler ---

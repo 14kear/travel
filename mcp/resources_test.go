@@ -28,15 +28,18 @@ func TestResourcesList(t *testing.T) {
 
 	expected := map[string]bool{
 		"trvl://airports/popular": false,
-		"trvl://help/flights":    false,
-		"trvl://help/hotels":     false,
-		"trvl://trip/summary":    false,
-		"trvl://watches":         false,
+		"trvl://help/flights":     false,
+		"trvl://help/hotels":      false,
+		"trvl://trip/summary":     false,
+		"trvl://watches":          false,
+		"trvl://trips":            false,
+		"trvl://trips/upcoming":   false,
+		"trvl://trips/alerts":     false,
 	}
 	for _, r := range result.Resources {
 		if _, ok := expected[r.URI]; !ok {
-			// Dynamic watch resources (trvl://watch/{id}) are allowed.
-			if !strings.HasPrefix(r.URI, "trvl://watch/") {
+			// Dynamic watch and trip resources are allowed.
+			if !strings.HasPrefix(r.URI, "trvl://watch/") && !strings.HasPrefix(r.URI, "trvl://trips/trip_") {
 				t.Errorf("unexpected resource: %s", r.URI)
 			}
 		}

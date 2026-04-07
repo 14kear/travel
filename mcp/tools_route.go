@@ -77,7 +77,7 @@ func routeItinerariesOutputSchema() interface{} {
 	}
 }
 
-func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	origin := argString(args, "origin")
 	dest := argString(args, "destination")
 	date := argString(args, "date")
@@ -85,6 +85,8 @@ func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling Sampling
 	if origin == "" || dest == "" || date == "" {
 		return nil, nil, fmt.Errorf("origin, destination, and date are required")
 	}
+
+	sendProgress(progress, 0, 100, fmt.Sprintf("Resolving %s and %s...", origin, dest))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -101,18 +103,26 @@ func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling Sampling
 		AllowBrowserFallbacks: argBool(args, "allow_browser_fallbacks", false),
 	}
 
+	sendProgress(progress, 10, 100, "Searching direct connections...")
+	sendProgress(progress, 20, 100, "Searching hub connections (flights, trains, ferries)...")
+
 	result, err := route.SearchRoute(ctx, origin, dest, date, opts)
 	if err != nil {
 		return []ContentBlock{{Type: "text", Text: fmt.Sprintf("Route search failed: %v", err)}}, nil, nil
 	}
+
+	sendProgress(progress, 90, 100, "Ranking itineraries...")
 
 	if !result.Success {
 		msg := fmt.Sprintf("No multi-modal routes found from %s to %s on %s", result.Origin, result.Destination, date)
 		if result.Error != "" {
 			msg += ": " + result.Error
 		}
+		sendProgress(progress, 100, 100, "Done")
 		return []ContentBlock{{Type: "text", Text: msg}}, result, nil
 	}
+
+	sendProgress(progress, 100, 100, fmt.Sprintf("Found %d routes", result.Count))
 
 	summary := buildRouteSummary(result)
 	content := []ContentBlock{
@@ -120,6 +130,13 @@ func handleSearchRoute(args map[string]any, elicit ElicitFunc, sampling Sampling
 		{Type: "text", Text: "Structured data attached.", Annotations: &ContentAnnotation{Audience: []string{"assistant"}, Priority: 0.5}},
 	}
 	return content, result, nil
+}
+
+// sendProgress calls progress if non-nil. Fire-and-forget; nil-safe.
+func sendProgress(progress ProgressFunc, current, total float64, message string) {
+	if progress != nil {
+		progress(current, total, message)
+	}
 }
 
 func buildRouteSummary(result *models.RouteSearchResult) string {

@@ -90,7 +90,7 @@ func nearbyPlacesOutputSchema() interface{} {
 	}
 }
 
-func handleNearbyPlaces(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleNearbyPlaces(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	lat := argFloat(args, "lat", 0)
 	lon := argFloat(args, "lon", 0)
 	if lat == 0 && lon == 0 {
@@ -184,7 +184,7 @@ func travelGuideOutputSchema() interface{} {
 	}
 }
 
-func handleTravelGuide(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleTravelGuide(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	location := argString(args, "location")
 	if location == "" {
 		return nil, nil, fmt.Errorf("location is required")
@@ -282,7 +282,7 @@ func localEventsOutputSchema() interface{} {
 	}
 }
 
-func handleLocalEvents(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleLocalEvents(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	location := argString(args, "location")
 	startDate := argString(args, "start_date")
 	endDate := argString(args, "end_date")

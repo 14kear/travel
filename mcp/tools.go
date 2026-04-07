@@ -34,6 +34,12 @@ func registerTools(s *Server) {
 		getPreferencesTool(),
 		detectTravelHacksTool(),
 		detectAccommodationHacksTool(),
+		searchNaturalTool(),
+		listTripsTool(),
+		getTripTool(),
+		createTripTool(),
+		addTripLegTool(),
+		markTripBookedTool(),
 	}
 	s.handlers["search_flights"] = s.wrapHandler(handleSearchFlights)
 	s.handlers["search_dates"] = s.wrapHandler(handleSearchDates)
@@ -58,14 +64,20 @@ func registerTools(s *Server) {
 	s.handlers["get_preferences"] = s.wrapHandler(handleGetPreferences)
 	s.handlers["detect_travel_hacks"] = s.wrapHandler(handleDetectTravelHacks)
 	s.handlers["detect_accommodation_hacks"] = s.wrapHandler(handleDetectAccommodationHacks)
+	s.handlers["search_natural"] = s.wrapHandler(handleSearchNatural)
+	s.handlers["list_trips"] = s.wrapHandler(handleListTrips)
+	s.handlers["get_trip"] = s.wrapHandler(handleGetTrip)
+	s.handlers["create_trip"] = s.wrapHandler(handleCreateTrip)
+	s.handlers["add_trip_leg"] = s.wrapHandler(handleAddTripLeg)
+	s.handlers["mark_trip_booked"] = s.wrapHandler(handleMarkTripBooked)
 }
 
 // wrapHandler returns a ToolHandler that delegates to the inner handler and
 // then post-processes the result to add resource_link blocks and record the
 // search in trip state.
 func (s *Server) wrapHandler(inner ToolHandler) ToolHandler {
-	return func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
-		content, structured, err := inner(args, elicit, sampling)
+	return func(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
+		content, structured, err := inner(args, elicit, sampling, progress)
 		if err != nil {
 			return content, structured, err
 		}
@@ -74,8 +86,29 @@ func (s *Server) wrapHandler(inner ToolHandler) ToolHandler {
 		content = s.addResourceLinks(content, args)
 		s.recordSearchFromArgs(args, structured)
 
+		// Notify subscribers when trip-mutating tools complete.
+		s.notifyTripUpdate(args)
+
 		return content, structured, nil
 	}
+}
+
+// notifyTripUpdate fires resource-updated notifications for trip mutations.
+// Called for any tool that writes to the trip store; checks args for trip_id.
+func (s *Server) notifyTripUpdate(args map[string]any) {
+	tripID := argString(args, "trip_id")
+	if tripID == "" {
+		// create_trip returns the ID in the result, not args; check for "name"
+		// as a proxy (only create_trip has name but no trip_id).
+		// We still notify the list resource so clients re-fetch.
+		if argString(args, "name") != "" && argString(args, "check_in") == "" {
+			s.SendResourceUpdated("trvl://trips")
+		}
+		return
+	}
+	// Notify both the specific trip resource and the list.
+	s.SendResourceUpdated(fmt.Sprintf("trvl://trips/%s", tripID))
+	s.SendResourceUpdated("trvl://trips")
 }
 
 // --- Suggestion types ---

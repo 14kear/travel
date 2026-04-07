@@ -103,21 +103,21 @@ func TestArgStringSlice_EmptyString(t *testing.T) {
 // --- handleWeekendGetaway validation ---
 
 func TestHandleWeekendGetaway_MissingOrigin(t *testing.T) {
-	_, _, err := handleWeekendGetaway(map[string]any{"month": "july-2026"}, nil, nil)
+	_, _, err := handleWeekendGetaway(map[string]any{"month": "july-2026"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing origin")
 	}
 }
 
 func TestHandleWeekendGetaway_MissingMonth(t *testing.T) {
-	_, _, err := handleWeekendGetaway(map[string]any{"origin": "HEL"}, nil, nil)
+	_, _, err := handleWeekendGetaway(map[string]any{"origin": "HEL"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing month")
 	}
 }
 
 func TestHandleWeekendGetaway_InvalidIATA(t *testing.T) {
-	_, _, err := handleWeekendGetaway(map[string]any{"origin": "XX", "month": "july-2026"}, nil, nil)
+	_, _, err := handleWeekendGetaway(map[string]any{"origin": "XX", "month": "july-2026"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid IATA")
 	}
@@ -126,7 +126,7 @@ func TestHandleWeekendGetaway_InvalidIATA(t *testing.T) {
 // --- handleSuggestDates validation ---
 
 func TestHandleSuggestDates_MissingParams(t *testing.T) {
-	_, _, err := handleSuggestDates(map[string]any{}, nil, nil)
+	_, _, err := handleSuggestDates(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing params")
 	}
@@ -136,7 +136,7 @@ func TestHandleSuggestDates_MissingTargetDate(t *testing.T) {
 	_, _, err := handleSuggestDates(map[string]any{
 		"origin":      "HEL",
 		"destination": "BCN",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing target_date")
 	}
@@ -147,7 +147,7 @@ func TestHandleSuggestDates_InvalidOrigin(t *testing.T) {
 		"origin":      "XX",
 		"destination": "BCN",
 		"target_date": "2026-07-15",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid origin")
 	}
@@ -158,7 +158,7 @@ func TestHandleSuggestDates_InvalidDest(t *testing.T) {
 		"origin":      "HEL",
 		"destination": "12",
 		"target_date": "2026-07-15",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid destination")
 	}
@@ -170,7 +170,7 @@ func TestHandleOptimizeMultiCity_MissingHome(t *testing.T) {
 	_, _, err := handleOptimizeMultiCity(map[string]any{
 		"cities":      "BCN,ROM",
 		"depart_date": "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing home")
 	}
@@ -180,7 +180,7 @@ func TestHandleOptimizeMultiCity_MissingCities(t *testing.T) {
 	_, _, err := handleOptimizeMultiCity(map[string]any{
 		"home_airport": "HEL",
 		"depart_date":  "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing cities")
 	}
@@ -190,7 +190,7 @@ func TestHandleOptimizeMultiCity_MissingDate(t *testing.T) {
 	_, _, err := handleOptimizeMultiCity(map[string]any{
 		"home_airport": "HEL",
 		"cities":       "BCN,ROM",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing date")
 	}
@@ -201,7 +201,7 @@ func TestHandleOptimizeMultiCity_InvalidHome(t *testing.T) {
 		"home_airport": "XX",
 		"cities":       "BCN,ROM",
 		"depart_date":  "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid home IATA")
 	}
@@ -251,6 +251,12 @@ func TestToolRegistration_AllTools(t *testing.T) {
 		"get_preferences",
 		"detect_travel_hacks",
 		"detect_accommodation_hacks",
+		"search_natural",
+		"list_trips",
+		"get_trip",
+		"create_trip",
+		"add_trip_leg",
+		"mark_trip_booked",
 	}
 
 	if len(s.tools) != len(expectedTools) {
@@ -357,7 +363,7 @@ func TestHandleSearchHotels_FilterArgsDefaults(t *testing.T) {
 		"location":  "Helsinki",
 		"check_in":  "2026-06-15",
 		"check_out": "2026-06-18",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err != nil && strings.Contains(err.Error(), "min_price") {
 		t.Error("should not error on filter parsing with defaults")
 	}
@@ -372,7 +378,7 @@ func TestHandleSearchHotels_FilterArgsFloat(t *testing.T) {
 		"max_price":    float64(300),
 		"min_rating":   float64(4.0),
 		"max_distance": float64(5.0),
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err != nil && (strings.Contains(err.Error(), "min_price") ||
 		strings.Contains(err.Error(), "max_price") ||
 		strings.Contains(err.Error(), "min_rating") ||

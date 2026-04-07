@@ -56,7 +56,7 @@ func getPreferencesTool() ToolDef {
 }
 
 // handleGetPreferences returns the user's preferences as structured data.
-func handleGetPreferences(args map[string]any, _ ElicitFunc, _ SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleGetPreferences(args map[string]any, _ ElicitFunc, _ SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	p, err := preferences.Load()
 	if err != nil {
 		return nil, nil, fmt.Errorf("load preferences: %w", err)

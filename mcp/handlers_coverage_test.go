@@ -14,7 +14,7 @@ import (
 // ============================================================
 
 func TestHandleSearchGround_MissingAll(t *testing.T) {
-	_, _, err := handleSearchGround(map[string]any{}, nil, nil)
+	_, _, err := handleSearchGround(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing from/to/date")
 	}
@@ -24,7 +24,7 @@ func TestHandleSearchGround_MissingFrom(t *testing.T) {
 	_, _, err := handleSearchGround(map[string]any{
 		"to":   "Vienna",
 		"date": "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing from")
 	}
@@ -34,7 +34,7 @@ func TestHandleSearchGround_MissingTo(t *testing.T) {
 	_, _, err := handleSearchGround(map[string]any{
 		"from": "Prague",
 		"date": "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing to")
 	}
@@ -44,21 +44,21 @@ func TestHandleSearchGround_MissingDate(t *testing.T) {
 	_, _, err := handleSearchGround(map[string]any{
 		"from": "Prague",
 		"to":   "Vienna",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing date")
 	}
 }
 
 func TestHandleSearchGround_NilArgs(t *testing.T) {
-	_, _, err := handleSearchGround(nil, nil, nil)
+	_, _, err := handleSearchGround(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
 }
 
 func TestHandleSearchAirportTransfers_MissingAll(t *testing.T) {
-	_, _, err := handleSearchAirportTransfers(map[string]any{}, nil, nil)
+	_, _, err := handleSearchAirportTransfers(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing airport_code/destination/date")
 	}
@@ -69,7 +69,7 @@ func TestHandleSearchAirportTransfers_InvalidAirportCode(t *testing.T) {
 		"airport_code": "XX",
 		"destination":  "Hotel Lutetia Paris",
 		"date":         "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid airport code")
 	}
@@ -81,7 +81,7 @@ func TestHandleSearchAirportTransfers_InvalidArrivalTime(t *testing.T) {
 		"destination":  "Hotel Lutetia Paris",
 		"date":         "2026-07-01",
 		"arrival_time": "bad",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid arrival time")
 	}
@@ -95,7 +95,7 @@ func TestHandleTripCost_MissingOriginDest(t *testing.T) {
 	_, _, err := handleTripCost(map[string]any{
 		"depart_date": "2026-07-01",
 		"return_date": "2026-07-08",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing origin and destination")
 	}
@@ -105,7 +105,7 @@ func TestHandleTripCost_MissingDates(t *testing.T) {
 	_, _, err := handleTripCost(map[string]any{
 		"origin":      "HEL",
 		"destination": "BCN",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing dates")
 	}
@@ -116,7 +116,7 @@ func TestHandleTripCost_MissingReturnDate(t *testing.T) {
 		"origin":      "HEL",
 		"destination": "BCN",
 		"depart_date": "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing return_date")
 	}
@@ -128,7 +128,7 @@ func TestHandleTripCost_InvalidOriginIATA(t *testing.T) {
 		"destination": "BCN",
 		"depart_date": "2026-07-01",
 		"return_date": "2026-07-08",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid origin IATA")
 	}
@@ -140,14 +140,14 @@ func TestHandleTripCost_InvalidDestIATA(t *testing.T) {
 		"destination": "12",
 		"depart_date": "2026-07-01",
 		"return_date": "2026-07-08",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid destination IATA")
 	}
 }
 
 func TestHandleTripCost_NilArgs(t *testing.T) {
-	_, _, err := handleTripCost(nil, nil, nil)
+	_, _, err := handleTripCost(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
@@ -158,14 +158,14 @@ func TestHandleTripCost_NilArgs(t *testing.T) {
 // ============================================================
 
 func TestHandleNearbyPlaces_MissingCoords(t *testing.T) {
-	_, _, err := handleNearbyPlaces(map[string]any{}, nil, nil)
+	_, _, err := handleNearbyPlaces(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing lat/lon")
 	}
 }
 
 func TestHandleNearbyPlaces_NilArgs(t *testing.T) {
-	_, _, err := handleNearbyPlaces(nil, nil, nil)
+	_, _, err := handleNearbyPlaces(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
@@ -175,7 +175,7 @@ func TestHandleNearbyPlaces_ZeroCoords(t *testing.T) {
 	_, _, err := handleNearbyPlaces(map[string]any{
 		"lat": float64(0),
 		"lon": float64(0),
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for zero lat/lon")
 	}
@@ -186,21 +186,21 @@ func TestHandleNearbyPlaces_ZeroCoords(t *testing.T) {
 // ============================================================
 
 func TestHandleTravelGuide_MissingLocation(t *testing.T) {
-	_, _, err := handleTravelGuide(map[string]any{}, nil, nil)
+	_, _, err := handleTravelGuide(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing location")
 	}
 }
 
 func TestHandleTravelGuide_NilArgs(t *testing.T) {
-	_, _, err := handleTravelGuide(nil, nil, nil)
+	_, _, err := handleTravelGuide(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
 }
 
 func TestHandleTravelGuide_EmptyLocation(t *testing.T) {
-	_, _, err := handleTravelGuide(map[string]any{"location": ""}, nil, nil)
+	_, _, err := handleTravelGuide(map[string]any{"location": ""}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for empty location")
 	}
@@ -211,7 +211,7 @@ func TestHandleTravelGuide_EmptyLocation(t *testing.T) {
 // ============================================================
 
 func TestHandleLocalEvents_MissingAll(t *testing.T) {
-	_, _, err := handleLocalEvents(map[string]any{}, nil, nil)
+	_, _, err := handleLocalEvents(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing location")
 	}
@@ -220,7 +220,7 @@ func TestHandleLocalEvents_MissingAll(t *testing.T) {
 func TestHandleLocalEvents_MissingDates(t *testing.T) {
 	_, _, err := handleLocalEvents(map[string]any{
 		"location": "Barcelona",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing dates")
 	}
@@ -230,14 +230,14 @@ func TestHandleLocalEvents_MissingEndDate(t *testing.T) {
 	_, _, err := handleLocalEvents(map[string]any{
 		"location":   "Barcelona",
 		"start_date": "2026-07-01",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing end_date")
 	}
 }
 
 func TestHandleLocalEvents_NilArgs(t *testing.T) {
-	_, _, err := handleLocalEvents(nil, nil, nil)
+	_, _, err := handleLocalEvents(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
@@ -250,7 +250,7 @@ func TestHandleLocalEvents_NoAPIKey(t *testing.T) {
 		"location":   "Barcelona",
 		"start_date": "2026-07-01",
 		"end_date":   "2026-07-05",
-	}, nil, nil)
+	}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,21 +270,21 @@ func TestHandleLocalEvents_NoAPIKey(t *testing.T) {
 // ============================================================
 
 func TestHandleSearchRestaurants_MissingLocation(t *testing.T) {
-	_, _, err := handleSearchRestaurants(map[string]any{}, nil, nil)
+	_, _, err := handleSearchRestaurants(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing location")
 	}
 }
 
 func TestHandleSearchRestaurants_NilArgs(t *testing.T) {
-	_, _, err := handleSearchRestaurants(nil, nil, nil)
+	_, _, err := handleSearchRestaurants(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
 }
 
 func TestHandleSearchRestaurants_EmptyLocation(t *testing.T) {
-	_, _, err := handleSearchRestaurants(map[string]any{"location": ""}, nil, nil)
+	_, _, err := handleSearchRestaurants(map[string]any{"location": ""}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for empty location")
 	}
@@ -437,7 +437,7 @@ func TestMultiCitySummary_Failure(t *testing.T) {
 func TestHandleHotelReviews_NilArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["hotel_reviews"]
-	_, _, err := handler(nil, nil, nil)
+	_, _, err := handler(nil, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for nil args")
 	}
@@ -446,7 +446,7 @@ func TestHandleHotelReviews_NilArgs(t *testing.T) {
 func TestHandleHotelReviews_MissingHotelID(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["hotel_reviews"]
-	_, _, err := handler(map[string]any{}, nil, nil)
+	_, _, err := handler(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing hotel_id")
 	}
@@ -459,7 +459,7 @@ func TestHandleHotelReviews_MissingHotelID(t *testing.T) {
 func TestHandleToolsCall_SearchGround_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["search_ground"]
-	_, _, err := handler(map[string]any{"from": "Prague"}, nil, nil)
+	_, _, err := handler(map[string]any{"from": "Prague"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for partial args")
 	}
@@ -468,7 +468,7 @@ func TestHandleToolsCall_SearchGround_MissingArgs(t *testing.T) {
 func TestHandleToolsCall_TripCost_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["calculate_trip_cost"]
-	_, _, err := handler(map[string]any{"origin": "HEL"}, nil, nil)
+	_, _, err := handler(map[string]any{"origin": "HEL"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for partial args")
 	}
@@ -477,7 +477,7 @@ func TestHandleToolsCall_TripCost_MissingArgs(t *testing.T) {
 func TestHandleToolsCall_NearbyPlaces_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["nearby_places"]
-	_, _, err := handler(map[string]any{}, nil, nil)
+	_, _, err := handler(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing lat/lon")
 	}
@@ -486,7 +486,7 @@ func TestHandleToolsCall_NearbyPlaces_MissingArgs(t *testing.T) {
 func TestHandleToolsCall_TravelGuide_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["travel_guide"]
-	_, _, err := handler(map[string]any{}, nil, nil)
+	_, _, err := handler(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing location")
 	}
@@ -495,7 +495,7 @@ func TestHandleToolsCall_TravelGuide_MissingArgs(t *testing.T) {
 func TestHandleToolsCall_LocalEvents_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["local_events"]
-	_, _, err := handler(map[string]any{"location": "Prague"}, nil, nil)
+	_, _, err := handler(map[string]any{"location": "Prague"}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing dates")
 	}
@@ -504,7 +504,7 @@ func TestHandleToolsCall_LocalEvents_MissingArgs(t *testing.T) {
 func TestHandleToolsCall_Restaurants_MissingArgs(t *testing.T) {
 	s := NewServer()
 	handler := s.handlers["search_restaurants"]
-	_, _, err := handler(map[string]any{}, nil, nil)
+	_, _, err := handler(map[string]any{}, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for missing location")
 	}

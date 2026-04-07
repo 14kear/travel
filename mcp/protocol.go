@@ -184,6 +184,13 @@ type ElicitFunc func(message string, schema map[string]interface{}) (map[string]
 // Nil when the client does not declare the sampling capability.
 type SamplingFunc func(messages []SamplingMessage, maxTokens int) (string, error)
 
+// ProgressFunc sends a progress notification for a long-running tool call.
+// progress and total follow the MCP notifications/progress spec.
+// message is a human-readable status update shown in the client UI.
+// Calls are fire-and-forget — errors are silently discarded.
+// May be nil if the server has no notification writer (e.g. HTTP transport).
+type ProgressFunc func(progress, total float64, message string)
+
 // SamplingMessage is a single message in a sampling/createMessage request.
 type SamplingMessage struct {
 	Role    string          `json:"role"`

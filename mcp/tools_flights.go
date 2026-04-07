@@ -208,7 +208,7 @@ func flightElicitationSchema(origin, dest string) map[string]interface{} {
 
 // --- Tool handlers ---
 
-func handleSearchFlights(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchFlights(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	dest := strings.ToUpper(argString(args, "destination"))
 	date := argString(args, "departure_date")
@@ -321,7 +321,7 @@ func handleSearchFlights(args map[string]any, elicit ElicitFunc, sampling Sampli
 	return content, resp, nil
 }
 
-func handleSearchDates(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSearchDates(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	dest := strings.ToUpper(argString(args, "destination"))
 	startDate := argString(args, "start_date")
@@ -569,7 +569,7 @@ func suggestDatesTool() ToolDef {
 	}
 }
 
-func handleSuggestDates(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleSuggestDates(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	origin := strings.ToUpper(argString(args, "origin"))
 	dest := strings.ToUpper(argString(args, "destination"))
 	targetDate := argString(args, "target_date")
@@ -693,7 +693,7 @@ func optimizeMultiCityTool() ToolDef {
 	}
 }
 
-func handleOptimizeMultiCity(args map[string]any, elicit ElicitFunc, sampling SamplingFunc) ([]ContentBlock, interface{}, error) {
+func handleOptimizeMultiCity(args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
 	home := strings.ToUpper(argString(args, "home_airport"))
 	citiesStr := argString(args, "cities")
 	departDate := argString(args, "depart_date")

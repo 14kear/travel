@@ -124,34 +124,40 @@ func TestToolsList(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	if len(result.Tools) != 23 {
-		t.Fatalf("expected 23 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 29 {
+		t.Fatalf("expected 29 tools, got %d", len(result.Tools))
 	}
 
 	expected := map[string]bool{
-		"search_flights":           false,
-		"search_dates":             false,
-		"search_hotels":            false,
-		"hotel_prices":             false,
-		"hotel_reviews":            false,
-		"destination_info":         false,
-		"calculate_trip_cost":      false,
-		"weekend_getaway":          false,
-		"suggest_dates":            false,
-		"optimize_multi_city":      false,
-		"nearby_places":            false,
-		"travel_guide":             false,
-		"local_events":             false,
-		"search_ground":            false,
-		"search_airport_transfers": false,
-		"search_restaurants":       false,
-		"search_deals":             false,
-		"plan_trip":                false,
-		"search_route":             false,
-		"hotel_rooms":              false,
-		"get_preferences":          false,
-		"detect_travel_hacks":          false,
-		"detect_accommodation_hacks":   false,
+		"search_flights":             false,
+		"search_dates":               false,
+		"search_hotels":              false,
+		"hotel_prices":               false,
+		"hotel_reviews":              false,
+		"destination_info":           false,
+		"calculate_trip_cost":        false,
+		"weekend_getaway":            false,
+		"suggest_dates":              false,
+		"optimize_multi_city":        false,
+		"nearby_places":              false,
+		"travel_guide":               false,
+		"local_events":               false,
+		"search_ground":              false,
+		"search_airport_transfers":   false,
+		"search_restaurants":         false,
+		"search_deals":               false,
+		"plan_trip":                  false,
+		"search_route":               false,
+		"hotel_rooms":                false,
+		"get_preferences":            false,
+		"detect_travel_hacks":        false,
+		"detect_accommodation_hacks": false,
+		"search_natural":             false,
+		"list_trips":                 false,
+		"get_trip":                   false,
+		"create_trip":                false,
+		"add_trip_leg":               false,
+		"mark_trip_booked":           false,
 	}
 	for _, tool := range result.Tools {
 		if _, ok := expected[tool.Name]; !ok {

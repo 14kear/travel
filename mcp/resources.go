@@ -2,11 +2,13 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/flights"
+	"github.com/MikkoParkkola/trvl/internal/trips"
 )
 
 // registerResources adds all static resource definitions to the server.
@@ -41,6 +43,24 @@ func registerResources(s *Server) {
 			Name:        "Price Watches",
 			Description: "List all active price watches with current prices",
 			MimeType:    "text/plain",
+		},
+		{
+			URI:         "trvl://trips",
+			Name:        "Trips",
+			Description: "All active planned and booked trips",
+			MimeType:    "application/json",
+		},
+		{
+			URI:         "trvl://trips/upcoming",
+			Name:        "Upcoming Trips",
+			Description: "Next trip with countdown to departure",
+			MimeType:    "text/plain",
+		},
+		{
+			URI:         "trvl://trips/alerts",
+			Name:        "Trip Alerts",
+			Description: "Current trip monitoring alerts and reminders",
+			MimeType:    "application/json",
 		},
 	}
 }
@@ -85,6 +105,23 @@ func (s *Server) listResources() []ResourceDef {
 				Name:        fmt.Sprintf("Watch: %s %s%s", w.Type, route, priceInfo),
 				Description: fmt.Sprintf("Price watch for %s on %s", route, w.DepartDate),
 				MimeType:    "text/plain",
+			})
+		}
+	}
+
+	// Add dynamic trip resources from the trip store (best-effort; errors are ignored).
+	if tripStore, err := defaultTripStore(); err == nil {
+		for _, t := range tripStore.Active() {
+			desc := fmt.Sprintf("%s (%d legs)", t.Status, len(t.Legs))
+			first := trips.FirstLegStart(t)
+			if !first.IsZero() {
+				desc += fmt.Sprintf(", departs %s", first.Format("2006-01-02"))
+			}
+			resources = append(resources, ResourceDef{
+				URI:         fmt.Sprintf("trvl://trips/%s", t.ID),
+				Name:        fmt.Sprintf("Trip: %s", t.Name),
+				Description: desc,
+				MimeType:    "application/json",
 			})
 		}
 	}
@@ -146,6 +183,14 @@ func (s *Server) readResource(uri string) (*ResourcesReadResult, error) {
 		return s.readWatchesList()
 	case strings.HasPrefix(uri, "trvl://watch/"):
 		return s.readWatchResource(uri)
+	case uri == "trvl://trips":
+		return s.readTripsList()
+	case strings.HasPrefix(uri, "trvl://trips/") && uri != "trvl://trips/upcoming" && uri != "trvl://trips/alerts":
+		return s.readTripByURI(uri)
+	case uri == "trvl://trips/upcoming":
+		return s.readTripsUpcoming()
+	case uri == "trvl://trips/alerts":
+		return s.readTripsAlerts()
 	default:
 		return nil, fmt.Errorf("resource not found: %s", uri)
 	}
@@ -427,6 +472,124 @@ func (s *Server) readWatchResource(uri string) (*ResourcesReadResult, error) {
 			URI:      uri,
 			MimeType: "text/plain",
 			Text:     text,
+		}},
+	}, nil
+}
+
+// readTripsList returns all active trips as JSON.
+func (s *Server) readTripsList() (*ResourcesReadResult, error) {
+	store, err := defaultTripStore()
+	if err != nil {
+		return nil, err
+	}
+	active := store.Active()
+	b, err := json.MarshalIndent(active, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      "trvl://trips",
+			MimeType: "application/json",
+			Text:     string(b),
+		}},
+	}, nil
+}
+
+// readTripByURI returns a specific trip by its URI (trvl://trips/{id}).
+func (s *Server) readTripByURI(uri string) (*ResourcesReadResult, error) {
+	id := strings.TrimPrefix(uri, "trvl://trips/")
+	store, err := defaultTripStore()
+	if err != nil {
+		return nil, err
+	}
+	tripObj, err := store.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.MarshalIndent(tripObj, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      uri,
+			MimeType: "application/json",
+			Text:     string(b),
+		}},
+	}, nil
+}
+
+// readTripsUpcoming returns the next upcoming trip as plain text.
+func (s *Server) readTripsUpcoming() (*ResourcesReadResult, error) {
+	store, err := defaultTripStore()
+	if err != nil {
+		return nil, err
+	}
+	upcoming := store.Upcoming(30 * 24 * time.Hour)
+
+	var text string
+	if len(upcoming) == 0 {
+		text = "No upcoming trips in the next 30 days."
+	} else {
+		t := upcoming[0]
+		now := time.Now()
+		first := trips.FirstLegStart(t)
+		if first.IsZero() {
+			text = fmt.Sprintf("Next: %s (%s)", t.Name, t.Status)
+		} else {
+			d := first.Sub(now)
+			days := int(d.Hours()) / 24
+			text = fmt.Sprintf("Next: %s — departs in %d days (%s)", t.Name, days, first.Format("Mon Jan 02 15:04"))
+		}
+		for _, leg := range t.Legs {
+			conf := "planned"
+			if leg.Confirmed {
+				conf = "confirmed"
+			}
+			line := fmt.Sprintf("  %s %s->%s", leg.Type, leg.From, leg.To)
+			if leg.Provider != "" {
+				line += " " + leg.Provider
+			}
+			if leg.StartTime != "" {
+				line += " " + leg.StartTime
+			}
+			if leg.Price > 0 {
+				line += fmt.Sprintf(" %.0f %s", leg.Price, leg.Currency)
+			}
+			line += " (" + conf + ")"
+			if leg.Reference != "" {
+				line += " ref:" + leg.Reference
+			}
+			text += "\n" + line
+		}
+	}
+
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      "trvl://trips/upcoming",
+			MimeType: "text/plain",
+			Text:     text,
+		}},
+	}, nil
+}
+
+// readTripsAlerts returns current trip alerts as JSON.
+func (s *Server) readTripsAlerts() (*ResourcesReadResult, error) {
+	store, err := defaultTripStore()
+	if err != nil {
+		return nil, err
+	}
+	alerts := store.Alerts(false)
+	b, err := json.MarshalIndent(alerts, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return &ResourcesReadResult{
+		Contents: []ResourceContent{{
+			URI:      "trvl://trips/alerts",
+			MimeType: "application/json",
+			Text:     string(b),
 		}},
 	}, nil
 }
