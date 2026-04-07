@@ -199,16 +199,16 @@ Four tools exposed:
 
 | Criterion | Go | Python | Rust |
 |-----------|-----|--------|------|
-| TLS impersonation | `utls` — the original, battle-tested against Google | `curl_cffi` — good | `rquest` — newer, less proven |
+| TLS impersonation | `utls` — established Chrome-style TLS impersonation library | `curl_cffi` — good | `rquest` — newer, less proven |
 | Binary distribution | Single static binary | Needs Python runtime | Single binary |
 | Startup time | ~5ms | ~200ms | ~5ms |
-| HTTP client stdlib | Excellent | Needs deps | reqwest (good) |
-| JSON handling | encoding/json (good enough) | Excellent | serde (excellent) |
+| HTTP client stdlib | Strong stdlib coverage | Needs deps | reqwest (good) |
+| JSON handling | encoding/json (good enough) | Strong ecosystem support | serde (strong) |
 | MCP ecosystem | go-mcp exists | FastMCP (mature) | rmcp (newer) |
 | Build time | ~5s | N/A | ~60s+ |
 | Cross-compile | `GOOS=linux GOARCH=amd64` | N/A | Cross-compile possible |
 
-**Decision**: Go. The `utls` library is purpose-built for impersonating Chrome against Google services. Battle-tested in censorship circumvention tools (Tor, V2Ray). Single binary, fast builds, excellent HTTP stdlib.
+**Decision**: Go. The `utls` library supports Chrome-style TLS impersonation for Google-facing traffic. It is used in censorship circumvention tools such as Tor and V2Ray. Single binary, fast builds, and a strong HTTP standard library make the implementation surface smaller.
 
 ### 5.2 CLI Framework: Cobra
 
