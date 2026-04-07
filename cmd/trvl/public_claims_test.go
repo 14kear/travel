@@ -23,6 +23,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				"31 travel tools available",
 				"Full v2025-11-25 — 31 tools",
 				"31 commands (+ 6 watch subcommands)",
+				"Full JSON Schema validation for all 31 tool responses",
 			},
 			forbidden: []string{
 				"29 travel tools for your AI assistant",
@@ -30,6 +31,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				"29 travel tools available",
 				"Full v2025-11-25 — 29 tools",
 				"29 commands (+ 6 watch subcommands)",
+				"Full JSON Schema validation for all 29 tool responses",
 			},
 		},
 		{
