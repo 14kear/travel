@@ -15,7 +15,18 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
-var airportTransferCityProviders = []string{"flixbus", "regiojet", "eurostar", "db", "sncf", "trainline"}
+const airportTransferTaxiProvider = "taxi"
+
+var (
+	airportTransferCityProviders  = []string{"flixbus", "regiojet", "eurostar", "db", "sncf", "trainline"}
+	airportTransferExtraProviders = []string{airportTransferTaxiProvider}
+)
+
+// MarketedAdditionalProviderNames returns transport providers marketed outside
+// the ground-provider catalog, currently the airport-transfer taxi estimate.
+func MarketedAdditionalProviderNames() []string {
+	return append([]string(nil), airportTransferExtraProviders...)
+}
 
 // AirportTransferInput configures an airport-to-destination ground search.
 type AirportTransferInput struct {
@@ -302,7 +313,7 @@ func splitAirportTransferProviders(providers []string) (bool, bool, []string) {
 			transitousEnabled = true
 			continue
 		}
-		if provider == "taxi" {
+		if provider == airportTransferTaxiProvider {
 			taxiEnabled = true
 			continue
 		}

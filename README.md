@@ -207,7 +207,7 @@ That's it. Your AI assistant now has 32 travel tools available. Just ask natural
 
 ## Ground Transport Providers
 
-trvl searches 16 ground transport providers in parallel, covering most of Europe:
+trvl searches 16 ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes 17 transport providers overall:
 
 | Provider | Protocol | Coverage | Starting price | Auth |
 |----------|----------|----------|----------------|------|

@@ -1,0 +1,18 @@
+package ground
+
+import "testing"
+
+func TestMarketedProviderNamesRemainUnique(t *testing.T) {
+	names := MarketedProviderNames()
+	if len(names) != 16 {
+		t.Fatalf("marketed provider count = %d, want 16", len(names))
+	}
+
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if _, ok := seen[name]; ok {
+			t.Fatalf("duplicate marketed provider %q", name)
+		}
+		seen[name] = struct{}{}
+	}
+}

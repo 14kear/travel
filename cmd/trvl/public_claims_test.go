@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MikkoParkkola/trvl/internal/ground"
+	"github.com/MikkoParkkola/trvl/internal/trip"
 	trvlmcp "github.com/MikkoParkkola/trvl/mcp"
 )
 
@@ -63,6 +65,21 @@ func bundledSkillMarkdownCount(t *testing.T) int {
 	return count
 }
 
+func marketedGroundProviderCount() int {
+	return ground.MarketedProviderCount()
+}
+
+func marketedTransportProviderCount() int {
+	seen := make(map[string]struct{})
+	for _, provider := range ground.MarketedProviderNames() {
+		seen[provider] = struct{}{}
+	}
+	for _, provider := range trip.MarketedAdditionalProviderNames() {
+		seen[provider] = struct{}{}
+	}
+	return len(seen)
+}
+
 func registeredMCPToolCount(t *testing.T) int {
 	t.Helper()
 
@@ -86,6 +103,8 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 	cliCommandCount := len(rootCmd.Commands())
 	watchSubcommandCount := len(watchCmd().Commands())
 	skillCount := bundledSkillMarkdownCount(t)
+	groundProviderCount := marketedGroundProviderCount()
+	totalProviderCount := marketedTransportProviderCount()
 
 	checks := []struct {
 		path      string
@@ -95,6 +114,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", "README.md"),
 			required: []string{
+				fmt.Sprintf("https://img.shields.io/badge/providers-%d-brightgreen", totalProviderCount),
 				fmt.Sprintf("%d travel tools for your AI assistant", toolCount),
 				fmt.Sprintf("standalone CLI with %d commands", cliCommandCount),
 				fmt.Sprintf("%d travel tools available", toolCount),
@@ -102,8 +122,11 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 				fmt.Sprintf("%d commands (+ %d watch subcommands)", cliCommandCount, watchSubcommandCount),
 				fmt.Sprintf("Full JSON Schema validation for all %d tool responses", toolCount),
 				fmt.Sprintf("The repo includes %d Claude Code skill file", skillCount),
+				fmt.Sprintf("trvl searches %d ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes %d transport providers overall:", groundProviderCount, totalProviderCount),
+				fmt.Sprintf("Searches %d providers in parallel:", groundProviderCount),
 			},
 			forbidden: []string{
+				"https://img.shields.io/badge/providers-16-brightgreen",
 				"31 travel tools for your AI assistant",
 				"standalone CLI with 31 commands",
 				"31 travel tools available",
@@ -136,7 +159,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", "demo.tape"),
 			required: []string{
-				fmt.Sprintf("# %d MCP tools · %d CLI commands · 17 providers · No API keys", toolCount, cliCommandCount),
+				fmt.Sprintf("# %d MCP tools · %d CLI commands · %d providers · No API keys", toolCount, cliCommandCount, totalProviderCount),
 			},
 			forbidden: []string{
 				"# 31 MCP tools · 31 CLI commands · 17 providers · No API keys",
@@ -157,7 +180,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 			path: filepath.Join("..", "..", ".claude", "skills", "trvl.md"),
 			required: []string{
 				fmt.Sprintf("## CORE TOOLS (selected high-signal tools; trvl exposes %d MCP tools overall via gateway_invoke server=\"trvl\")", toolCount),
-				"Bus/train/ferry (16 providers)",
+				fmt.Sprintf("Bus/train/ferry (%d providers)", groundProviderCount),
 				"`search_airport_transfers`",
 				"`plan_trip`",
 				"`search_route`",
