@@ -415,6 +415,9 @@ func tripCostSummary(result *trip.TripCostResult, origin, dest string, guests in
 
 	parts = append(parts, fmt.Sprintf("Total: %s %.0f (%.0f/person, %.0f/day)",
 		result.Currency, result.Total, result.PerPerson, result.PerDay))
+	if result.Error != "" {
+		parts = append(parts, "Warning: "+result.Error)
+	}
 
 	return strings.Join(parts, ". ") + "."
 }

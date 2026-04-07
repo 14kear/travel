@@ -319,6 +319,29 @@ func TestAssembleTripCost_FlightsOnlyNoHotel(t *testing.T) {
 	if result.Total != 220 {
 		t.Errorf("total = %v, want 220", result.Total)
 	}
+	if result.Error != "partial failure: hotels: hotel error" {
+		t.Errorf("error = %q, want partial hotel failure", result.Error)
+	}
+}
+
+func TestAssembleTripCost_SuccessKeepsMultiplePartialFailures(t *testing.T) {
+	result := &TripCostResult{Currency: "EUR", Nights: 1}
+	outResult := &models.FlightSearchResult{
+		Success: true,
+		Flights: []models.FlightResult{{Price: 100, Currency: "EUR"}},
+	}
+
+	assembleTripCost(result, outResult, nil, nil, fmt.Errorf("return fail"), nil, fmt.Errorf("hotel fail"), 1, 1)
+
+	if !result.Success {
+		t.Fatal("should succeed with outbound pricing available")
+	}
+	if result.Total != 100 {
+		t.Errorf("total = %v, want 100", result.Total)
+	}
+	if result.Error != "partial failure: return flights: return fail; hotels: hotel fail" {
+		t.Errorf("error = %q, want combined partial failures", result.Error)
+	}
 }
 
 func TestAssembleTripCost_AllErrors(t *testing.T) {
@@ -332,8 +355,8 @@ func TestAssembleTripCost_AllErrors(t *testing.T) {
 	if result.Success {
 		t.Error("expected failure when all searches fail")
 	}
-	if result.Error == "" {
-		t.Error("expected error message")
+	if result.Error != "outbound flights: outbound fail; return flights: return fail; hotels: hotel fail" {
+		t.Errorf("error = %q, want combined failures", result.Error)
 	}
 }
 

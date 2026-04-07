@@ -235,6 +235,24 @@ func TestTripCostSummary_Failed(t *testing.T) {
 	}
 }
 
+func TestTripCostSummary_PartialWarning(t *testing.T) {
+	result := &trip.TripCostResult{
+		Success:   true,
+		Flights:   trip.FlightCost{Outbound: 100, Return: 120, Currency: "EUR"},
+		Total:     220,
+		Currency:  "EUR",
+		PerPerson: 220,
+		PerDay:    110,
+		Nights:    2,
+		Error:     "partial failure: hotels: hotel error",
+	}
+
+	got := tripCostSummary(result, "HEL", "BCN", 1)
+	if !strings.Contains(got, "Warning: partial failure: hotels: hotel error") {
+		t.Errorf("got %q", got)
+	}
+}
+
 // --- nearbyPlacesSummary ---
 
 func TestNearbyPlacesSummary(t *testing.T) {

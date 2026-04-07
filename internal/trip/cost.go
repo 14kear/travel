@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/flights"
@@ -180,9 +181,20 @@ func assembleTripCost(result *TripCostResult, outResult *models.FlightSearchResu
 		}
 	}
 
-	if !result.Success && len(errors) > 0 {
-		result.Error = fmt.Sprintf("partial failure: %s", errors[0])
+	result.Error = formatTripCostError(errors, result.Success)
+}
+
+func formatTripCostError(errors []string, partial bool) string {
+	if len(errors) == 0 {
+		return ""
 	}
+
+	joined := strings.Join(errors, "; ")
+	if partial {
+		return "partial failure: " + joined
+	}
+
+	return joined
 }
 
 // cheapestFlight returns the flight with the lowest positive price.

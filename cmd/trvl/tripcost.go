@@ -82,6 +82,10 @@ func printTripCostTable(result *trip.TripCostResult, origin, dest string, guests
 		return nil
 	}
 
+	if result.Error != "" {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n\n", result.Error)
+	}
+
 	cur := result.Currency
 	fmt.Printf("Trip: %s -> %s (%d nights, %d guest(s))\n\n", origin, dest, result.Nights, guests)
 
