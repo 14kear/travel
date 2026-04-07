@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	trvlmcp "github.com/MikkoParkkola/trvl/mcp"
 )
 
 var readmeToolMarkers = []string{
@@ -60,9 +63,28 @@ func bundledSkillMarkdownCount(t *testing.T) int {
 	return count
 }
 
+func registeredMCPToolCount(t *testing.T) int {
+	t.Helper()
+
+	serverValue := reflect.ValueOf(trvlmcp.NewServer())
+	if serverValue.Kind() != reflect.Pointer || serverValue.IsNil() {
+		t.Fatal("mcp.NewServer should return a non-nil server pointer")
+	}
+
+	tools := serverValue.Elem().FieldByName("tools")
+	if !tools.IsValid() {
+		t.Fatal("mcp.Server should expose an internal tools field")
+	}
+
+	return tools.Len()
+}
+
 func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 	t.Parallel()
 
+	toolCount := registeredMCPToolCount(t)
+	cliCommandCount := len(rootCmd.Commands())
+	watchSubcommandCount := len(watchCmd().Commands())
 	skillCount := bundledSkillMarkdownCount(t)
 
 	checks := []struct {
@@ -73,12 +95,12 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", "README.md"),
 			required: []string{
-				"32 travel tools for your AI assistant",
-				"standalone CLI with 32 commands",
-				"32 travel tools available",
-				"Full v2025-11-25 — 32 tools",
-				"32 commands (+ 6 watch subcommands)",
-				"Full JSON Schema validation for all 32 tool responses",
+				fmt.Sprintf("%d travel tools for your AI assistant", toolCount),
+				fmt.Sprintf("standalone CLI with %d commands", cliCommandCount),
+				fmt.Sprintf("%d travel tools available", toolCount),
+				fmt.Sprintf("Full v2025-11-25 — %d tools", toolCount),
+				fmt.Sprintf("%d commands (+ %d watch subcommands)", cliCommandCount, watchSubcommandCount),
+				fmt.Sprintf("Full JSON Schema validation for all %d tool responses", toolCount),
 				fmt.Sprintf("The repo includes %d Claude Code skill file", skillCount),
 			},
 			forbidden: []string{
@@ -100,7 +122,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", "AGENTS.md"),
 			required: []string{
-				fmt.Sprintf("trvl is installed with 32 MCP tools and %d bundled Claude skill", skillCount),
+				fmt.Sprintf("trvl is installed with %d MCP tools and %d bundled Claude skill", toolCount, skillCount),
 			},
 			forbidden: []string{
 				"trvl is installed with 32 MCP tools and 5 skills",
@@ -114,7 +136,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", "demo.tape"),
 			required: []string{
-				"# 32 MCP tools · 32 CLI commands · 17 providers · No API keys",
+				fmt.Sprintf("# %d MCP tools · %d CLI commands · 17 providers · No API keys", toolCount, cliCommandCount),
 			},
 			forbidden: []string{
 				"# 31 MCP tools · 31 CLI commands · 17 providers · No API keys",
@@ -124,16 +146,17 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 		{
 			path: filepath.Join("..", "..", ".claude-plugin", "plugin.json"),
 			required: []string{
-				"31 MCP tools",
+				fmt.Sprintf("%d MCP tools", toolCount),
 			},
 			forbidden: []string{
 				"16 MCP tools",
+				"31 MCP tools",
 			},
 		},
 		{
 			path: filepath.Join("..", "..", ".claude", "skills", "trvl.md"),
 			required: []string{
-				"## CORE TOOLS (selected high-signal tools; trvl exposes 31 MCP tools overall via gateway_invoke server=\"trvl\")",
+				fmt.Sprintf("## CORE TOOLS (selected high-signal tools; trvl exposes %d MCP tools overall via gateway_invoke server=\"trvl\")", toolCount),
 				"Bus/train/ferry (16 providers)",
 				"`search_airport_transfers`",
 				"`plan_trip`",
@@ -143,6 +166,7 @@ func TestPublicDocsAdvertiseCurrentCounts(t *testing.T) {
 			},
 			forbidden: []string{
 				"## TOOLS (via gateway_invoke server=\"trvl\")",
+				"trvl exposes 31 MCP tools overall",
 				"Bus/train (6 providers)",
 			},
 		},
