@@ -40,9 +40,7 @@ func runEvents(cmd *cobra.Command, args []string) error {
 	format, _ := cmd.Flags().GetString("format")
 
 	if os.Getenv("TICKETMASTER_API_KEY") == "" {
-		fmt.Println("\n  Event search requires TICKETMASTER_API_KEY.")
-		fmt.Println("  Get a free key at https://developer.ticketmaster.com")
-		return nil
+		return fmt.Errorf("TICKETMASTER_API_KEY is required for event search (free at https://developer.ticketmaster.com)")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

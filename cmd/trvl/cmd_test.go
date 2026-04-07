@@ -955,6 +955,23 @@ func TestEventsCmd_RequiresFromTo(t *testing.T) {
 	}
 }
 
+func TestEventsCmd_MissingAPIKeyReturnsError(t *testing.T) {
+	t.Setenv("TICKETMASTER_API_KEY", "")
+
+	cmd := eventsCmd()
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"Barcelona", "--from", "2026-07-01", "--to", "2026-07-08"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing API key to return an error")
+	}
+	if !strings.Contains(err.Error(), "TICKETMASTER_API_KEY") {
+		t.Fatalf("expected missing API key error, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // restaurants command
 // ---------------------------------------------------------------------------
