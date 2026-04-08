@@ -2,6 +2,8 @@ module github.com/MikkoParkkola/trvl
 
 go 1.25.0
 
+toolchain go1.25.9
+
 require (
 	github.com/refraction-networking/utls v1.8.2
 	github.com/spf13/cobra v1.10.2

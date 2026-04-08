@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.25"]
+        go-version: ["1.25.9"]
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -83,7 +83,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.25.9"
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
