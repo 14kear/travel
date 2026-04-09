@@ -102,8 +102,8 @@ func printWeekendTable(ctx context.Context, targetCurrency string, result *trip.
 					targetCurrency,
 					0,
 					&d.FlightPrice,
-					&d.HotelEstimate,
-					&d.TotalEstimate,
+					&d.HotelPrice,
+					&d.Total,
 				)
 			}
 		}
@@ -111,16 +111,20 @@ func printWeekendTable(ctx context.Context, targetCurrency string, result *trip.
 
 	fmt.Printf("Weekend getaways from %s in %s (%d nights)\n\n", result.Origin, result.Month, result.Nights)
 
-	headers := []string{"Destination", "Airport", "Flight", "Hotel Est.", "Total", "Stops"}
+	headers := []string{"Destination", "Airport", "Flight", "Hotel", "Total", "Stops"}
 	var rows [][]string
 
 	for _, d := range result.Destinations {
+		hotelCol := fmt.Sprintf("%s %.0f", d.Currency, d.HotelPrice)
+		if d.HotelName != "" {
+			hotelCol += " (" + d.HotelName + ")"
+		}
 		rows = append(rows, []string{
 			d.Destination,
 			d.AirportCode,
 			fmt.Sprintf("%s %.0f", d.Currency, d.FlightPrice),
-			fmt.Sprintf("%s %.0f", d.Currency, d.HotelEstimate),
-			fmt.Sprintf("%s %.0f", d.Currency, d.TotalEstimate),
+			hotelCol,
+			fmt.Sprintf("%s %.0f", d.Currency, d.Total),
 			formatStops(d.Stops),
 		})
 	}

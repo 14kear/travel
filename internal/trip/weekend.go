@@ -4,30 +4,34 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/explore"
 	"github.com/MikkoParkkola/trvl/internal/flights"
+	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
 // WeekendOptions configures a weekend getaway search.
 type WeekendOptions struct {
 	Month     string  // Month to search in, e.g. "july-2026" or "2026-07"
-	MaxBudget float64 // Maximum total budget (flight + hotel estimate)
+	MaxBudget float64 // Maximum total budget (flight + hotel)
 	Nights    int     // Number of nights (default: 2)
 }
 
 // WeekendDestination is a single destination in the weekend getaway results.
 type WeekendDestination struct {
-	Destination   string  `json:"destination"`
-	AirportCode   string  `json:"airport_code"`
-	FlightPrice   float64 `json:"flight_price"`
-	HotelEstimate float64 `json:"hotel_estimate"`
-	TotalEstimate float64 `json:"total_estimate"`
-	Currency      string  `json:"currency"`
-	Stops         int     `json:"stops"`
-	AirlineName   string  `json:"airline_name,omitempty"`
+	Destination string  `json:"destination"`
+	AirportCode string  `json:"airport_code"`
+	FlightPrice float64 `json:"flight_price"`
+	HotelPrice  float64 `json:"hotel_price"`
+	HotelName   string  `json:"hotel_name,omitempty"`
+	Total       float64 `json:"total"`
+	Currency    string  `json:"currency"`
+	Stops       int     `json:"stops"`
+	AirlineName string  `json:"airline_name,omitempty"`
 }
 
 // WeekendResult is the top-level response for a weekend getaway search.
@@ -82,83 +86,11 @@ func parseMonth(month string) (departDate, returnDate string, displayMonth strin
 	return departDate, returnDate, displayMonth, nil
 }
 
-// estimateHotelFromPriceLevel estimates a per-night hotel cost based on
-// the flight price level. Destinations with cheap flights tend to have
-// cheaper hotels. This is a rough heuristic.
-func estimateHotelFromPriceLevel(flightPrice float64) float64 {
-	switch {
-	case flightPrice < 50:
-		return 40 // very cheap destination
-	case flightPrice < 100:
-		return 60
-	case flightPrice < 200:
-		return 80
-	case flightPrice < 400:
-		return 100
-	default:
-		return 130
-	}
-}
-
-// buildWeekendResult assembles a WeekendResult from explore destinations.
-// It sorts by price, estimates hotels, filters by budget, and returns the result.
-func buildWeekendResult(origin, displayMonth string, opts WeekendOptions, dests []models.ExploreDestination, apiCurrency string) *WeekendResult {
-	// Sort by price and take top 10.
-	sort.Slice(dests, func(i, j int) bool {
-		return dests[i].Price < dests[j].Price
-	})
-	if len(dests) > 10 {
-		dests = dests[:10]
-	}
-
-	// Build weekend destinations with hotel estimates.
-	var results []WeekendDestination
-	for _, d := range dests {
-		hotelPerNight := estimateHotelFromPriceLevel(d.Price)
-		hotelTotal := hotelPerNight * float64(opts.Nights)
-		total := d.Price + hotelTotal // flight price is round-trip from explore
-
-		if opts.MaxBudget > 0 && total > opts.MaxBudget {
-			continue
-		}
-
-		cityName := d.CityName
-		if cityName == "" {
-			cityName = models.LookupAirportName(d.AirportCode)
-		}
-
-		results = append(results, WeekendDestination{
-			Destination:   cityName,
-			AirportCode:   d.AirportCode,
-			FlightPrice:   d.Price,
-			HotelEstimate: hotelTotal,
-			TotalEstimate: total,
-			Currency:      apiCurrency,
-			Stops:         d.Stops,
-			AirlineName:   d.AirlineName,
-		})
-	}
-
-	// Sort by total estimate.
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].TotalEstimate < results[j].TotalEstimate
-	})
-
-	return &WeekendResult{
-		Success:      true,
-		Origin:       origin,
-		Month:        displayMonth,
-		Nights:       opts.Nights,
-		Count:        len(results),
-		Destinations: results,
-	}
-}
-
 // FindWeekendGetaways searches for cheap weekend getaway destinations from an origin.
 //
-// It uses the explore API to find the cheapest destinations, then estimates
-// hotel costs based on flight price levels. Results are ranked by total
-// estimated cost (flight round-trip + hotel).
+// It uses the explore API to find the cheapest destinations, then searches
+// real hotel prices for each with user preferences applied. Results are
+// ranked by total cost (flight round-trip + cheapest qualifying hotel).
 func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions) (*WeekendResult, error) {
 	opts.defaults()
 
@@ -171,9 +103,6 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 		return nil, err
 	}
 
-	// Reuse the shared flights client instead of creating a separate one.
-	// A dedicated client means a second cache instance holding explore
-	// responses alongside the flights cache -- unnecessary memory.
 	client := flights.DefaultClient()
 
 	exploreOpts := explore.ExploreOptions{
@@ -187,11 +116,138 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 		return nil, fmt.Errorf("explore destinations: %w", err)
 	}
 
-	// Detect the actual API currency (explore returns prices without labels).
+	// Detect the actual API currency.
 	apiCurrency := ""
 	if len(exploreResult.Destinations) > 0 {
 		apiCurrency = flights.DetectSourceCurrency(ctx, origin, exploreResult.Destinations[0].AirportCode)
 	}
 
-	return buildWeekendResult(origin, displayMonth, opts, exploreResult.Destinations, apiCurrency), nil
+	// Sort by flight price, take top 10 for hotel search.
+	dests := exploreResult.Destinations
+	sort.Slice(dests, func(i, j int) bool {
+		return dests[i].Price < dests[j].Price
+	})
+	if len(dests) > 10 {
+		dests = dests[:10]
+	}
+
+	// Load user preferences for hotel filtering.
+	prefs, _ := preferences.Load()
+
+	// Search real hotel prices with bounded concurrency.
+	type hotelResult struct {
+		perNight float64
+		total    float64
+		name     string
+	}
+	var mu sync.Mutex
+	hotelPrices := make(map[int]*hotelResult)
+
+	sem := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+
+	for i, d := range dests {
+		wg.Add(1)
+		go func(idx int, dest models.ExploreDestination) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			cityName := dest.CityName
+			if cityName == "" {
+				cityName = models.LookupAirportName(dest.AirportCode)
+			}
+
+			hotelOpts := hotels.HotelSearchOptions{
+				CheckIn:  departDate,
+				CheckOut: returnDate,
+				Guests:   1,
+				Sort:     "cheapest",
+			}
+			if prefs != nil {
+				if prefs.MinHotelStars > 0 {
+					hotelOpts.Stars = prefs.MinHotelStars
+				}
+				if prefs.MinHotelRating > 0 {
+					hotelOpts.MinRating = prefs.MinHotelRating
+				}
+			}
+
+			hr, searchErr := hotels.SearchHotels(ctx, cityName, hotelOpts)
+			if searchErr != nil || hr == nil || !hr.Success || len(hr.Hotels) == 0 {
+				return
+			}
+
+			filtered := hr.Hotels
+			if prefs != nil {
+				filtered = preferences.FilterHotels(filtered, cityName, prefs)
+			}
+			if len(filtered) == 0 {
+				return
+			}
+
+			cheapest := filtered[0]
+			for _, h := range filtered[1:] {
+				if h.Price > 0 && h.Price < cheapest.Price {
+					cheapest = h
+				}
+			}
+			if cheapest.Price <= 0 {
+				return
+			}
+
+			mu.Lock()
+			hotelPrices[idx] = &hotelResult{
+				perNight: cheapest.Price,
+				total:    cheapest.Price * float64(opts.Nights),
+				name:     cheapest.Name,
+			}
+			mu.Unlock()
+		}(i, d)
+	}
+	wg.Wait()
+
+	// Build results with real hotel prices.
+	var results []WeekendDestination
+	for i, d := range dests {
+		hp := hotelPrices[i]
+		if hp == nil {
+			continue // skip destinations where hotel search failed
+		}
+
+		total := d.Price + hp.total
+		if opts.MaxBudget > 0 && total > opts.MaxBudget {
+			continue
+		}
+
+		cityName := d.CityName
+		if cityName == "" {
+			cityName = models.LookupAirportName(d.AirportCode)
+		}
+
+		results = append(results, WeekendDestination{
+			Destination: cityName,
+			AirportCode: d.AirportCode,
+			FlightPrice: d.Price,
+			HotelPrice:  hp.total,
+			HotelName:   hp.name,
+			Total:       total,
+			Currency:    apiCurrency,
+			Stops:       d.Stops,
+			AirlineName: d.AirlineName,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Total < results[j].Total
+	})
+
+	return &WeekendResult{
+		Success:      true,
+		Origin:       origin,
+		Month:        displayMonth,
+		Nights:       opts.Nights,
+		Count:        len(results),
+		Destinations: results,
+	}, nil
 }
