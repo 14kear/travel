@@ -1,6 +1,7 @@
 package batchexec
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +16,9 @@ var ErrEmptyResponse = errors.New("empty response after stripping anti-XSSI pref
 
 // StripAntiXSSI removes the ")]}\'" prefix and any leading whitespace/newlines.
 func StripAntiXSSI(body []byte) []byte {
-	s := strings.TrimSpace(string(body))
-	s = strings.TrimPrefix(s, antiXSSI)
-	s = strings.TrimSpace(s)
-	return []byte(s)
+	body = bytes.TrimSpace(body)
+	body = bytes.TrimPrefix(body, []byte(antiXSSI))
+	return bytes.TrimSpace(body)
 }
 
 // DecodeFlightResponse parses a Google Flights API response.

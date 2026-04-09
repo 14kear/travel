@@ -58,6 +58,11 @@ type HotelSearchOptions struct {
 // accepts as a destination query. We fetch the Google Travel Hotels page
 // directly and parse the embedded JSON data from AF_initDataCallback blocks.
 func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions) (*models.HotelSearchResult, error) {
+	return SearchHotelsWithClient(ctx, DefaultClient(), location, opts)
+}
+
+// SearchHotelsWithClient is like SearchHotels but reuses the provided client.
+func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions) (*models.HotelSearchResult, error) {
 	if opts.CheckIn == "" || opts.CheckOut == "" {
 		return nil, fmt.Errorf("check-in and check-out dates are required")
 	}
@@ -77,8 +82,6 @@ func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions)
 	if err != nil {
 		return nil, fmt.Errorf("parse check-out date: %w", err)
 	}
-
-	client := DefaultClient()
 
 	// Build the Google Travel Hotels URL.
 	travelURL := buildTravelURL(location, opts)

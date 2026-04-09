@@ -16,11 +16,11 @@ import (
 
 // CalendarOptions configures a calendar graph or grid search.
 type CalendarOptions struct {
-	FromDate       string // Start of date range (YYYY-MM-DD)
-	ToDate         string // End of date range (YYYY-MM-DD)
-	TripLength     int    // Trip length in days for round-trip (0 = one-way)
-	RoundTrip      bool   // Whether to search round-trip
-	Adults         int    // Number of adults (default: 1)
+	FromDate   string // Start of date range (YYYY-MM-DD)
+	ToDate     string // End of date range (YYYY-MM-DD)
+	TripLength int    // Trip length in days for round-trip (0 = one-way)
+	RoundTrip  bool   // Whether to search round-trip
+	Adults     int    // Number of adults (default: 1)
 }
 
 // defaults fills in zero-value fields.
@@ -108,7 +108,7 @@ func SearchCalendar(ctx context.Context, origin, dest string, opts CalendarOptio
 	// Detect the actual currency by doing a quick flight search on the first date.
 	// Currency conversion, if needed, happens in the CLI display layer.
 	if len(dates) > 0 && dates[0].Currency == "" {
-		sourceCurrency := detectSourceCurrency(ctx, origin, dest, dates[0].Date)
+		sourceCurrency := detectSourceCurrencyWithClient(ctx, client, origin, dest, dates[0].Date)
 		for i := range dates {
 			dates[i].Currency = sourceCurrency
 		}
@@ -377,6 +377,12 @@ var sourceCurrencyCache struct {
 // DetectSourceCurrency is the exported variant of detectSourceCurrency.
 // It caches the result since the API currency depends on IP, not route.
 func DetectSourceCurrency(ctx context.Context, origin, dest string) string {
+	return DetectSourceCurrencyWithClient(ctx, DefaultClient(), origin, dest)
+}
+
+// DetectSourceCurrencyWithClient is like DetectSourceCurrency but reuses the
+// provided client for the probing search.
+func DetectSourceCurrencyWithClient(ctx context.Context, client *batchexec.Client, origin, dest string) string {
 	sourceCurrencyCache.RLock()
 	if c := sourceCurrencyCache.currency; c != "" {
 		sourceCurrencyCache.RUnlock()
@@ -385,7 +391,7 @@ func DetectSourceCurrency(ctx context.Context, origin, dest string) string {
 	sourceCurrencyCache.RUnlock()
 
 	date := time.Now().AddDate(0, 0, 7).Format("2006-01-02")
-	detected := detectSourceCurrency(ctx, origin, dest, date)
+	detected := detectSourceCurrencyWithClient(ctx, client, origin, dest, date)
 
 	sourceCurrencyCache.Lock()
 	sourceCurrencyCache.currency = detected
@@ -398,10 +404,13 @@ func DetectSourceCurrency(ctx context.Context, origin, dest string) string {
 // that the Google API returns for this IP location. It reads the currency
 // directly from the raw parsed data, BEFORE any conversion.
 func detectSourceCurrency(ctx context.Context, origin, dest, date string) string {
+	return detectSourceCurrencyWithClient(ctx, DefaultClient(), origin, dest, date)
+}
+
+func detectSourceCurrencyWithClient(ctx context.Context, client *batchexec.Client, origin, dest, date string) string {
 	quickCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	client := DefaultClient()
 	opts := SearchOptions{}
 	opts.defaults()
 

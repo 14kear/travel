@@ -80,45 +80,78 @@ Use `/setup-api-keys` command for the guided wizard.
 
 ### Step 6: Build the traveller profile
 
-The profile lives at `~/.trvl/preferences.json`. **Only ask about things
-that actually change search results.** Don't ask about fields that aren't
-wired to code behavior yet.
+The profile lives at `~/.trvl/preferences.json`. The best profile comes
+from real booking history, not from asking questions. Try these approaches
+in order — use the first one the user agrees to.
 
-**Before asking anything**: run a quick search (e.g. `search_flights` with
-any route) and look at the `currency` field in the response. Google returns
-currency based on the user's IP geolocation. If you see `"currency": "EUR"`
-and the user mentioned Finland, you already know: HEL is the likely home
-airport, EUR is the display currency. Don't ask what you can infer.
+**Tier 1 (best): Scan their email and calendar**
 
-**The interview: confirm what you know, ask what you don't.**
+Ask: "I can build your travel profile automatically by scanning your
+booking confirmation emails. I'll look for flight bookings, hotel
+reservations, loyalty programmes, and ground transport to understand
+your patterns. Want me to do that?"
 
-> **Q1:** "Looks like you're in [country/city based on geoip currency].
-> Is [nearest major airport] your home airport, or do you fly from
-> somewhere else?"
-> Sets `home_airports` and `display_currency`. If multiple airports are
-> plausible (e.g. Helsinki area → HEL, Amsterdam area → AMS), ask.
+If yes, search Gmail for:
+- `from:(booking.com OR airbnb OR finnair OR klm OR ryanair OR norwegian
+  OR sas OR easyjet OR wizzair OR flixbus OR regiojet OR eurostar)
+  subject:(confirmed OR confirmation OR booking OR ticket OR itinerary)`
+- `from:(flyingblue OR finnairplus) subject:(status OR tier OR gold OR silver)`
+- `from:(marriott OR hilton OR accor) subject:(member OR status OR points)`
 
-> **Q2:** "Hotels: any dealbreakers? Hostels OK or hotels only? Need your
-> own bathroom? Minimum stars or review score you'd accept?"
-> Sets `no_dormitories`, `ensuite_only`, `min_hotel_stars`, `min_hotel_rating`.
+From the results, extract:
+- **Airlines used** and frequency → `loyalty_airlines`, carrier preferences
+- **Routes flown** → `home_airports` (most frequent origin)
+- **Hotels booked** → `min_hotel_stars` (infer from actual bookings),
+  `preferred_districts` (from hotel addresses), accommodation style
+- **Loyalty status emails** → exact programme and tier
+- **Ground transport** → FlixBus/RegioJet/train patterns
+- **Booking patterns** → books multiple and cancels? Airbnb vs hotels?
+  Extended stays vs short trips?
 
-> **Q3:** "Carry-on only, or do you check bags?"
-> Sets `carry_on_only` — unlocks hidden-city and throwaway-ticket hacks.
+Also check calendar for upcoming travel events.
 
-> **Q4:** "Direct flights important, or connections fine if cheaper?"
-> Sets `prefer_direct`.
+Then run a quick trvl search to detect geoip currency → infer location.
 
-> **Q5:** "Anything else about how you travel that I should know? Hotel
-> style, food preferences, what you like to do — anything that helps me
-> pick better results for you."
-> Sets `notes` — free-text that YOU (the AI) use when filtering trvl's
-> structured results. trvl returns structured hotel/flight/restaurant data;
-> you apply unstructured preferences on top. Example: user says "I like
-> boutique hotels, no chains" — trvl can't filter that, but you can read
-> hotel names and descriptions from the structured output and drop chains.
+Show the user what you found as a draft profile. Ask:
+"Here's what I see from your bookings. Anything wrong or missing?"
 
-Save with `update_preferences`. Show what you saved. Done. Don't ask about
-neighborhoods upfront — learn those from usage.
+Fix what they correct. Save with `update_preferences`.
+
+**Tier 2 (good): Ask about a real trip**
+
+If they decline email access, ask about concrete experiences instead
+of abstract preferences:
+
+> "Tell me about your last trip — where did you go, how did you get
+> there, and where did you stay?"
+
+One real trip reveals airline choice, hotel quality, neighborhood,
+booking platform, trip length, and travel companions.
+
+> "What would you change about it?"
+
+Reveals pain points: bad wifi → `fast_wifi_needed`, too far from center
+→ neighborhood matters, 5am flight → `flight_time_earliest`.
+
+> "What's a trip that went perfectly?"
+
+Reveals the gold standard: if they describe a 4-star boutique in
+Prague 1 with great coffee, you know more than 10 questions would give.
+
+Then fill gaps with 2-3 targeted questions based on what you still
+don't know. Save with `update_preferences`.
+
+**Tier 3 (fallback): Structured questions**
+
+If neither of the above works, ask these 4 questions:
+
+> Q1: Confirm home airport (infer from geoip first)
+> Q2: Hotel dealbreakers (hostels? bathroom? stars? rating?)
+> Q3: Carry-on only or checked bags?
+> Q4: Direct flights or connections fine?
+> Q5: Anything else about how you travel?
+
+Save with `update_preferences`.
 
 **What each field actually does in the code:**
 
@@ -151,39 +184,34 @@ neighborhoods upfront — learn those from usage.
 | `dietary_needs` | e.g. `["vegetarian","halal"]` — restaurant filtering |
 | `notes` | Free-text for anything else |
 
-**Don't ask upfront — learn from usage:**
+**Continuous learning — the profile is never "done":**
 
-- **Neighborhoods**: user picks Prague 1 hotels twice → "Want me to
-  remember Prague 1 as your preferred area?"
-- **Star rating**: user adds `--stars 4` three times → "Set 4-star as
-  your default?"
-- **Hostel filter**: user rejects a hostel result → "Filter hostels
-  automatically from now on?"
-- **Home airport change**: user searches from AMS repeatedly → "Add
-  Amsterdam to your home airports?"
-- **Budget drift**: user rejects hotels above a price → "Set a max
-  nightly budget?"
-- **Trip log**: after booking → "Add [destination] to previous trips?"
-- **Bucket list**: user mentions dream destination → "Add to bucket list?"
-- **Activities**: user searches food tours repeatedly → "Add 'food' to
-  your activity preferences?"
+Track what the user searches for and how they respond to results.
+Every interaction is a signal. Update the profile when you see a
+pattern — always confirm before saving.
 
-**Extended profile follow-ups** (ask after the 4 core questions if
-the conversation naturally leads there):
+Within a conversation — watch reactions to results:
+- Says "too expensive" to a €180 hotel → note their real budget ceiling
+- Says "too far from center" → location matters, ask which neighborhood
+- Ignores hostels in results → `no_dormitories` candidate
+- Picks the 4-star over the 3-star every time → `min_hotel_stars: 4`
+- Asks for "something with character" → add to `notes`
+- Rejects a 6am flight → `flight_time_earliest: "07:00"`
+- Clicks the Booking.com link → note platform preference
 
-- **Flights**: "Any flight preferences? Early mornings OK, red-eyes?"
-  → `seat_preference`, `flight_time_earliest/latest`, `red_eye_ok`, `deal_tolerance`
-- **Budget**: "Typical budget range for hotels and flights?"
-  → `budget_per_night_min/max`, `budget_flight_max`
-- **Identity**: "Nationality? Languages?" → `nationality`, `languages`
-- **Past & future**: "Where have you been? Dream destinations?"
-  → `previous_trips`, `bucket_list`
-- **Activities & food**: "What do you do on trips? Dietary needs?"
-  → `activity_preferences`, `dietary_needs`
-- **Catch-all**: "Anything else?" → `notes`
+Across conversations — detect evolving patterns:
+- Searches from a new airport 3+ times → add to `home_airports`
+- Visits a city repeatedly → add to `previous_trips`, learn neighborhoods
+- Mentions a dream destination → add to `bucket_list`
+- Booking patterns change → ask if preferences should update
+- Mentions new loyalty status → update immediately
 
-Always confirm before updating. Use `update_preferences` to merge
-individual fields. CLI alternative: `trvl prefs init`
+The key: **don't ask abstract questions when you can observe behavior.**
+"What's your budget?" is a bad question — watching them reject €180
+hotels and pick €120 ones tells you more.
+
+Always confirm before calling `update_preferences`. Show what changed.
+CLI alternative: `trvl prefs init`
 
 ---
 

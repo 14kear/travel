@@ -77,6 +77,7 @@ Examples:
 			}
 
 			client := batchexec.NewClient()
+			client.SetNoCache(noCache)
 			ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 			defer cancel()
 

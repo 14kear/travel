@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"sync"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/flights"
@@ -28,16 +27,16 @@ type Segment struct {
 
 // MultiCityResult is the top-level response for a multi-city optimization.
 type MultiCityResult struct {
-	Success       bool      `json:"success"`
-	HomeAirport   string    `json:"home_airport"`
-	OptimalOrder  []string  `json:"optimal_order"`
-	Segments      []Segment `json:"segments"`
-	TotalCost     float64   `json:"total_cost"`
-	Currency      string    `json:"currency"`
-	WorstCost     float64   `json:"worst_cost"`
-	Savings       float64   `json:"savings"`
-	Permutations  int       `json:"permutations_checked"`
-	Error         string    `json:"error,omitempty"`
+	Success      bool      `json:"success"`
+	HomeAirport  string    `json:"home_airport"`
+	OptimalOrder []string  `json:"optimal_order"`
+	Segments     []Segment `json:"segments"`
+	TotalCost    float64   `json:"total_cost"`
+	Currency     string    `json:"currency"`
+	WorstCost    float64   `json:"worst_cost"`
+	Savings      float64   `json:"savings"`
+	Permutations int       `json:"permutations_checked"`
+	Error        string    `json:"error,omitempty"`
 }
 
 // OptimizeMultiCity finds the cheapest routing order for visiting multiple cities.
@@ -63,79 +62,69 @@ func OptimizeMultiCity(ctx context.Context, homeAirport string, cities []string,
 		return nil, fmt.Errorf("depart_date is required")
 	}
 
-	// Create a no-cache client for bulk price lookups.
-	// Without this, the shared client caches all N^2 response bodies (up to
-	// 42 x 10 MB = 420 MB for 6 cities), causing OOM kills (exit 137).
-	client := batchexec.NewClient()
-	client.SetNoCache(true)
-
-	// Build unique lookup pairs.
+	// Pre-fetch all needed prices.
+	// Legs needed: home->each city, each city->each other city, each city->home.
 	allCodes := append([]string{homeAirport}, cities...)
-	type priceLookup struct{ from, to string }
-	var lookups []priceLookup
-	seen := make(map[string]bool)
+	priceCache := make(map[string]float64)
+	currencyCache := make(map[string]string)
+	client := newCompoundSearchClient()
+
 	for _, from := range allCodes {
 		for _, to := range allCodes {
 			if from == to {
 				continue
 			}
 			key := from + "->" + to
-			if seen[key] {
+			if _, ok := priceCache[key]; ok {
 				continue
 			}
-			seen[key] = true
-			lookups = append(lookups, priceLookup{from, to})
+			pc := fetchCheapestPrice(ctx, client, from, to, opts.DepartDate)
+			priceCache[key] = pc.price
+			if pc.currency != "" {
+				currencyCache[key] = pc.currency
+			}
 		}
 	}
-
-	// Fetch prices concurrently with bounded parallelism.
-	var mu sync.Mutex
-	priceCache := make(map[string]float64)
-	currencyCache := make(map[string]string)
-
-	sem := make(chan struct{}, 5) // max 5 concurrent API calls
-	var wg sync.WaitGroup
-
-	for _, l := range lookups {
-		wg.Add(1)
-		go func(from, to string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			pc := fetchCheapestPriceWithClient(ctx, client, from, to, opts.DepartDate)
-
-			mu.Lock()
-			priceCache[from+"->"+to] = pc.price
-			if pc.currency != "" {
-				currencyCache[from+"->"+to] = pc.currency
-			}
-			mu.Unlock()
-		}(l.from, l.to)
-	}
-	wg.Wait()
 
 	return optimizeRoute(homeAirport, cities, priceCache, currencyCache), nil
 }
 
 // optimizeRoute finds the cheapest routing order given pre-fetched prices.
 func optimizeRoute(homeAirport string, cities []string, priceCache map[string]float64, currencyCache map[string]string) *MultiCityResult {
-	perms := permutations(cities)
-
-	var bestOrder []string
+	bestOrder := make([]string, len(cities))
 	bestCost := math.MaxFloat64
 	worstCost := 0.0
+	permutationCount := 0
+	currentOrder := make([]string, 0, len(cities))
+	used := make([]bool, len(cities))
 
-	for _, perm := range perms {
-		cost := routeCost(homeAirport, perm, priceCache)
-		if cost < bestCost {
-			bestCost = cost
-			bestOrder = perm
+	var visit func(last string, cost float64)
+	visit = func(last string, cost float64) {
+		if len(currentOrder) == len(cities) {
+			total := cost + priceCache[last+"->"+homeAirport]
+			permutationCount++
+			if total < bestCost {
+				bestCost = total
+				copy(bestOrder, currentOrder)
+			}
+			if total > worstCost {
+				worstCost = total
+			}
+			return
 		}
-		if cost > worstCost {
-			worstCost = cost
+
+		for i, city := range cities {
+			if used[i] {
+				continue
+			}
+			used[i] = true
+			currentOrder = append(currentOrder, city)
+			visit(city, cost+priceCache[last+"->"+city])
+			currentOrder = currentOrder[:len(currentOrder)-1]
+			used[i] = false
 		}
 	}
+	visit(homeAirport, 0)
 
 	// Build segments for the best route.
 	route := append([]string{homeAirport}, bestOrder...)
@@ -167,7 +156,7 @@ func optimizeRoute(homeAirport string, cities []string, priceCache map[string]fl
 		Currency:     detectedCurrency,
 		WorstCost:    worstCost,
 		Savings:      worstCost - bestCost,
-		Permutations: len(perms),
+		Permutations: permutationCount,
 	}
 }
 
@@ -184,16 +173,15 @@ func routeCost(home string, perm []string, prices map[string]float64) float64 {
 	return total
 }
 
+// fetchCheapestPrice searches for the cheapest one-way flight between two airports.
+// Returns 9999 if the search fails (so the route is deprioritized but not excluded).
 // priceAndCurrency holds a price with its source currency.
 type priceAndCurrency struct {
 	price    float64
 	currency string
 }
 
-// fetchCheapestPriceWithClient searches for the cheapest one-way flight
-// between two airports. Returns price=9999 if the search fails so the route
-// is deprioritized but not excluded outright.
-func fetchCheapestPriceWithClient(ctx context.Context, client *batchexec.Client, from, to, date string) priceAndCurrency {
+func fetchCheapestPrice(ctx context.Context, client *batchexec.Client, from, to, date string) priceAndCurrency {
 	result, err := flights.SearchFlightsWithClient(ctx, client, from, to, date, flights.SearchOptions{
 		SortBy: models.SortCheapest,
 		Adults: 1,

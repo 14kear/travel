@@ -191,7 +191,7 @@ func TestWeekendSummary(t *testing.T) {
 	result := &trip.WeekendResult{
 		Success: true, Origin: "HEL", Month: "july-2026", Nights: 2, Count: 1,
 		Destinations: []trip.WeekendDestination{
-			{Destination: "Tallinn", AirportCode: "TLL", FlightPrice: 89, HotelPrice: 60, Total: 149, Currency: "EUR"},
+			{Destination: "Tallinn", AirportCode: "TLL", FlightPrice: 89, HotelEstimate: 60, TotalEstimate: 149, Currency: "EUR"},
 		},
 	}
 	got := weekendSummary(result)

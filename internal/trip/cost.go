@@ -89,13 +89,13 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 		return nil, fmt.Errorf("trip must be at least 1 night")
 	}
 
-	// Load user preferences for hotel filtering.
-	prefs, _ := preferences.Load()
-
 	result := &TripCostResult{
 		Currency: input.Currency,
 		Nights:   nights,
 	}
+
+	// Load user preferences for hotel filtering.
+	prefs, _ := preferences.Load()
 
 	// Build hotel search options with preference-based filters.
 	hotelOpts := hotels.HotelSearchOptions{
@@ -117,8 +117,10 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 		}
 	}
 
-	// Search all three in parallel — sequential was causing timeouts
-	// under the 60-second deadline (3 x ~20s API calls + retries).
+	client := newCompoundSearchClient()
+
+	// Search all three in parallel so the shared no-cache client reduces memory
+	// without regressing command latency.
 	var (
 		outResult   *models.FlightSearchResult
 		retResult   *models.FlightSearchResult
@@ -132,14 +134,14 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		outResult, outErr = flights.SearchFlights(ctx, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
+		outResult, outErr = flights.SearchFlightsWithClient(ctx, client, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
 			Adults: 1,
 		})
 	}()
 	go func() {
 		defer wg.Done()
-		retResult, retErr = flights.SearchFlights(ctx, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
+		retResult, retErr = flights.SearchFlightsWithClient(ctx, client, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
 			Adults: 1,
 		})
@@ -147,7 +149,7 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 	go func() {
 		defer wg.Done()
 		hotelLocation := models.ResolveHotelCity(input.Destination)
-		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotelOpts)
+		hotelResult, hotelErr = hotels.SearchHotelsWithClient(ctx, client, hotelLocation, hotelOpts)
 	}()
 	wg.Wait()
 
