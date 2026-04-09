@@ -13,6 +13,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
 // TripCostInput configures a trip cost calculation.
@@ -88,9 +89,29 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 		return nil, fmt.Errorf("trip must be at least 1 night")
 	}
 
+	// Load user preferences for hotel filtering.
+	prefs, _ := preferences.Load()
+
 	result := &TripCostResult{
 		Currency: input.Currency,
 		Nights:   nights,
+	}
+
+	// Build hotel search options with preference-based filters.
+	hotelOpts := hotels.HotelSearchOptions{
+		CheckIn:  input.DepartDate,
+		CheckOut: input.ReturnDate,
+		Guests:   input.Guests,
+		Sort:     "cheapest",
+		Currency: input.Currency,
+	}
+	if prefs != nil {
+		if prefs.MinHotelStars > 0 {
+			hotelOpts.Stars = prefs.MinHotelStars
+		}
+		if prefs.MinHotelRating > 0 {
+			hotelOpts.MinRating = prefs.MinHotelRating
+		}
 	}
 
 	// Search all three in parallel — sequential was causing timeouts
@@ -123,15 +144,16 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 	go func() {
 		defer wg.Done()
 		hotelLocation := models.ResolveLocationName(input.Destination)
-		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotels.HotelSearchOptions{
-			CheckIn:  input.DepartDate,
-			CheckOut: input.ReturnDate,
-			Guests:   input.Guests,
-			Sort:     "cheapest",
-			Currency: input.Currency,
-		})
+		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotelOpts)
 	}()
 	wg.Wait()
+
+	// Apply preference-based post-filtering (dormitories, ensuite, districts).
+	if hotelErr == nil && hotelResult != nil && hotelResult.Success && prefs != nil {
+		city := models.ResolveLocationName(input.Destination)
+		hotelResult.Hotels = preferences.FilterHotels(hotelResult.Hotels, city, prefs)
+		hotelResult.Count = len(hotelResult.Hotels)
+	}
 
 	assembleTripCost(ctx, result, input.Currency, outResult, outErr, retResult, retErr, hotelResult, hotelErr, nights, input.Guests)
 

@@ -14,6 +14,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
 // PlanInput configures a trip plan search.
@@ -112,6 +113,26 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		Guests:      input.Guests,
 	}
 
+	// Load user preferences for hotel filtering.
+	prefs, _ := preferences.Load()
+
+	// Build hotel search options with preference-based filters.
+	hotelOpts := hotels.HotelSearchOptions{
+		CheckIn:  input.DepartDate,
+		CheckOut: input.ReturnDate,
+		Guests:   input.Guests,
+		Sort:     "cheapest",
+		Currency: input.Currency,
+	}
+	if prefs != nil {
+		if prefs.MinHotelStars > 0 {
+			hotelOpts.Stars = prefs.MinHotelStars
+		}
+		if prefs.MinHotelRating > 0 {
+			hotelOpts.MinRating = prefs.MinHotelRating
+		}
+	}
+
 	// Search all three in parallel.
 	var (
 		outResult   *models.FlightSearchResult
@@ -140,17 +161,16 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 	}()
 	go func() {
 		defer wg.Done()
-		// Hotels need city name, not IATA code (Google needs "Prague" not "PRG").
 		hotelLocation := models.ResolveLocationName(input.Destination)
-		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotels.HotelSearchOptions{
-			CheckIn:  input.DepartDate,
-			CheckOut: input.ReturnDate,
-			Guests:   input.Guests,
-			Sort:     "cheapest",
-			Currency: input.Currency,
-		})
+		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotelOpts)
 	}()
 	wg.Wait()
+
+	// Apply preference-based post-filtering (dormitories, ensuite, districts).
+	if hotelErr == nil && hotelResult != nil && hotelResult.Success && prefs != nil {
+		city := models.ResolveLocationName(input.Destination)
+		hotelResult.Hotels = preferences.FilterHotels(hotelResult.Hotels, city, prefs)
+	}
 
 	// Extract top outbound flights (up to 5).
 	if outErr == nil && outResult != nil && outResult.Success {
