@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/destinations"
@@ -92,27 +93,45 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 		Nights:   nights,
 	}
 
-	// Search outbound flights.
-	outResult, outErr := flights.SearchFlights(ctx, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
-		SortBy: models.SortCheapest,
-		Adults: 1,
-	})
+	// Search all three in parallel — sequential was causing timeouts
+	// under the 60-second deadline (3 x ~20s API calls + retries).
+	var (
+		outResult   *models.FlightSearchResult
+		retResult   *models.FlightSearchResult
+		hotelResult *models.HotelSearchResult
+		outErr      error
+		retErr      error
+		hotelErr    error
+		wg          sync.WaitGroup
+	)
 
-	// Search return flights.
-	retResult, retErr := flights.SearchFlights(ctx, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
-		SortBy: models.SortCheapest,
-		Adults: 1,
-	})
-
-	// Search hotels — resolve IATA to city name (Google needs "Prague" not "PRG").
-	hotelLocation := models.ResolveLocationName(input.Destination)
-	hotelResult, hotelErr := hotels.SearchHotels(ctx, hotelLocation, hotels.HotelSearchOptions{
-		CheckIn:  input.DepartDate,
-		CheckOut: input.ReturnDate,
-		Guests:   input.Guests,
-		Sort:     "cheapest",
-		Currency: input.Currency,
-	})
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		outResult, outErr = flights.SearchFlights(ctx, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
+			SortBy: models.SortCheapest,
+			Adults: 1,
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		retResult, retErr = flights.SearchFlights(ctx, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
+			SortBy: models.SortCheapest,
+			Adults: 1,
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		hotelLocation := models.ResolveLocationName(input.Destination)
+		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotels.HotelSearchOptions{
+			CheckIn:  input.DepartDate,
+			CheckOut: input.ReturnDate,
+			Guests:   input.Guests,
+			Sort:     "cheapest",
+			Currency: input.Currency,
+		})
+	}()
+	wg.Wait()
 
 	assembleTripCost(ctx, result, input.Currency, outResult, outErr, retResult, retErr, hotelResult, hotelErr, nights, input.Guests)
 

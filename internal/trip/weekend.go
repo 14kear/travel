@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/explore"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -172,7 +171,10 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 		return nil, err
 	}
 
-	client := batchexec.NewClient()
+	// Reuse the shared flights client instead of creating a separate one.
+	// A dedicated client means a second cache instance holding explore
+	// responses alongside the flights cache -- unnecessary memory.
+	client := flights.DefaultClient()
 
 	exploreOpts := explore.ExploreOptions{
 		DepartureDate: departDate,
