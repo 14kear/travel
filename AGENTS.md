@@ -80,16 +80,67 @@ Use `/setup-api-keys` command for the guided wizard.
 
 ### Step 6: (Optional) Create personal travel profile
 
-Ask the user about their preferences and create `~/.claude/travel-profile.md`:
-- Home airport
-- Frequent flyer status (SkyTeam, oneworld, Star Alliance?)
-- Usually travel with luggage?
-- Departure time preferences?
-- Budget range preference?
-- Any flats/free accommodation in cities?
-- Favourite hotels anywhere?
+Interview the user about their travel preferences and write the result to
+`~/.trvl/preferences.json`. This file drives real-time filtering: hotel
+results get filtered by stars, ratings, neighborhood; hostels and airport
+hotels get excluded; flights get sorted by loyalty airlines.
 
-This makes every future search personalized automatically.
+Ask these questions **conversationally, a few at a time** (don't dump them all):
+
+**Home base:**
+- Where do you usually fly from? (can be multiple airports, e.g. HEL, AMS)
+- Which cities do you call home?
+
+**Flights:**
+- Do you travel carry-on only, or do you check bags?
+- Do you prefer direct flights, or are connections fine if cheaper?
+- Any airline loyalty programmes? (e.g. Finnair Plus, KLM Flying Blue — give IATA codes like AY, KL)
+
+**Hotels:**
+- Hostels / shared rooms OK, or hotels only?
+- Do you need your own bathroom (en-suite), or is shared OK?
+- Minimum hotel star rating? (0 = any, 3 = no budget motels, 4 = business-grade)
+- Minimum review rating? (e.g. 4.0 out of 5 — filters out low-rated properties)
+- Is fast WiFi important? (remote work / digital nomad?)
+- Any hotel loyalty programmes? (e.g. Marriott Bonvoy, IHG Rewards)
+- For cities you visit often: any preferred neighborhoods? (e.g. Prague 1, Jordaan in Amsterdam)
+
+**General:**
+- What currency should prices be shown in? (EUR, USD, GBP, etc.)
+- Do you book travel for family members? If so, who? (name, relationship, any special notes)
+
+Then write `~/.trvl/preferences.json` — create the directory if needed:
+
+```json
+{
+  "home_airports": ["HEL", "AMS"],
+  "home_cities": ["Helsinki", "Amsterdam"],
+  "carry_on_only": true,
+  "prefer_direct": false,
+  "no_dormitories": true,
+  "ensuite_only": true,
+  "fast_wifi_needed": true,
+  "min_hotel_stars": 3,
+  "min_hotel_rating": 4.0,
+  "preferred_districts": {
+    "Prague": ["Prague 1", "Prague 2"],
+    "Amsterdam": ["Jordaan", "De Pijp", "Oud-West"]
+  },
+  "display_currency": "EUR",
+  "locale": "en",
+  "loyalty_airlines": ["AY", "KL"],
+  "loyalty_hotels": ["Marriott Bonvoy"],
+  "family_members": [
+    {"name": "John", "relationship": "father", "notes": "window seat, needs wheelchair assistance"}
+  ]
+}
+```
+
+Or use the interactive CLI wizard: `trvl prefs init`
+
+Every future search uses these preferences automatically — hotel results
+get filtered, airport/suburb hotels get dropped, hostel chains get excluded,
+preferred neighborhoods get prioritized.
 
 ---
 
