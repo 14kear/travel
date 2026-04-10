@@ -44,7 +44,10 @@ trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claud
 ### 1. Install
 
 ```bash
-# macOS / Linux
+# Homebrew (macOS / Linux)
+brew install MikkoParkkola/tap/trvl
+
+# Or without Homebrew — download the binary directly
 curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
 ```
 
@@ -52,9 +55,6 @@ curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$
 <summary>More install options</summary>
 
 ```bash
-# Homebrew
-brew install MikkoParkkola/tap/trvl
-
 # Go
 go install github.com/MikkoParkkola/trvl/cmd/trvl@latest
 
