@@ -47,7 +47,8 @@ Examples:
 				month = time.Now().AddDate(0, 1, 0).Format("2006-01")
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			// 120s: explore + up to 10 parallel hotel searches (~20s each).
+			ctx, cancel := context.WithTimeout(cmd.Context(), 120*time.Second)
 			defer cancel()
 
 			opts := trip.WeekendOptions{
