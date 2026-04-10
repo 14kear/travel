@@ -69,6 +69,20 @@ git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
 
 ### 2. Connect to your AI assistant
 
+**One command, no JSON editing** — trvl installs itself into your MCP client's config:
+
+```bash
+trvl mcp install-claude-desktop                     # Claude Desktop (default)
+trvl mcp install-claude-desktop --client cursor     # Cursor
+trvl mcp install-claude-desktop --client claude-code # Claude Code
+trvl mcp install-claude-desktop --dry-run           # Preview first
+```
+
+Then restart your MCP client. That's it.
+
+<details>
+<summary>Or add it manually if you prefer</summary>
+
 **Claude Code:**
 ```bash
 claude mcp add trvl --transport stdio -- trvl mcp
@@ -86,6 +100,11 @@ claude mcp add trvl --transport stdio -- trvl mcp
 }
 ```
 
+Config file locations:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
 **Cursor / Windsurf / Other MCP clients** — add to your MCP config:
 ```json
 {
@@ -97,6 +116,8 @@ claude mcp add trvl --transport stdio -- trvl mcp
   }
 }
 ```
+
+</details>
 
 ### 3. (Optional) Install the bundled Claude Code skill
 
@@ -534,7 +555,7 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Output** | Pretty tables with color (default) or JSON (`--format json`) |
 | **Platforms** | Linux, macOS (amd64, arm64). Windows CI in progress. |
 | **Code** | 145 Go files, ~44K LOC, 16 packages, 1100+ tests |
-| **License** | MIT |
+| **License** | PolyForm Noncommercial 1.0 |
 
 ## Attribution
 
@@ -551,4 +572,4 @@ Built on the shoulders of:
 
 ## License
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal and noncommercial use. Commercial use requires a separate license.

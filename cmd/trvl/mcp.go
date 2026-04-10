@@ -31,5 +31,7 @@ Use --http to start an HTTP server instead, suitable for gateway and remote acce
 	cmd.Flags().BoolVar(&httpMode, "http", false, "Run as HTTP server instead of stdio")
 	cmd.Flags().IntVar(&port, "port", 8080, "HTTP server port (only used with --http)")
 
+	cmd.AddCommand(mcpInstallCmd())
+
 	return cmd
 }
