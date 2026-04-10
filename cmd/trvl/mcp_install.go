@@ -25,21 +25,23 @@ func mcpInstallCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "install-claude-desktop",
-		Short: "Install trvl as an MCP server for Claude Desktop (no JSON editing)",
-		Long: `Install trvl into Claude Desktop's MCP configuration automatically.
+		Use:   "install",
+		Short: "Install trvl as an MCP server in your AI client's config",
+		Long: `Install trvl into your AI client's MCP configuration automatically.
 
 No JSON editing, no file-path hunting. Just run this command and restart
-Claude Desktop — trvl will appear as an MCP server ready to search flights
+your client — trvl will appear as an MCP server ready to search flights
 and hotels.
 
 By default, installs into Claude Desktop. Use --client to target other
 MCP-aware clients:
 
-  trvl mcp install-claude-desktop
-  trvl mcp install-claude-desktop --client cursor
-  trvl mcp install-claude-desktop --dry-run    # show what would change
+  trvl mcp install                       # Claude Desktop (default)
+  trvl mcp install --client cursor       # Cursor / Windsurf
+  trvl mcp install --client claude-code  # Claude Code
+  trvl mcp install --dry-run             # show what would change
 `,
+		Aliases: []string{"install-claude-desktop"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInstall(client, force, dryRun)
 		},

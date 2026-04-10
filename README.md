@@ -72,10 +72,10 @@ git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
 **One command, no JSON editing** — trvl installs itself into your MCP client's config:
 
 ```bash
-trvl mcp install-claude-desktop                     # Claude Desktop (default)
-trvl mcp install-claude-desktop --client cursor     # Cursor
-trvl mcp install-claude-desktop --client claude-code # Claude Code
-trvl mcp install-claude-desktop --dry-run           # Preview first
+trvl mcp install                       # Claude Desktop (default)
+trvl mcp install --client cursor       # Cursor / Windsurf
+trvl mcp install --client claude-code  # Claude Code
+trvl mcp install --dry-run             # Preview first
 ```
 
 Then restart your MCP client. That's it.
@@ -119,18 +119,26 @@ Config file locations:
 
 </details>
 
-### 3. (Optional) Install the bundled Claude Code skill
+### 3. (Optional) Teach your AI about trvl
 
-The repo includes 1 Claude Code skill file that teaches Claude how to use trvl optimally. To install it globally:
+Point your AI assistant to the reference docs so it knows all 32 tools:
+
+```
+https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md
+```
+
+Or the compact version for context-limited models:
+
+```
+https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
+```
+
+For Claude Code, you can also install the bundled skill that teaches Claude how to use trvl optimally:
 
 ```bash
 mkdir -p ~/.claude/skills
-for s in trvl; do
-  curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
-done
+curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/trvl.md" -o "$HOME/.claude/skills/trvl.md"
 ```
-
-Now Claude knows about trvl in every project — just say "search flights" or "plan a trip".
 
 ### 4. Ask your AI to search
 
@@ -282,17 +290,7 @@ backends:
 
 ## For AI Assistants
 
-Point your AI to this URL for automatic setup:
-
-```
-https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md
-```
-
-Or the quick reference:
-
-```
-https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
-```
+See [Quick Setup step 3](#3-optional-teach-your-ai-about-trvl) above for AGENTS.md and llms.txt links.
 
 ---
 
