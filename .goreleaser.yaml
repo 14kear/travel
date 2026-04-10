@@ -65,21 +65,14 @@ release:
     go install github.com/MikkoParkkola/trvl/cmd/trvl@v{{ .Version }}
     ```
 
-brews:
-  - ids:
-      - trvl
-    repository:
-      owner: MikkoParkkola
-      name: homebrew-tap
-      token: "{{ .Env.GITHUB_TOKEN }}"
-    folder: Formula
-    homepage: https://github.com/MikkoParkkola/trvl
-    description: "Google Flights + Hotels from your terminal. Free, no API keys, real-time prices."
-    license: MIT
-    install: |
-      bin.install "trvl"
-    test: |
-      system "#{bin}/trvl", "version"
+# brews: section removed.
+#
+# goreleaser-action runs with the default GITHUB_TOKEN, which can only push to
+# the current repo (MikkoParkkola/trvl). Pushing the auto-generated formula to
+# MikkoParkkola/homebrew-tap requires a personal access token with cross-repo
+# write scope, configured as a workflow secret. Until that PAT is added, the
+# trvl Homebrew formula is maintained by hand in homebrew-tap/Formula/trvl.rb
+# and bumped after each release.
 
 dockers:
   - image_templates:

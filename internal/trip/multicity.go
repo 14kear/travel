@@ -184,18 +184,15 @@ func routeCost(home string, perm []string, prices map[string]float64) float64 {
 	return total
 }
 
-// fetchCheapestPrice searches for the cheapest one-way flight between two airports.
-// Returns 9999 if the search fails (so the route is deprioritized but not excluded).
 // priceAndCurrency holds a price with its source currency.
 type priceAndCurrency struct {
 	price    float64
 	currency string
 }
 
-func fetchCheapestPrice(ctx context.Context, from, to, date string) priceAndCurrency {
-	return fetchCheapestPriceWithClient(ctx, flights.DefaultClient(), from, to, date)
-}
-
+// fetchCheapestPriceWithClient searches for the cheapest one-way flight
+// between two airports. Returns price=9999 if the search fails so the route
+// is deprioritized but not excluded outright.
 func fetchCheapestPriceWithClient(ctx context.Context, client *batchexec.Client, from, to, date string) priceAndCurrency {
 	result, err := flights.SearchFlightsWithClient(ctx, client, from, to, date, flights.SearchOptions{
 		SortBy: models.SortCheapest,
