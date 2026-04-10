@@ -84,11 +84,19 @@ The profile lives at `~/.trvl/preferences.json`. **Only ask about things
 that actually change search results.** Don't ask about fields that aren't
 wired to code behavior yet.
 
-**The interview: 4 questions.**
+**Before asking anything**: run a quick search (e.g. `search_flights` with
+any route) and look at the `currency` field in the response. Google returns
+currency based on the user's IP geolocation. If you see `"currency": "EUR"`
+and the user mentioned Finland, you already know: HEL is the likely home
+airport, EUR is the display currency. Don't ask what you can infer.
 
-> **Q1:** "Where do you usually fly from?"
-> Sets `home_airports` — the default origin for every search.
-> Infer `display_currency` from their location.
+**The interview: confirm what you know, ask what you don't.**
+
+> **Q1:** "Looks like you're in [country/city based on geoip currency].
+> Is [nearest major airport] your home airport, or do you fly from
+> somewhere else?"
+> Sets `home_airports` and `display_currency`. If multiple airports are
+> plausible (e.g. Helsinki area → HEL, Amsterdam area → AMS), ask.
 
 > **Q2:** "Hotels: any dealbreakers? Hostels OK or hotels only? Need your
 > own bathroom? Minimum stars or review score you'd accept?"
