@@ -326,8 +326,8 @@ func assertCrossPlatformPrivateFile(t *testing.T, path string, info os.FileInfo)
 
 	perm := info.Mode().Perm()
 	if runtime.GOOS == "windows" {
-		if perm&0o111 != 0 {
-			t.Errorf("%s should not be executable on Windows, got %o", path, perm)
+		if perm != 0o666 {
+			t.Errorf("%s permissions on Windows: got %o, want 666", path, perm)
 		}
 		return
 	}

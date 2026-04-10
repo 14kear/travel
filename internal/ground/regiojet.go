@@ -60,7 +60,9 @@ type regiojetSearchResult struct {
 
 // regiojetLocationCache caches city lookups.
 var regiojetLocationCache []regiojetCountry
-var regiojetLocationCacheMu sync.Mutex
+var regiojetLocationCacheMu sync.RWMutex
+var regiojetLocationCacheCond = sync.NewCond(&regiojetLocationCacheMu)
+var regiojetLocationCacheLoading bool
 
 // RegioJetAutoComplete searches for cities by name in the RegioJet network.
 func RegioJetAutoComplete(ctx context.Context, query string) ([]RegioJetCity, error) {
@@ -100,44 +102,73 @@ func matchesQuery(city regiojetCityRaw, query string) bool {
 
 // loadRegioJetLocations fetches and caches the full location list.
 func loadRegioJetLocations(ctx context.Context) ([]regiojetCountry, error) {
+	regiojetLocationCacheMu.RLock()
+	if regiojetLocationCache != nil {
+		countries := cloneRegioJetCountries(regiojetLocationCache)
+		regiojetLocationCacheMu.RUnlock()
+		return countries, nil
+	}
+	regiojetLocationCacheMu.RUnlock()
+
 	regiojetLocationCacheMu.Lock()
+	for regiojetLocationCacheLoading {
+		regiojetLocationCacheCond.Wait()
+		if regiojetLocationCache != nil {
+			countries := cloneRegioJetCountries(regiojetLocationCache)
+			regiojetLocationCacheMu.Unlock()
+			return countries, nil
+		}
+	}
 	if regiojetLocationCache != nil {
 		countries := cloneRegioJetCountries(regiojetLocationCache)
 		regiojetLocationCacheMu.Unlock()
 		return countries, nil
 	}
+	regiojetLocationCacheLoading = true
+	regiojetLocationCacheMu.Unlock()
 
+	countries, err := fetchRegioJetLocations(ctx)
+
+	regiojetLocationCacheMu.Lock()
+	if err == nil {
+		regiojetLocationCache = cloneRegioJetCountries(countries)
+	}
+	regiojetLocationCacheLoading = false
+	regiojetLocationCacheCond.Broadcast()
+	if err != nil {
+		regiojetLocationCacheMu.Unlock()
+		return nil, err
+	}
+	cached := cloneRegioJetCountries(regiojetLocationCache)
+	regiojetLocationCacheMu.Unlock()
+	return cached, nil
+}
+
+func fetchRegioJetLocations(ctx context.Context) ([]regiojetCountry, error) {
 	u := regiojetBaseURL + regiojetLocations
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		regiojetLocationCacheMu.Unlock()
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := rateLimitedDo(ctx, regiojetLimiter, req)
 	if err != nil {
-		regiojetLocationCacheMu.Unlock()
 		return nil, fmt.Errorf("regiojet locations: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		regiojetLocationCacheMu.Unlock()
 		return nil, fmt.Errorf("regiojet locations: HTTP %d: %s", resp.StatusCode, body)
 	}
 
 	var countries []regiojetCountry
 	if err := json.NewDecoder(resp.Body).Decode(&countries); err != nil {
-		regiojetLocationCacheMu.Unlock()
 		return nil, fmt.Errorf("regiojet locations decode: %w", err)
 	}
 
-	regiojetLocationCache = cloneRegioJetCountries(countries)
-	cached := cloneRegioJetCountries(regiojetLocationCache)
-	regiojetLocationCacheMu.Unlock()
-	return cached, nil
+	return countries, nil
 }
 
 func cloneRegioJetCountries(src []regiojetCountry) []regiojetCountry {
