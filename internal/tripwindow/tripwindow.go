@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/flights"
+	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
 const dateLayout = "2006-01-02"
@@ -63,7 +65,10 @@ type Candidate struct {
 	Start             string  `json:"start"`              // departure date YYYY-MM-DD
 	End               string  `json:"end"`                // return date YYYY-MM-DD
 	Nights            int     `json:"nights"`             // trip length
-	EstimatedCost     float64 `json:"estimated_cost"`     // cheapest found; 0 if search failed
+	EstimatedCost     float64 `json:"estimated_cost"`     // flight + hotel total; 0 if search failed
+	FlightCost        float64 `json:"flight_cost"`        // cheapest round-trip flight
+	HotelCost         float64 `json:"hotel_cost"`         // hotel total for nights
+	HotelName         string  `json:"hotel_name,omitempty"`
 	Currency          string  `json:"currency"`           // currency of estimated_cost
 	OverlapsPreferred bool    `json:"overlaps_preferred"` // true if inside a preferred interval
 	Reasoning         string  `json:"reasoning"`          // brief explanation for ranking
@@ -124,11 +129,16 @@ func Find(ctx context.Context, in Input) ([]Candidate, error) {
 		return nil, nil
 	}
 
-	// Query cheapest price for each candidate in parallel (bounded concurrency).
+	// Load preferences once for hotel filtering.
+	prefs, _ := preferences.Load()
+
+	// Query cheapest flight + hotel for each candidate in parallel (bounded concurrency).
 	type priceResult struct {
-		idx   int
-		price float64
-		curr  string
+		idx        int
+		flightCost float64
+		hotelCost  float64
+		hotelName  string
+		curr       string
 	}
 	results := make([]priceResult, len(candidates))
 	sem := make(chan struct{}, 8)
@@ -145,28 +155,50 @@ func Find(ctx context.Context, in Input) ([]Candidate, error) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			price, curr := cheapestFlight(ctx, origin, dest, c.start.Format(dateLayout), c.end.Format(dateLayout))
-			results[i] = priceResult{i, price, curr}
+			depDate := c.start.Format(dateLayout)
+			retDate := c.end.Format(dateLayout)
+
+			var flightCost, hotelCost float64
+			var curr, hotelName string
+
+			// Flight and hotel in parallel for this candidate.
+			var sub sync.WaitGroup
+			sub.Add(2)
+			go func() {
+				defer sub.Done()
+				flightCost, curr = cheapestFlight(ctx, origin, dest, depDate, retDate)
+			}()
+			go func() {
+				defer sub.Done()
+				hotelCost, hotelName = cheapestHotel(ctx, dest, depDate, retDate, c.nights, prefs)
+			}()
+			sub.Wait()
+
+			results[i] = priceResult{i, flightCost, hotelCost, hotelName, curr}
 		}()
 	}
 	wg.Wait()
 
-	// Build Candidate list, applying budget filter.
+	// Build Candidate list, applying budget filter on the TOTAL (flight + hotel).
 	var out []Candidate
 	for i, c := range candidates {
 		pr := results[i]
-		if in.BudgetEUR > 0 && pr.price > 0 && pr.price > in.BudgetEUR {
+		total := pr.flightCost + pr.hotelCost
+		if in.BudgetEUR > 0 && total > 0 && total > in.BudgetEUR {
 			continue
 		}
 
 		overlaps := overlapsAny(c.start, c.end, preferred)
-		reasoning := buildReasoning(c.start, c.end, c.nights, pr.price, pr.curr, overlaps)
+		reasoning := buildReasoning(c.start, c.end, c.nights, total, pr.curr, overlaps)
 
 		out = append(out, Candidate{
 			Start:             c.start.Format(dateLayout),
 			End:               c.end.Format(dateLayout),
 			Nights:            c.nights,
-			EstimatedCost:     pr.price,
+			EstimatedCost:     total,
+			FlightCost:        pr.flightCost,
+			HotelCost:         pr.hotelCost,
+			HotelName:         pr.hotelName,
 			Currency:          pr.curr,
 			OverlapsPreferred: overlaps,
 			Reasoning:         reasoning,
@@ -225,6 +257,55 @@ func overlapsAny(start, end time.Time, ivs []parsedInterval) bool {
 	return false
 }
 
+// cheapestHotel searches for the cheapest qualifying hotel at the destination
+// for the given check-in/check-out dates, applying preferences filters. Returns
+// (total_for_stay, hotel_name). Returns (0, "") on any error.
+func cheapestHotel(ctx context.Context, dest, checkIn, checkOut string, nights int, prefs *preferences.Preferences) (float64, string) {
+	if dest == "" || checkIn == "" || checkOut == "" || nights <= 0 {
+		return 0, ""
+	}
+
+	hotelLocation := models.ResolveLocationName(dest)
+	opts := hotels.HotelSearchOptions{
+		CheckIn:  checkIn,
+		CheckOut: checkOut,
+		Guests:   1,
+		Sort:     "cheapest",
+	}
+	if prefs != nil {
+		if prefs.MinHotelStars > 0 {
+			opts.Stars = prefs.MinHotelStars
+		}
+		if prefs.MinHotelRating > 0 {
+			opts.MinRating = prefs.MinHotelRating
+		}
+	}
+
+	result, err := hotels.SearchHotels(ctx, hotelLocation, opts)
+	if err != nil || result == nil || !result.Success || len(result.Hotels) == 0 {
+		return 0, ""
+	}
+
+	filtered := result.Hotels
+	if prefs != nil {
+		filtered = preferences.FilterHotels(filtered, hotelLocation, prefs)
+	}
+	if len(filtered) == 0 {
+		return 0, ""
+	}
+
+	cheapest := filtered[0]
+	for _, h := range filtered[1:] {
+		if h.Price > 0 && h.Price < cheapest.Price {
+			cheapest = h
+		}
+	}
+	if cheapest.Price <= 0 {
+		return 0, ""
+	}
+	return cheapest.Price * float64(nights), cheapest.Name
+}
+
 // cheapestFlight returns the cheapest round-trip price and currency for the
 // given origin→destination on the given dates. Returns (0, "") on any error.
 func cheapestFlight(ctx context.Context, origin, dest, depDate, retDate string) (float64, string) {
@@ -252,14 +333,14 @@ func cheapestFlight(ctx context.Context, origin, dest, depDate, retDate string) 
 	return best, bestCurr
 }
 
-func buildReasoning(start, end time.Time, nights int, price float64, curr string, preferred bool) string {
+func buildReasoning(start, end time.Time, nights int, total float64, curr string, preferred bool) string {
 	msg := fmt.Sprintf("%s – %s (%d nights)",
 		start.Format("Jan 2"), end.Format("Jan 2"), nights)
 	if preferred {
 		msg += "; overlaps a preferred window"
 	}
-	if price > 0 {
-		msg += fmt.Sprintf("; est. %s %.0f RT", curr, price)
+	if total > 0 {
+		msg += fmt.Sprintf("; total %s %.0f (flight + hotel)", curr, total)
 	} else {
 		msg += "; price unavailable"
 	}

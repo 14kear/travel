@@ -201,6 +201,29 @@ func printTripPlan(ctx context.Context, targetCurrency string, result *trip.Plan
 		fmt.Println()
 	}
 
+	// Breakfast spots within walking distance of the chosen hotel.
+	if len(result.Breakfast) > 0 {
+		hotelName := result.Breakfast[0].HotelName
+		if hotelName != "" {
+			fmt.Printf("  %s Breakfast within 500m of %s\n\n", models.Bold("☕"), truncateName(hotelName, 40))
+		} else {
+			fmt.Printf("  %s Breakfast within walking distance\n\n", models.Bold("☕"))
+		}
+		headers := []string{"Name", "Type", "Distance", "Cuisine", "Hours"}
+		var rows [][]string
+		for _, b := range result.Breakfast {
+			rows = append(rows, []string{
+				truncateName(b.Name, 30),
+				b.Type,
+				fmt.Sprintf("%dm", b.Distance),
+				b.Cuisine,
+				truncateName(b.Hours, 25),
+			})
+		}
+		models.FormatTable(os.Stdout, headers, rows)
+		fmt.Println()
+	}
+
 	// Summary — compute from the cheapest displayed (converted) prices
 	// to avoid raw-API-currency vs display-currency mismatch.
 	cur := targetCurrency

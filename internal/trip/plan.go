@@ -49,6 +49,19 @@ type PlanHotel struct {
 	Total     float64 `json:"total"`
 	Currency  string  `json:"currency"`
 	Amenities string  `json:"amenities,omitempty"`
+	Lat       float64 `json:"lat,omitempty"`
+	Lon       float64 `json:"lon,omitempty"`
+}
+
+// PlanBreakfast is a breakfast spot within walking distance of the chosen hotel.
+type PlanBreakfast struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`               // cafe, restaurant
+	Distance  int    `json:"distance_m"`         // meters from hotel
+	Cuisine   string `json:"cuisine,omitempty"`
+	Hours     string `json:"opening_hours,omitempty"`
+	Website   string `json:"website,omitempty"`
+	HotelName string `json:"hotel_name,omitempty"` // which hotel this is walkable from
 }
 
 // PlanSummary shows the cheapest combination.
@@ -63,18 +76,19 @@ type PlanSummary struct {
 
 // PlanResult is the full trip plan response.
 type PlanResult struct {
-	Success         bool         `json:"success"`
-	Origin          string       `json:"origin"`
-	Destination     string       `json:"destination"`
-	DepartDate      string       `json:"depart_date"`
-	ReturnDate      string       `json:"return_date"`
-	Nights          int          `json:"nights"`
-	Guests          int          `json:"guests"`
-	OutboundFlights []PlanFlight `json:"outbound_flights"`
-	ReturnFlights   []PlanFlight `json:"return_flights"`
-	Hotels          []PlanHotel  `json:"hotels"`
-	Summary         PlanSummary  `json:"summary"`
-	Error           string       `json:"error,omitempty"`
+	Success         bool            `json:"success"`
+	Origin          string          `json:"origin"`
+	Destination     string          `json:"destination"`
+	DepartDate      string          `json:"depart_date"`
+	ReturnDate      string          `json:"return_date"`
+	Nights          int             `json:"nights"`
+	Guests          int             `json:"guests"`
+	OutboundFlights []PlanFlight    `json:"outbound_flights"`
+	ReturnFlights   []PlanFlight    `json:"return_flights"`
+	Hotels          []PlanHotel     `json:"hotels"`
+	Breakfast       []PlanBreakfast `json:"breakfast,omitempty"`
+	Summary         PlanSummary     `json:"summary"`
+	Error           string          `json:"error,omitempty"`
 }
 
 // PlanTrip searches flights and hotels in parallel and returns the top options
@@ -187,6 +201,24 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		result.Hotels = extractTopHotels(hotelResult.Hotels, nights, 5)
 	}
 
+	// Find breakfast spots within walking distance.
+	// Searches top hotels in order — the first one with at least 3 spots
+	// within 500m is picked. This biases toward hotels in lively areas
+	// rather than the absolute cheapest (which may be in a food desert).
+	for _, h := range result.Hotels {
+		if h.Lat == 0 && h.Lon == 0 {
+			continue
+		}
+		spots := findBreakfastNearHotel(ctx, h.Lat, h.Lon)
+		if len(spots) >= 3 {
+			for i := range spots {
+				spots[i].HotelName = h.Name
+			}
+			result.Breakfast = spots
+			break
+		}
+	}
+
 	if input.Currency != "" {
 		convertPlanFlights(ctx, result.OutboundFlights, input.Currency)
 		convertPlanFlights(ctx, result.ReturnFlights, input.Currency)
@@ -297,6 +329,94 @@ func extractTopFlights(flts []models.FlightResult, n int) []PlanFlight {
 	return result
 }
 
+// findBreakfastNearHotel returns up to 5 cafes and restaurants within 600m of
+// the hotel, sorted by distance. Queries multiple POI sources (OSM +
+// Google Maps + Foursquare if configured) via GetNearbyPlaces for resilience.
+// Returns empty on error so a breakfast search failure does not break the
+// trip plan.
+func findBreakfastNearHotel(ctx context.Context, lat, lon float64) []PlanBreakfast {
+	// 600m = ~7 min walk — what a traveler actually wants for breakfast.
+	result, err := destinations.GetNearbyPlaces(ctx, lat, lon, 600, "all")
+	if err != nil || result == nil {
+		return nil
+	}
+
+	// Filter to cafes and restaurants (both can serve breakfast).
+	breakfastTypes := map[string]bool{
+		"cafe":       true,
+		"restaurant": true,
+	}
+
+	type spot struct {
+		name     string
+		poiType  string
+		distance int
+		cuisine  string
+		hours    string
+		website  string
+	}
+	var spots []spot
+
+	// Merge OSM POIs.
+	for _, p := range result.POIs {
+		if breakfastTypes[p.Type] {
+			spots = append(spots, spot{
+				name:     p.Name,
+				poiType:  p.Type,
+				distance: p.Distance,
+				cuisine:  p.Cuisine,
+				hours:    p.Hours,
+				website:  p.Website,
+			})
+		}
+	}
+
+	// Merge rated places (Google Maps / Foursquare) as restaurants.
+	for _, rp := range result.RatedPlaces {
+		if rp.Distance > 600 {
+			continue
+		}
+		spots = append(spots, spot{
+			name:     rp.Name,
+			poiType:  "restaurant",
+			distance: rp.Distance,
+			cuisine:  rp.Cuisine,
+		})
+	}
+
+	// Deduplicate by name (case insensitive, first-seen wins).
+	seen := make(map[string]bool)
+	var unique []spot
+	for _, s := range spots {
+		k := strings.ToLower(strings.TrimSpace(s.name))
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		unique = append(unique, s)
+	}
+
+	sort.Slice(unique, func(i, j int) bool {
+		return unique[i].distance < unique[j].distance
+	})
+	if len(unique) > 5 {
+		unique = unique[:5]
+	}
+
+	out := make([]PlanBreakfast, 0, len(unique))
+	for _, s := range unique {
+		out = append(out, PlanBreakfast{
+			Name:     s.name,
+			Type:     s.poiType,
+			Distance: s.distance,
+			Cuisine:  s.cuisine,
+			Hours:    s.hours,
+			Website:  s.website,
+		})
+	}
+	return out
+}
+
 func joinRoute(parts []string) string {
 	out := ""
 	for i, p := range parts {
@@ -332,6 +452,8 @@ func extractTopHotels(htls []models.HotelResult, nights, n int) []PlanHotel {
 			PerNight: h.Price,
 			Total:    h.Price * float64(nights),
 			Currency: h.Currency,
+			Lat:      h.Lat,
+			Lon:      h.Lon,
 		}
 		if len(h.Amenities) > 0 {
 			if len(h.Amenities) > 3 {

@@ -156,23 +156,39 @@ func printWhenTable(candidates []tripwindow.Candidate, origin, dest string) erro
 
 	fmt.Printf("Travel windows from %s to %s\n\n", origin, dest)
 
-	headers := []string{"#", "Departure", "Return", "Nights", "Est. Cost", "Notes"}
+	headers := []string{"#", "Departure", "Return", "Nights", "Flight", "Hotel", "Total", "Notes"}
 	var rows [][]string
 	for i, c := range candidates {
-		cost := "—"
+		flight := "—"
+		if c.FlightCost > 0 {
+			flight = fmt.Sprintf("%s %.0f", c.Currency, c.FlightCost)
+		}
+		hotel := "—"
+		if c.HotelCost > 0 {
+			hotel = fmt.Sprintf("%s %.0f", c.Currency, c.HotelCost)
+		}
+		total := "—"
 		if c.EstimatedCost > 0 {
-			cost = fmt.Sprintf("%s %.0f", c.Currency, c.EstimatedCost)
+			total = fmt.Sprintf("%s %.0f", c.Currency, c.EstimatedCost)
 		}
 		notes := ""
 		if c.OverlapsPreferred {
 			notes = "preferred"
+		}
+		if c.HotelName != "" {
+			if notes != "" {
+				notes += "; "
+			}
+			notes += c.HotelName
 		}
 		rows = append(rows, []string{
 			fmt.Sprintf("%d", i+1),
 			c.Start,
 			c.End,
 			fmt.Sprintf("%d", c.Nights),
-			cost,
+			flight,
+			hotel,
+			total,
 			notes,
 		})
 	}
