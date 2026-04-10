@@ -315,16 +315,11 @@ func cheapestHotel(ctx context.Context, dest, checkIn, checkOut string, nights i
 	return cheapest.Price * float64(nights), cheapest.Name
 }
 
-// cheapestFlight returns the cheapest round-trip price and currency for the
-// given origin→destination on the given dates. Returns (0, "") on any error.
-// When prefs is non-nil and BudgetFlightMax > 0, flights exceeding that
-// budget are skipped.
-func cheapestFlight(ctx context.Context, origin, dest, depDate, retDate string) (float64, string) {
-	return cheapestFlightWithBudget(ctx, origin, dest, depDate, retDate, 0)
-}
-
-// cheapestFlightWithBudget is cheapestFlight with an optional per-flight
-// budget cap. When maxPrice > 0, results exceeding it are ignored.
+// cheapestFlightWithBudget returns the cheapest round-trip price and currency
+// for the given origin→destination on the given dates. Returns (0, "") on any
+// error. When maxPrice > 0, results exceeding it are ignored.
+//
+// previous wrapper cheapestFlight() was removed (unused, staticcheck U1000).
 func cheapestFlightWithBudget(ctx context.Context, origin, dest, depDate, retDate string, maxPrice float64) (float64, string) {
 	if origin == "" || dest == "" || depDate == "" {
 		return 0, ""

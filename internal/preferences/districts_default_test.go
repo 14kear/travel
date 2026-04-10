@@ -12,7 +12,7 @@ func TestDefaultDistrictsFor_KnownCities(t *testing.T) {
 	for _, city := range cities {
 		t.Run(city, func(t *testing.T) {
 			got := DefaultDistrictsFor(city)
-			if got == nil || len(got) == 0 {
+			if len(got) == 0 {
 				t.Errorf("DefaultDistrictsFor(%q) returned nil/empty, want non-empty", city)
 			}
 		})
