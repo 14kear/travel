@@ -15,15 +15,18 @@ Set CursorBlink false
 # ─────────────────────────────────────────────────────────
 
 Hide
-Type "./trvl explore HEL --format table 2>/dev/null"
+Type "trvl explore HEL --format table 2>/dev/null"
 Enter
-Sleep 30s
-Type "./trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
+Sleep 45s
+Type "trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
 Enter
-Sleep 30s
-Type "./trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
+Sleep 45s
+Type "trvl route Helsinki Dubrovnik 2026-05-01 2>/dev/null"
 Enter
-Sleep 30s
+Sleep 45s
+Type "trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
+Enter
+Sleep 45s
 Type "clear"
 Enter
 Sleep 500ms
@@ -36,9 +39,9 @@ Show
 Type "# Where's cheap from Helsinki right now?"
 Enter
 Sleep 300ms
-Type "./trvl explore HEL --format table 2>/dev/null"
+Type "trvl explore HEL --format table 2>/dev/null"
 Enter
-Sleep 10s
+Sleep 20s
 
 # ═══════════════════════════════════════════════════════════
 # ACT 2: Multi-Modal Route — THE HERO FEATURE
@@ -51,9 +54,9 @@ Sleep 300ms
 Type "# Dubrovnik! How do I get there? Flights, buses, combos..."
 Enter
 Sleep 300ms
-Type "./trvl route Helsinki Dubrovnik 2026-05-01 2>/dev/null"
+Type "trvl route Helsinki Dubrovnik 2026-05-01 2>/dev/null"
 Enter
-Sleep 15s
+Sleep 25s
 
 # ═══════════════════════════════════════════════════════════
 # ACT 3: Ferry Search — live prices from 4 providers
@@ -66,7 +69,7 @@ Sleep 300ms
 Type "# Helsinki → Tallinn: ferries, buses — live prices from 4 providers"
 Enter
 Sleep 300ms
-Type "./trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
+Type "trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
 Enter
 Sleep 10s
 
@@ -81,9 +84,9 @@ Sleep 300ms
 Type "# Full trip: flights + hotel + total cost"
 Enter
 Sleep 300ms
-Type "./trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
+Type "trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
 Enter
-Sleep 12s
+Sleep 25s
 
 Type ""
 Enter

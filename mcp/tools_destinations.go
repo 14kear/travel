@@ -293,7 +293,7 @@ func weekendSummary(result *trip.WeekendResult) string {
 	if len(result.Destinations) > 0 {
 		d := result.Destinations[0]
 		parts = append(parts, fmt.Sprintf("Cheapest: %s (%s) - EUR %.0f total (flight %.0f + hotel est. %.0f)",
-			d.Destination, d.AirportCode, d.TotalEstimate, d.FlightPrice, d.HotelEstimate))
+			d.Destination, d.AirportCode, d.Total, d.FlightPrice, d.HotelPrice))
 	}
 
 	return strings.Join(parts, ". ") + "."

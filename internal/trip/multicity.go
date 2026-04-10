@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/flights"
@@ -62,29 +63,53 @@ func OptimizeMultiCity(ctx context.Context, homeAirport string, cities []string,
 		return nil, fmt.Errorf("depart_date is required")
 	}
 
-	// Pre-fetch all needed prices.
-	// Legs needed: home->each city, each city->each other city, each city->home.
-	allCodes := append([]string{homeAirport}, cities...)
-	priceCache := make(map[string]float64)
-	currencyCache := make(map[string]string)
 	client := newCompoundSearchClient()
 
+	// Build unique lookup pairs.
+	allCodes := append([]string{homeAirport}, cities...)
+	type priceLookup struct{ from, to string }
+	var lookups []priceLookup
+	seen := make(map[string]bool)
 	for _, from := range allCodes {
 		for _, to := range allCodes {
 			if from == to {
 				continue
 			}
 			key := from + "->" + to
-			if _, ok := priceCache[key]; ok {
+			if seen[key] {
 				continue
 			}
-			pc := fetchCheapestPrice(ctx, client, from, to, opts.DepartDate)
-			priceCache[key] = pc.price
-			if pc.currency != "" {
-				currencyCache[key] = pc.currency
-			}
+			seen[key] = true
+			lookups = append(lookups, priceLookup{from, to})
 		}
 	}
+
+	// Fetch prices concurrently with bounded parallelism.
+	var mu sync.Mutex
+	priceCache := make(map[string]float64)
+	currencyCache := make(map[string]string)
+
+	sem := make(chan struct{}, 5) // max 5 concurrent API calls
+	var wg sync.WaitGroup
+
+	for _, l := range lookups {
+		wg.Add(1)
+		go func(from, to string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			pc := fetchCheapestPriceWithClient(ctx, client, from, to, opts.DepartDate)
+
+			mu.Lock()
+			priceCache[from+"->"+to] = pc.price
+			if pc.currency != "" {
+				currencyCache[from+"->"+to] = pc.currency
+			}
+			mu.Unlock()
+		}(l.from, l.to)
+	}
+	wg.Wait()
 
 	return optimizeRoute(homeAirport, cities, priceCache, currencyCache), nil
 }
@@ -173,15 +198,16 @@ func routeCost(home string, perm []string, prices map[string]float64) float64 {
 	return total
 }
 
-// fetchCheapestPrice searches for the cheapest one-way flight between two airports.
-// Returns 9999 if the search fails (so the route is deprioritized but not excluded).
 // priceAndCurrency holds a price with its source currency.
 type priceAndCurrency struct {
 	price    float64
 	currency string
 }
 
-func fetchCheapestPrice(ctx context.Context, client *batchexec.Client, from, to, date string) priceAndCurrency {
+// fetchCheapestPriceWithClient searches for the cheapest one-way flight
+// between two airports. Returns price=9999 if the search fails so the route
+// is deprioritized but not excluded outright.
+func fetchCheapestPriceWithClient(ctx context.Context, client *batchexec.Client, from, to, date string) priceAndCurrency {
 	result, err := flights.SearchFlightsWithClient(ctx, client, from, to, date, flights.SearchOptions{
 		SortBy: models.SortCheapest,
 		Adults: 1,

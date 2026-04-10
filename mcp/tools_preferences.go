@@ -83,16 +83,25 @@ func handleGetPreferences(args map[string]any, _ ElicitFunc, _ SamplingFunc, pro
 	// If profile is empty (no home airports set), return interview instructions
 	// so the AI knows to ask the user before searching.
 	if len(p.HomeAirports) == 0 {
-		interview := "PROFILE EMPTY — interview the user before searching.\n\n" +
-			"Run a quick search first to detect the user's location from the geoip-based " +
-			"currency in the response. Then ask these questions (confirm what you can infer, " +
-			"ask what you can't):\n\n" +
-			"Q1: Confirm home airport based on geoip (e.g. \"Looks like you're in Finland — HEL your home airport?\")\n" +
-			"Q2: Hotel dealbreakers — hostels OK? Own bathroom? Minimum stars/rating?\n" +
+		interview := "PROFILE EMPTY — build the user's travel profile before searching.\n\n" +
+			"BEST APPROACH: Ask the user if you can scan their email for booking confirmations. " +
+			"Search Gmail for: from:(booking.com OR airbnb OR finnair OR klm OR ryanair OR " +
+			"norwegian OR sas OR easyjet OR flixbus) subject:(confirmed OR booking OR ticket). " +
+			"Extract airlines used, routes flown, hotels booked, loyalty programmes, ground " +
+			"transport patterns. Show what you found, ask for corrections, save with " +
+			"update_preferences.\n\n" +
+			"IF NO EMAIL ACCESS: Ask about a concrete trip instead of abstract preferences. " +
+			"\"Tell me about your last trip — where, how did you get there, where did you stay?\" " +
+			"Then: \"What would you change?\" These two questions reveal more than any checklist.\n\n" +
+			"FALLBACK (if neither works): Run a quick search to detect geoip currency, then:\n" +
+			"Q1: Confirm home airport from geoip\n" +
+			"Q2: Hotel dealbreakers — hostels? bathroom? stars? rating?\n" +
 			"Q3: Carry-on only or checked bags?\n" +
-			"Q4: Direct flights important, or connections fine?\n" +
-			"Q5: Anything else about how you travel? (free-text for AI-layer filtering)\n\n" +
-			"Save answers with update_preferences, then proceed with the original search."
+			"Q4: Direct flights or connections fine?\n" +
+			"Q5: Anything else about how you travel?\n\n" +
+			"Save with update_preferences, then proceed with the original search. " +
+			"The profile is a living document — update it whenever you learn something " +
+			"new from the user's searches, reactions, or conversations."
 		content, err := buildAnnotatedContentBlocks(interview, p)
 		if err != nil {
 			return nil, nil, err
