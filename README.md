@@ -487,15 +487,32 @@ trvl trips delete <id>                                # Remove a trip
 
 ### User Preferences
 
-Personal travel profile stored in `~/.trvl/preferences.json`. Used by hacks detectors (e.g. carry-on restrictions for hidden-city) and MCP tools.
+Personal travel profile stored in `~/.trvl/preferences.json`. Drives real-time filtering: hotel results filtered by stars, rating, and neighborhood; hostels and airport hotels excluded; flight results filtered by budget and departure time window. Your AI assistant builds this profile automatically on first use (via `get_preferences` + `update_preferences` MCP tools).
 
 ```bash
 trvl prefs                                            # Show current preferences
-trvl prefs set home_airport HEL                       # Set home airport
-trvl prefs set seat_preference aisle                  # seat, bags, FF programs
-trvl prefs edit                                       # Open in $EDITOR
 trvl prefs init                                       # Interactive setup wizard
+trvl prefs edit                                       # Open in $EDITOR
 ```
+
+Home airport and currency are auto-detected from your IP on first search. The AI assistant interviews you for the rest on first use. Examples of what the profile controls:
+
+| Preference | What it does |
+|---|---|
+| `home_airports: ["HEL", "AMS"]` | Default origin for every search |
+| `no_dormitories: true` | Drops hostels, capsule hotels, guesthouse rooms |
+| `min_hotel_stars: 4` | Only 4-star+ hotels in results |
+| `min_hotel_rating: 4.0` | Only well-reviewed properties (20+ reviews required) |
+| `preferred_districts: {"Prague": ["Prague 1"]}` | Hotels in your favorite neighborhoods first |
+| `carry_on_only: true` | Unlocks hidden-city and throwaway-ticket hacks |
+| `prefer_direct: true` | Nonstop flights only |
+| `budget_per_night_max: 150` | Hotel price cap passed to Google Hotels API |
+| `budget_flight_max: 300` | Flights over budget dropped from results |
+| `flight_time_earliest: "07:00"` | No 5am departures |
+| `default_companions: 1` | Hotel searches default to 2 guests (you + companion) |
+| `notes: "boutique hotels, no chains"` | Free-text — the AI applies these as soft filters |
+
+Full profile reference: [AGENTS.md](AGENTS.md#step-6-build-the-traveller-profile)
 
 ## How It Works
 
