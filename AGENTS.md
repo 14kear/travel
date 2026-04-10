@@ -78,69 +78,82 @@ All free, no credit card, 2 min signup each. Walk the user through each signup:
 
 Use `/setup-api-keys` command for the guided wizard.
 
-### Step 6: (Optional) Create personal travel profile
+### Step 6: Build the traveller profile
 
-Interview the user about their travel preferences and write the result to
-`~/.trvl/preferences.json`. This file drives real-time filtering: hotel
-results get filtered by stars, ratings, neighborhood; hostels and airport
-hotels get excluded; flights get sorted by loyalty airlines.
+This is the most important step. A good profile means every search is
+personalized from the first query. The profile lives at
+`~/.trvl/preferences.json` and drives real filtering: hotels get filtered
+by stars, ratings, and neighborhood; hostels and airport hotels get excluded;
+flights get sorted by loyalty airlines.
 
-Ask these questions **conversationally, a few at a time** (don't dump them all):
+**How to interview: open-ended, not a form.**
 
-**Home base:**
-- Where do you usually fly from? (can be multiple airports, e.g. HEL, AMS)
-- Which cities do you call home?
+Start with ONE question:
 
-**Flights:**
-- Do you travel carry-on only, or do you check bags?
-- Do you prefer direct flights, or are connections fine if cheaper?
-- Any airline loyalty programmes? (e.g. Finnair Plus, KLM Flying Blue — give IATA codes like AY, KL)
+> "Tell me about yourself as a traveller — where do you live, what kind of
+> trips do you usually take, and what matters most when you're booking?"
 
-**Hotels:**
-- Hostels / shared rooms OK, or hotels only?
-- Do you need your own bathroom (en-suite), or is shared OK?
-- Minimum hotel star rating? (0 = any, 3 = no budget motels, 4 = business-grade)
-- Minimum review rating? (e.g. 4.0 out of 5 — filters out low-rated properties)
-- Is fast WiFi important? (remote work / digital nomad?)
-- Any hotel loyalty programmes? (e.g. Marriott Bonvoy, IHG Rewards)
-- For cities you visit often: any preferred neighborhoods? (e.g. Prague 1, Jordaan in Amsterdam)
+Then listen. Their answer tells you which follow-ups matter. Examples:
 
-**General:**
-- What currency should prices be shown in? (EUR, USD, GBP, etc.)
-- Do you book travel for family members? If so, who? (name, relationship, any special notes)
+- They mention **work travel** → ask about loyalty programs, cabin class, expenses
+- They mention **digital nomad** → ask about wifi, co-working, long-stay discounts
+- They mention **family** → ask about family members, checked bags, accessibility
+- They mention **budget** → skip luxury hotel questions, ask about hostels
+- They mention **specific cities** → ask about preferred neighborhoods
+- They mention **quality** → ask about minimum stars, review thresholds
 
-Then write `~/.trvl/preferences.json` — create the directory if needed:
+Ask follow-ups **2-3 at a time**, never more. Each round should feel like
+a natural conversation, not a questionnaire. Adapt based on what they said.
 
-```json
-{
-  "home_airports": ["HEL", "AMS"],
-  "home_cities": ["Helsinki", "Amsterdam"],
-  "carry_on_only": true,
-  "prefer_direct": false,
-  "no_dormitories": true,
-  "ensuite_only": true,
-  "fast_wifi_needed": true,
-  "min_hotel_stars": 3,
-  "min_hotel_rating": 4.0,
-  "preferred_districts": {
-    "Prague": ["Prague 1", "Prague 2"],
-    "Amsterdam": ["Jordaan", "De Pijp", "Oud-West"]
-  },
-  "display_currency": "EUR",
-  "locale": "en",
-  "loyalty_airlines": ["AY", "KL"],
-  "loyalty_hotels": ["Marriott Bonvoy"],
-  "family_members": [
-    {"name": "John", "relationship": "father", "notes": "window seat, needs wheelchair assistance"}
-  ]
-}
-```
+After 3-4 rounds you should have enough to fill most of these fields:
+
+| Field | What it controls |
+|-------|-----------------|
+| `home_airports` | Default origin for searches (e.g. `["HEL", "AMS"]`) |
+| `home_cities` | Cities to exclude from destination suggestions |
+| `carry_on_only` | Enables hidden-city and throwaway-ticketing hacks |
+| `prefer_direct` | Prioritizes nonstop flights |
+| `no_dormitories` | Removes hostels, capsule hotels, shared rooms |
+| `ensuite_only` | Requires private bathroom |
+| `fast_wifi_needed` | Flags for co-working / remote work properties |
+| `min_hotel_stars` | 0=any, 3=no motels, 4=business-grade |
+| `min_hotel_rating` | e.g. 4.0 — also activates 20-review minimum |
+| `preferred_districts` | Per-city neighborhoods (e.g. `{"Prague": ["Prague 1"]}`) |
+| `display_currency` | Price display (EUR, USD, GBP, etc.) |
+| `locale` | Language/region for formatting |
+| `loyalty_airlines` | IATA codes (e.g. `["AY", "KL"]`) |
+| `loyalty_hotels` | e.g. `["Marriott Bonvoy"]` |
+| `family_members` | People the user books for, with notes |
+
+Save to `~/.trvl/preferences.json` using the `update_preferences` tool,
+or write the file directly. Show the user what you saved and ask if
+anything needs adjusting.
+
+**Keeping the profile current — iterative learning:**
+
+The profile is never "done". Update it as you learn from conversations:
+
+1. **Observe patterns**: User searches 4-star hotels 3 times → ask:
+   "You keep picking 4-star properties — want me to set that as your
+   minimum so I filter automatically?"
+
+2. **Catch life changes**: "You've been searching from AMS a lot lately.
+   Should I add Amsterdam to your home airports?"
+
+3. **Explicit corrections**: User says "I got SkyTeam Elite Plus" → update
+   loyalty immediately, confirm what changed.
+
+4. **New cities**: User explores a city for the first time, then picks
+   hotels in a specific area → ask: "Want me to remember [neighborhood]
+   as your preferred area in [city] for next time?"
+
+5. **Family updates**: "I see you're booking for someone new — want me
+   to add them to your profile?"
+
+Always confirm before updating. Use the `update_preferences` MCP tool
+to write changes — it merges fields, so you only send what changed.
 
 Or use the interactive CLI wizard: `trvl prefs init`
-
-Every future search uses these preferences automatically — hotel results
-get filtered, airport/suburb hotels get dropped, hostel chains get excluded,
-preferred neighborhoods get prioritized.
 
 ---
 
