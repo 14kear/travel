@@ -55,6 +55,10 @@ func BrowserReadPage(ctx context.Context, url string, waitSeconds int) (string, 
 
 // browserReadPageWith opens a URL in a specific browser and reads the rendered text.
 func browserReadPageWith(ctx context.Context, browser, url string, waitSeconds int) (string, error) {
+	// Sanitize URL to prevent AppleScript injection via embedded quotes.
+	safeURL := strings.ReplaceAll(url, `"`, "")
+	safeURL = strings.ReplaceAll(safeURL, `\`, "")
+
 	// Open the URL in the browser.
 	openScript := fmt.Sprintf(`tell application "%s"
 	activate
@@ -62,7 +66,7 @@ func browserReadPageWith(ctx context.Context, browser, url string, waitSeconds i
 		make new window
 	end if
 	set URL of active tab of front window to "%s"
-end tell`, browser, url)
+end tell`, browser, safeURL)
 
 	if browser == "Safari" {
 		openScript = fmt.Sprintf(`tell application "Safari"

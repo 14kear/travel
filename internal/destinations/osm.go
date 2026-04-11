@@ -47,6 +47,31 @@ var osmTourismCategories = map[string]bool{
 	"viewpoint":  true,
 }
 
+// osmAmenityCategories lists valid amenity= values to prevent Overpass QL injection.
+// Only whitelisted categories are interpolated into the query string.
+var osmAmenityCategories = map[string]bool{
+	"restaurant":   true,
+	"cafe":         true,
+	"bar":          true,
+	"pub":          true,
+	"fast_food":    true,
+	"pharmacy":     true,
+	"hospital":     true,
+	"bank":         true,
+	"atm":          true,
+	"fuel":         true,
+	"parking":      true,
+	"taxi":         true,
+	"bus_station":  true,
+	"marketplace":  true,
+	"place_of_worship": true,
+	"theatre":      true,
+	"cinema":       true,
+	"library":      true,
+	"nightclub":    true,
+	"ice_cream":    true,
+}
+
 // overpassResponse is the JSON shape from the Overpass API.
 type overpassResponse struct {
 	Elements []overpassElement `json:"elements"`
@@ -108,7 +133,7 @@ func GetNearbyPOIs(ctx context.Context, lat, lon float64, radiusMeters int, cate
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read overpass response: %w", err)
 	}
@@ -165,7 +190,16 @@ out center 20;`, radius, lat, lon, radius, lat, lon, radius, lat, lon, radius, l
 out center 20;`, radius, lat, lon, category, radius, lat, lon, category)
 	}
 
-	// Default: amenity category.
+	// Default: amenity category — validate against whitelist to prevent Overpass QL injection.
+	if !osmAmenityCategories[category] {
+		// Unknown category: fall back to a safe generic query instead of interpolating user input.
+		return fmt.Sprintf(`[out:json][timeout:10];
+(
+  node(around:%d,%.6f,%.6f)[amenity=restaurant];
+  way(around:%d,%.6f,%.6f)[amenity=restaurant];
+);
+out center 20;`, radius, lat, lon, radius, lat, lon)
+	}
 	return fmt.Sprintf(`[out:json][timeout:10];
 (
   node(around:%d,%.6f,%.6f)[amenity=%s];
