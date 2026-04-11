@@ -56,7 +56,7 @@ trvl flights HEL LHR 2026-07-01 --format json | head -5
 # Expected: JSON with flight results
 ```
 
-Tell the user: "trvl is installed with 33 MCP tools and 1 bundled Claude skill. I can search flights, hotels, destinations, plan trips, find weekend getaways, find optimal travel windows, optimize multi-city routes, find nearby restaurants, check local events, search ground transport, detect travel hacks, check weather forecasts, and look up airline baggage rules. Just ask me anything about travel."
+Tell the user: "trvl is installed with 34 MCP tools and 1 bundled Claude skill. I can search flights, hotels, destinations, plan trips, find weekend getaways, find optimal travel windows, optimize multi-city routes, find nearby restaurants, check local events, search ground transport, detect travel hacks, check weather forecasts, look up airline baggage rules, and find airport lounges. Just ask me anything about travel."
 
 ### Step 5: (Optional) Set up free API keys for enhanced data
 
@@ -217,7 +217,7 @@ CLI alternative: `trvl prefs init`
 
 ## How To Use (after setup)
 
-You now have 33 MCP tools available. Use them when the user asks about travel:
+You now have 34 MCP tools available. Use them when the user asks about travel:
 
 ### search_flights — Find flights between airports
 ```json
@@ -316,6 +316,12 @@ Returns: optimal visit order, per-segment prices, total cost, savings vs worst o
 Merges individual fields into `~/.trvl/preferences.json`. Only send the
 fields you want to change — other fields are preserved. Always confirm
 with the user before calling this tool.
+
+### search_lounges — Find airport lounges at a given airport
+```json
+{"airport": "HEL"}
+```
+Returns: lounge name, terminal, accepted access cards (Priority Pass, Diners Club, LoungeKey, etc.), amenities, opening hours. If the user has `lounge_cards` set in preferences, results are annotated with `accessible_with` — the subset of their own cards that grant free entry to each lounge.
 
 ### MCP Prompts (for complex workflows)
 - `plan-trip` — Full trip planning: flights + hotels + budget analysis
