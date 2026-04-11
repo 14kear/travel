@@ -127,7 +127,9 @@ func searchFlightsTool() ToolDef {
 				"depart_after":   {Type: "string", Description: "Earliest departure time HH:MM, e.g. 06:00 (default: no filter)"},
 				"depart_before":  {Type: "string", Description: "Latest departure time HH:MM, e.g. 22:00 (default: no filter)"},
 				"less_emissions":      {Type: "boolean", Description: "Only show flights with lower CO2 emissions (default: false)"},
-				"require_checked_bag": {Type: "boolean", Description: "Only show flights with ≥1 free checked bag included (default: false). Unique feature — filters on bag allowance data from Google responses."},
+				"carry_on_bags":       {Type: "integer", Description: "Require N carry-on bags included in price (0 = no filter, 1 = require carry-on). Server-side filter."},
+				"checked_bags":        {Type: "integer", Description: "Require N checked bags included in price (0 = no filter, 1+ = require checked bags). Server-side filter — hidden Google feature not in their UI."},
+				"require_checked_bag": {Type: "boolean", Description: "Only show flights with ≥1 free checked bag included (default: false). Client-side post-filter on response data."},
 			},
 			Required: []string{"origin", "destination", "departure_date"},
 		},
@@ -209,6 +211,8 @@ func handleSearchFlights(ctx context.Context, args map[string]any, elicit Elicit
 		DepartAfter:       argString(args, "depart_after"),
 		DepartBefore:      argString(args, "depart_before"),
 		LessEmissions:     argBool(args, "less_emissions", false),
+		CarryOnBags:       argInt(args, "carry_on_bags", 0),
+		CheckedBags:       argInt(args, "checked_bags", 0),
 		RequireCheckedBag: argBool(args, "require_checked_bag", false),
 	}
 
