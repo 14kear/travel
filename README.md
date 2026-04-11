@@ -194,6 +194,50 @@ That's it. Your AI assistant now has 33 travel tools available. Just ask natural
 | **mark_trip_booked** | Mark a trip leg as booked | Trip ID, leg index |
 | **get_baggage_rules** | Look up carry-on and checked baggage allowances for airlines | AY carry-on + checked bag rules |
 
+## Search Filters
+
+### Flight Filters (`search_flights`)
+
+| Filter | Parameter | Notes |
+|--------|-----------|-------|
+| Cabin class | `cabin_class` | `economy`, `premium_economy`, `business`, `first` |
+| Max stops | `max_stops` | `nonstop`, `one_stop`, `two_plus`, or `any` |
+| Alliance | `alliances` | `STAR_ALLIANCE`, `ONEWORLD`, `SKYTEAM` — server-side |
+| Departure time window | `depart_after` / `depart_before` | `HH:MM` format — server-side |
+| Lower emissions | `less_emissions` | Only flights with below-average CO2 — server-side |
+| Carry-on bags | `carry_on_bags` | Require N carry-on bags included — server-side price recalculation |
+| Checked bags | `checked_bags` | **Hidden Google feature** — require N checked bags included, server-side. Google's own UI only exposes carry-on; trvl also wires the checked-bag slot in the same filter array. |
+| Require checked bag | `require_checked_bag` | Client-side post-filter: drops any flight without ≥1 free checked bag in the parsed response |
+| Max price | `max_price` | Integer, whole currency units — server-side |
+| Max duration | `max_duration` | Minutes — server-side |
+| Exclude basic economy | `exclude_basic` | Drops BE fares — server-side |
+| Sort | `sort_by` | `cheapest`, `duration`, `departure`, `arrival` |
+| Airlines | `airlines` | Comma-separated IATA codes (e.g. `AY,LH`) |
+
+### Hotel Filters (`search_hotels`)
+
+| Filter | Parameter | Notes |
+|--------|-----------|-------|
+| Free cancellation | `free_cancellation` | `?fc=1` server-side Google Hotels param |
+| Property type | `property_type` | `hotel`, `apartment`, `hostel`, `resort`, `bnb`, `villa` — server-side `?ptype=N` |
+| Brand / chain | `brand` | Case-insensitive substring match (e.g. `hilton`, `marriott`) — client-side |
+| Star rating | `stars` | Minimum 1-5 — server-side `?class=N` |
+| Guest rating | `min_rating` | e.g. `4.0` — server-side `?rating=N` and client-side guard |
+| Distance from center | `max_distance` | Kilometres — server-side `?lrad=N` (metres) |
+| Amenities | `amenities` | Comma-separated required amenities — client-side |
+| Price range | `min_price` / `max_price` | Per night — server-side `?min_price` / `?max_price` and client-side guard |
+| Sort | `sort` | `price`, `rating`, `distance`, `stars` |
+
+### Ground Transport Filters (`search_ground`)
+
+| Filter | Parameter | Notes |
+|--------|-----------|-------|
+| Mode | `type` | `bus`, `train`, `ferry` — client-side |
+| Max price | `max_price` | Currency units — client-side |
+| Provider | `provider` | Restrict to one provider (e.g. `flixbus`, `db`, `regiojet`) |
+
+> **Unique feature:** The `checked_bags` filter on `search_flights` directly sets the checked-bags slot in Google's internal `batchexecute` filter array — the same wire position as carry-on bags. Google's own Flights UI only exposes the carry-on filter; the checked-bag slot works server-side but is undocumented and not surfaced in the UI. trvl is the only client that exposes it.
+
 ### MCP Protocol Features (v2025-11-25)
 
 | Feature | Details |
