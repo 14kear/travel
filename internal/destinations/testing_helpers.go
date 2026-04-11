@@ -2,6 +2,11 @@ package destinations
 
 // This file provides test-only helpers for overriding API URLs and clearing caches.
 // The package uses unexported variables for URLs to allow test substitution.
+//
+// WARNING: These helpers mutate package-level variables and are NOT safe for use
+// with t.Parallel(). Tests that call setTest*URL or clearAllCaches must NOT be
+// marked parallel. The proper fix is dependency injection, but that refactor is
+// out of scope for the current session.
 
 // Mutable URL variables (package-level constants replaced with vars for testability).
 var (
