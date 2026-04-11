@@ -227,7 +227,7 @@ func handleSearchFlights(args map[string]any, elicit ElicitFunc, sampling Sampli
 		opts.SortBy = parsed
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	result, err := flights.SearchFlights(ctx, origin, dest, date, opts)
 	if err != nil {
@@ -293,7 +293,7 @@ func handleSearchDates(args map[string]any, elicit ElicitFunc, sampling Sampling
 		RoundTrip: argBool(args, "is_round_trip", false),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	result, err := flights.SearchDates(ctx, origin, dest, opts)
 	if err != nil {
@@ -530,7 +530,7 @@ func handleSuggestDates(args map[string]any, elicit ElicitFunc, sampling Samplin
 		return nil, nil, fmt.Errorf("invalid destination: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	opts := trip.SmartDateOptions{

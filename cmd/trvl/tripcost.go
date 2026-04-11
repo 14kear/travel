@@ -39,7 +39,7 @@ Examples:
 			origin := strings.ToUpper(args[0])
 			dest := strings.ToUpper(args[1])
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 120*time.Second)
 			defer cancel()
 
 			input := trip.TripCostInput{

@@ -134,7 +134,7 @@ func handleSearchGround(args map[string]any, elicit ElicitFunc, sampling Samplin
 		return nil, nil, fmt.Errorf("from, to, and date are required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	opts := ground.SearchOptions{
@@ -190,7 +190,7 @@ func handleSearchAirportTransfers(args map[string]any, elicit ElicitFunc, sampli
 		return nil, nil, fmt.Errorf("airport_code, destination, and date are required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	result, err := trip.SearchAirportTransfers(ctx, input)

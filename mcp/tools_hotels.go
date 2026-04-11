@@ -219,7 +219,7 @@ func handleSearchHotels(args map[string]any, elicit ElicitFunc, sampling Samplin
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	result, err := hotels.SearchHotels(ctx, location, opts)
 	if err != nil {
@@ -276,7 +276,7 @@ func handleHotelPrices(args map[string]any, elicit ElicitFunc, sampling Sampling
 		return nil, nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	result, err := hotels.GetHotelPrices(ctx, hotelID, checkIn, checkOut, currency)
 	if err != nil {
@@ -419,7 +419,7 @@ func handleHotelReviews(args map[string]any, elicit ElicitFunc, sampling Samplin
 		opts.Sort = "newest"
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	result, err := hotels.GetHotelReviews(ctx, hotelID, opts)
 	if err != nil {
