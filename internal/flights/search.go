@@ -136,9 +136,11 @@ func SearchFlightsWithClient(ctx context.Context, client *batchexec.Client, orig
 	if opts.RequireCheckedBag {
 		flights = filterFlightsWithCheckedBag(flights)
 	}
-	// Alliance filter (client-side) — server-side at outer[1][25] returns 400
-	// for all tested formats. Use airline→alliance map from loyalty.go instead.
-	if len(opts.Alliances) > 0 {
+	// Alliance filter: server-side at segment[5] uses AND semantics for multiple
+	// alliances (intersection). Client-side fallback provides OR semantics (union)
+	// which is what users typically want ("show Oneworld OR Star Alliance").
+	// Single alliance: server-side handles it. Multiple: client-side OR filter.
+	if len(opts.Alliances) > 1 {
 		flights = filterFlightsByAlliance(flights, opts.Alliances)
 	}
 

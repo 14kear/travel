@@ -131,7 +131,7 @@ func searchFlightsTool() ToolDef {
 				"exclude_basic":       {Type: "boolean", Description: "Exclude basic economy fares (default: false). Server-side filter."},
 				"less_emissions":      {Type: "boolean", Description: "Only show flights with lower CO2 emissions (default: false)"},
 				"carry_on_bags":       {Type: "integer", Description: "Require N carry-on bags included in price (0 = no filter, 1 = require carry-on). Server-side price recalculation."},
-				"checked_bags":        {Type: "integer", Description: "Require N checked bags included in price (0 = no filter, 1+ = require checked bags). Hidden Google feature — not in their UI."},
+				"checked_bags":        {Type: "integer", Description: "Checked bags pricing hint (0 = default, 1+ = recalculate prices including N checked bags). Changes price display, does not remove flights. Use require_checked_bag for actual filtering."},
 				"require_checked_bag": {Type: "boolean", Description: "Only show flights with ≥1 free checked bag included (default: false). Client-side post-filter on response data."},
 			},
 			Required: []string{"origin", "destination", "departure_date"},
