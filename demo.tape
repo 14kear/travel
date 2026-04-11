@@ -9,29 +9,6 @@ Set Padding 16
 Set TypingSpeed 50ms
 Set CursorBlink false
 
-# ─────────────────────────────────────────────────────────
-# trvl — Multi-modal travel: flights, buses, ferries, routes
-# Pre-warm every visible command so results come from cache.
-# ─────────────────────────────────────────────────────────
-
-Hide
-Type "trvl explore HEL --format table 2>/dev/null"
-Enter
-Sleep 45s
-Type "trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
-Enter
-Sleep 45s
-Type "trvl route Helsinki Dubrovnik 2026-05-01 2>/dev/null"
-Enter
-Sleep 45s
-Type "trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
-Enter
-Sleep 45s
-Type "clear"
-Enter
-Sleep 500ms
-Show
-
 # ═══════════════════════════════════════════════════════════
 # ACT 1: Discovery — "Where's cheap from Helsinki?"
 # ═══════════════════════════════════════════════════════════
@@ -39,58 +16,47 @@ Show
 Type "# Where's cheap from Helsinki right now?"
 Enter
 Sleep 300ms
-Type "trvl explore HEL --format table 2>/dev/null"
+Type "trvl explore HEL --format table"
 Enter
-Sleep 4s
+Sleep 30s
 
 # ═══════════════════════════════════════════════════════════
-# ACT 2: Multi-Modal Route — THE HERO FEATURE
-# ═══════════════════════════════════════════════════════════
-
-Type "clear"
-Enter
-Sleep 300ms
-
-Type "# Dubrovnik! How do I get there? Flights, buses, combos..."
-Enter
-Sleep 300ms
-Type "trvl route Helsinki Dubrovnik 2026-05-01 2>/dev/null"
-Enter
-Sleep 5s
-
-# ═══════════════════════════════════════════════════════════
-# ACT 3: Ferry Search — live prices from 4 providers
+# ACT 2: Flights — real-time prices
 # ═══════════════════════════════════════════════════════════
 
 Type "clear"
 Enter
 Sleep 300ms
 
-Type "# Helsinki → Tallinn: ferries, buses — live prices from 4 providers"
+Type "# Flights to Prague next month"
 Enter
 Sleep 300ms
-Type "trvl ground Helsinki Tallinn 2026-05-01 2>/dev/null"
+Type "trvl flights HEL PRG 2026-05-01"
 Enter
-Sleep 4s
+Sleep 20s
 
 # ═══════════════════════════════════════════════════════════
-# ACT 4: Trip Planning — flights + hotel in one search
+# ACT 3: Ground Transport — ferries + buses
 # ═══════════════════════════════════════════════════════════
 
 Type "clear"
 Enter
 Sleep 300ms
 
-Type "# Full trip: flights + hotel + total cost"
+Type "# Helsinki to Tallinn: ferries, buses — live prices"
 Enter
 Sleep 300ms
-Type "trvl trip HEL BCN --depart 2026-05-01 --return 2026-05-08 2>/dev/null"
+Type "trvl ground Helsinki Tallinn 2026-05-01"
 Enter
-Sleep 5s
+Sleep 30s
+
+# ═══════════════════════════════════════════════════════════
+# CLOSING
+# ═══════════════════════════════════════════════════════════
 
 Type ""
 Enter
-Sleep 1500ms
+Sleep 500ms
 Type "# 33 MCP tools · 33 CLI commands · 17 providers · No API keys"
 Enter
 Sleep 400ms
