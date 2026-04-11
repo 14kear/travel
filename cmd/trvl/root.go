@@ -37,6 +37,15 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noCache, "no-cache", false, "bypass response cache")
 	rootCmd.PersistentFlags().DurationVar(&cliTimeout, "timeout", 120*time.Second, "request timeout (e.g. 30s, 2m)")
 
+	// Star nudge: shown once after a few successful searches (CLI interactive only).
+	rootCmd.PersistentPostRun = func(cmd *cobra.Command, args []string) {
+		f, _ := cmd.Flags().GetString("format")
+		if f == "" {
+			f = format // fall back to persistent flag
+		}
+		maybeShowStarNudge(cmd.Name(), f)
+	}
+
 	rootCmd.AddCommand(flightsCmd())
 	rootCmd.AddCommand(datesCmd())
 	rootCmd.AddCommand(hotelsCmd())
