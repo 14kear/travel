@@ -39,10 +39,12 @@ jobs:
         if: runner.os != 'Windows'
         run: govulncheck ./...
       - name: Test
-        run: go test -race -coverprofile coverage.out ./...
+        run: go test -p=1 -race -coverprofile coverage.out ./...
       - name: Coverage report
         if: runner.os != 'Windows'
-        run: go tool cover -func=coverage.out | tail -1
+        run: |
+          COVERAGE_REPORT=$(go tool cover -func=coverage.out)
+          printf '%s\n' "$COVERAGE_REPORT" | tail -1
       - name: Coverage threshold
         if: runner.os != 'Windows'
         # FIXME(coverage): the recent destination intelligence + discover +
@@ -54,7 +56,12 @@ jobs:
         # internal/destinations/hotel_enrich.go, internal/preferences
         # filters, internal/trip/discover.go.
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print substr($3, 1, length($3)-1)}')
+          COVERAGE_REPORT=$(go tool cover -func=coverage.out)
+          COVERAGE=$(printf '%s\n' "$COVERAGE_REPORT" | awk '/^total:/ {print substr($3, 1, length($3)-1)}')
+          if [ -z "$COVERAGE" ]; then
+            echo "::error::Failed to parse total coverage from go tool cover output"
+            exit 1
+          fi
           echo "Total coverage: ${COVERAGE}%"
           if [ "$(echo "$COVERAGE < 50" | bc -l)" -eq 1 ]; then
             echo "::error::Coverage ${COVERAGE}% is below 50% threshold"
