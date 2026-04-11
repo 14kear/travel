@@ -27,15 +27,19 @@ type Lounge struct {
 	Airport string `json:"airport"`
 	// Terminal is a human-readable terminal designation, e.g. "Terminal 2, Gate D".
 	Terminal string `json:"terminal,omitempty"`
+	// Type categorises the lounge: "card" (Priority Pass etc.), "airline"
+	// (airline status/class), "bank" (credit-card branded), "amex" (Centurion
+	// network), or "independent" (pay-per-use).
+	Type string `json:"type,omitempty"`
 	// Cards lists the access card / program names that grant free entry, e.g.
-	// ["Priority Pass", "Diners Club", "Visa Infinite"].
+	// ["Priority Pass", "Diners Club", "Oneworld Emerald"].
 	Cards []string `json:"cards,omitempty"`
 	// Amenities is a free-text list of available services.
 	Amenities []string `json:"amenities,omitempty"`
 	// OpenHours is a human-readable opening hours string, e.g. "04:30–23:30".
 	OpenHours string `json:"open_hours,omitempty"`
 	// AccessibleWith is populated by AnnotateAccess — the subset of the
-	// user's own lounge cards that grant entry to this lounge.
+	// user's own lounge cards/statuses that grant entry to this lounge.
 	AccessibleWith []string `json:"accessible_with,omitempty"`
 }
 
@@ -185,8 +189,29 @@ type staticLounge struct {
 // LoungeKey and Dragon Pass — the four most widely accepted programs.
 var ppDragon = []string{"Priority Pass", "Diners Club", "LoungeKey", "Dragon Pass"}
 
-// ppOnly are lounges accepting Priority Pass and LoungeKey only.
+// ppLK are lounges accepting Priority Pass and LoungeKey only.
 var ppLK = []string{"Priority Pass", "LoungeKey"}
+
+// amexPlatinum is access via American Express Platinum/Centurion cards.
+var amexPlatinum = []string{"Amex Platinum", "Amex Centurion"}
+
+// amexCenturion are Amex's own Centurion Lounge network.
+var amexCenturion = []string{"Amex Centurion", "Amex Platinum"}
+
+// merge combines multiple card slices into one deduplicated list.
+func merge(lists ...[]string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, list := range lists {
+		for _, c := range list {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
 
 // staticData holds curated lounge data for the top-30 hub airports.
 // Cards use the same name conventions as preferences.LoungeCards so
@@ -197,26 +222,50 @@ var ppLK = []string{"Priority Pass", "LoungeKey"}
 var staticData = map[string][]staticLounge{
 	// ── Europe ──────────────────────────────────────────────────────────────
 	"HEL": {
+		// Priority Pass network lounges
 		{
-			Name:      "Finnair Lounge (Schengen)",
-			Terminal:  "Terminal 2, Gate 22",
+			Name:      "Aspire Lounge (Gate 13)",
+			Terminal:  "Terminal 2, Schengen, Gate 13",
 			Cards:     ppDragon,
+			Amenities: []string{"Wi-Fi", "Snacks", "Bar", "Newspapers"},
+			OpenHours: "05:00–09:00",
+		},
+		{
+			Name:      "Aspire Lounge (Gate 27)",
+			Terminal:  "Terminal 2, Schengen, Gate 27",
+			Cards:     ppDragon,
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Newspapers"},
+			OpenHours: "05:00–21:00",
+		},
+		{
+			Name:      "Plaza Premium Lounge",
+			Terminal:  "Terminal 2, Non-Schengen",
+			Cards:     merge(ppDragon, amexPlatinum),
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
+			OpenHours: "06:00–19:30",
+		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "Finnair Premium Lounge (Schengen)",
+			Terminal:  "Terminal 2, Gate 22",
+			Cards:     []string{"Finnair Plus Gold", "Finnair Plus Platinum", "Oneworld Sapphire", "Oneworld Emerald", "Finnair Business Class"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Sauna"},
 			OpenHours: "04:30–23:00",
 		},
 		{
-			Name:      "Finnair Lounge (Non-Schengen)",
+			Name:      "Finnair Premium Lounge (Non-Schengen)",
 			Terminal:  "Terminal 2, Gate 36",
-			Cards:     ppDragon,
+			Cards:     []string{"Finnair Plus Gold", "Finnair Plus Platinum", "Oneworld Sapphire", "Oneworld Emerald", "Finnair Business Class"},
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
 			OpenHours: "05:00–23:30",
 		},
+		// Bank-specific lounges
 		{
-			Name:      "Helsinki Airport Premium Lounge",
-			Terminal:  "Terminal 2, Non-Schengen",
-			Cards:     ppDragon,
-			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers"},
-			OpenHours: "05:30–22:30",
+			Name:      "OP Lounge",
+			Terminal:  "Terminal 2, Schengen",
+			Cards:     []string{"OP Visa Platinum", "OP Private Banking"},
+			Amenities: []string{"Wi-Fi", "Snacks", "Coffee", "Newspapers", "Workstations"},
+			OpenHours: "05:30–20:00",
 		},
 	},
 	"LHR": {
@@ -259,6 +308,36 @@ var staticData = map[string][]staticLounge{
 			Name:      "Plaza Premium Lounge",
 			Terminal:  "Terminal 2",
 			Cards:     ppDragon,
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Spa"},
+			OpenHours: "06:00–22:00",
+		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "British Airways Galleries First",
+			Terminal:  "Terminal 5",
+			Cards:     []string{"BA First Class", "Oneworld Emerald", "BA Gold"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Champagne bar", "Showers", "Spa"},
+			OpenHours: "05:00–22:30",
+		},
+		{
+			Name:      "British Airways Galleries Club",
+			Terminal:  "Terminal 5",
+			Cards:     []string{"BA Business Class", "Oneworld Sapphire", "Oneworld Emerald", "BA Silver", "BA Gold"},
+			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers", "Workstations"},
+			OpenHours: "05:00–22:30",
+		},
+		{
+			Name:      "Virgin Atlantic Clubhouse",
+			Terminal:  "Terminal 3",
+			Cards:     []string{"Virgin Upper Class", "Virgin Gold"},
+			Amenities: []string{"Wi-Fi", "Restaurant", "Cocktail bar", "Spa", "Pool table", "Showers"},
+			OpenHours: "05:30–22:00",
+		},
+		// Amex Centurion Lounge
+		{
+			Name:      "The Centurion Lounge",
+			Terminal:  "Terminal 3",
+			Cards:     amexCenturion,
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Spa"},
 			OpenHours: "06:00–22:00",
 		},
@@ -937,6 +1016,34 @@ func isAlpha(s string) bool {
 	return len(s) > 0
 }
 
+// classifyLounge infers a lounge type from its access card list.
+func classifyLounge(cards []string) string {
+	for _, c := range cards {
+		lower := strings.ToLower(c)
+		switch {
+		case lower == "amex centurion":
+			return "amex"
+		case strings.Contains(lower, "business class") ||
+			strings.Contains(lower, "first class") ||
+			strings.Contains(lower, "oneworld") ||
+			strings.Contains(lower, "star alliance") ||
+			strings.Contains(lower, "skyteam") ||
+			strings.Contains(lower, "plus gold") ||
+			strings.Contains(lower, "plus platinum"):
+			return "airline"
+		case strings.Contains(lower, "visa platinum") ||
+			strings.Contains(lower, "private banking"):
+			return "bank"
+		}
+	}
+	for _, c := range cards {
+		if c == "Priority Pass" || c == "LoungeKey" || c == "Dragon Pass" || c == "Diners Club" {
+			return "card"
+		}
+	}
+	return "independent"
+}
+
 // staticFallback returns curated lounge data when no API is available.
 // For airports not in the dataset it returns an empty-but-successful result.
 func staticFallback(airport string) *SearchResult {
@@ -957,6 +1064,7 @@ func staticFallback(airport string) *SearchResult {
 			Name:      e.Name,
 			Airport:   airport,
 			Terminal:  e.Terminal,
+			Type:      classifyLounge(e.Cards),
 			Cards:     e.Cards,
 			Amenities: e.Amenities,
 			OpenHours: e.OpenHours,
