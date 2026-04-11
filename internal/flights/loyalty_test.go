@@ -7,7 +7,11 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/preferences"
 )
 
-// helpers
+// helpers — underscore-assign to satisfy staticcheck (kept for future tests)
+var (
+	_ = boolPtr
+	_ = intPtr
+)
 
 func boolPtr(b bool) *bool { return &b }
 func intPtr(n int) *int    { return &n }
