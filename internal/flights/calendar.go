@@ -400,13 +400,9 @@ func DetectSourceCurrencyWithClient(ctx context.Context, client *batchexec.Clien
 	return detected
 }
 
-// detectSourceCurrency does a quick flight search to discover the raw currency
+// detectSourceCurrencyWithClient does a quick flight search to discover the raw currency
 // that the Google API returns for this IP location. It reads the currency
 // directly from the raw parsed data, BEFORE any conversion.
-func detectSourceCurrency(ctx context.Context, origin, dest, date string) string {
-	return detectSourceCurrencyWithClient(ctx, DefaultClient(), origin, dest, date)
-}
-
 func detectSourceCurrencyWithClient(ctx context.Context, client *batchexec.Client, origin, dest, date string) string {
 	quickCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
