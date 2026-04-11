@@ -830,3 +830,246 @@ func TestParseOrganicHotel_AllFields(t *testing.T) {
 		}
 	}
 }
+
+// --- extractSponsoredAmenities ---
+
+func TestExtractSponsoredAmenities_ValidCodes(t *testing.T) {
+	// Amenity codes from a real sponsored entry.
+	raw := []any{float64(18), float64(11), float64(23), float64(4), float64(24), float64(1), float64(6), float64(2)}
+	amenities := extractSponsoredAmenities(raw)
+	if len(amenities) == 0 {
+		t.Fatal("expected amenities, got none")
+	}
+
+	// Check that known codes are mapped.
+	found := map[string]bool{}
+	for _, a := range amenities {
+		found[a] = true
+	}
+
+	// Code 2 = "free_wifi", code 4 = "pool", code 23 = "free_parking"
+	expected := []string{"free_wifi", "pool", "free_parking"}
+	for _, e := range expected {
+		if !found[e] {
+			t.Errorf("missing amenity %q in %v", e, amenities)
+		}
+	}
+}
+
+func TestExtractSponsoredAmenities_Nil(t *testing.T) {
+	amenities := extractSponsoredAmenities(nil)
+	if len(amenities) != 0 {
+		t.Errorf("expected 0 amenities for nil, got %d", len(amenities))
+	}
+}
+
+func TestExtractSponsoredAmenities_NotArray(t *testing.T) {
+	amenities := extractSponsoredAmenities("not an array")
+	if len(amenities) != 0 {
+		t.Errorf("expected 0 amenities for non-array, got %d", len(amenities))
+	}
+}
+
+func TestExtractSponsoredAmenities_UnknownCodes(t *testing.T) {
+	raw := []any{float64(999), float64(888)} // no known mapping
+	amenities := extractSponsoredAmenities(raw)
+	if len(amenities) != 0 {
+		t.Errorf("expected 0 for unknown codes, got %d", len(amenities))
+	}
+}
+
+func TestExtractSponsoredAmenities_Dedup(t *testing.T) {
+	// Code 11 and 54 both map to "accessible".
+	raw := []any{float64(11), float64(54)}
+	amenities := extractSponsoredAmenities(raw)
+	count := 0
+	for _, a := range amenities {
+		if a == "accessible" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 'accessible' entry, got %d in %v", count, amenities)
+	}
+}
+
+// --- extractTotalAvailable ---
+
+func TestExtractTotalAvailable_Key416343588(t *testing.T) {
+	hotelList := []any{
+		[]any{
+			nil,
+			map[string]any{
+				"416343588": []any{float64(2384), float64(0), "Helsinki", float64(0), float64(3)},
+			},
+		},
+	}
+	data := []any{[]any{[]any{[]any{nil, hotelList}}}}
+	total := extractTotalAvailable(data)
+	if total != 2384 {
+		t.Errorf("total = %d, want 2384", total)
+	}
+}
+
+func TestExtractTotalAvailable_Key410579159(t *testing.T) {
+	hotelList := []any{
+		[]any{
+			nil,
+			map[string]any{
+				"410579159": []any{"CBI=", "", float64(1500), float64(1), float64(20)},
+			},
+		},
+	}
+	data := []any{[]any{[]any{[]any{nil, hotelList}}}}
+	total := extractTotalAvailable(data)
+	if total != 1500 {
+		t.Errorf("total = %d, want 1500", total)
+	}
+}
+
+func TestExtractTotalAvailable_Nil(t *testing.T) {
+	total := extractTotalAvailable(nil)
+	if total != 0 {
+		t.Errorf("total = %d, want 0", total)
+	}
+}
+
+func TestExtractTotalAvailable_NoMetadataKeys(t *testing.T) {
+	hotelList := []any{
+		[]any{
+			nil,
+			map[string]any{
+				"397419284": []any{},
+			},
+		},
+	}
+	data := []any{[]any{[]any{[]any{nil, hotelList}}}}
+	total := extractTotalAvailable(data)
+	if total != 0 {
+		t.Errorf("total = %d, want 0 when no metadata keys", total)
+	}
+}
+
+// --- parseSponsoredHotel enriched fields ---
+
+func TestParseSponsoredHotel_LatLon(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "Hotel With Coords"
+	entry[2] = "EUR 100"
+	entry[4] = float64(500)
+	entry[5] = float64(4.5)
+	entry[16] = []any{60.1646, 24.9348}
+
+	h := parseSponsoredHotel(entry, "EUR")
+	if h.Lat != 60.1646 {
+		t.Errorf("Lat = %v, want 60.1646", h.Lat)
+	}
+	if h.Lon != 24.9348 {
+		t.Errorf("Lon = %v, want 24.9348", h.Lon)
+	}
+}
+
+func TestParseSponsoredHotel_Stars(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "Five Star Hotel"
+	entry[10] = float64(5)
+
+	h := parseSponsoredHotel(entry, "USD")
+	if h.Stars != 5 {
+		t.Errorf("Stars = %d, want 5", h.Stars)
+	}
+}
+
+func TestParseSponsoredHotel_StarsInvalid(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "Invalid Stars Hotel"
+	entry[10] = float64(0) // below valid range
+
+	h := parseSponsoredHotel(entry, "USD")
+	if h.Stars != 0 {
+		t.Errorf("Stars = %d, want 0 for invalid", h.Stars)
+	}
+}
+
+func TestParseSponsoredHotel_Amenities(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "Hotel With Amenities"
+	entry[9] = []any{float64(2), float64(4), float64(23)} // wifi, pool, free_parking
+
+	h := parseSponsoredHotel(entry, "USD")
+	if len(h.Amenities) != 3 {
+		t.Errorf("Amenities count = %d, want 3: %v", len(h.Amenities), h.Amenities)
+	}
+}
+
+func TestParseSponsoredHotel_ExactPrice(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "Exact Price Hotel"
+	// No string price at [2].
+	entry[20] = []any{float64(121), float64(0), nil, float64(97.85), float64(11.64)}
+
+	h := parseSponsoredHotel(entry, "USD")
+	if h.Price != 98 { // rounded from 97.85
+		t.Errorf("Price = %v, want 98 (rounded from 97.85)", h.Price)
+	}
+}
+
+func TestParseSponsoredHotel_StringPriceOverridesExact(t *testing.T) {
+	entry := make([]any, 21)
+	entry[0] = "String Price Hotel"
+	entry[2] = "EUR 100"
+	entry[20] = []any{float64(121), float64(0), nil, float64(97.85)}
+
+	h := parseSponsoredHotel(entry, "USD")
+	// [20] always wins because it runs after [2] and overwrites.
+	if h.Price != 98 {
+		t.Errorf("Price = %v, want 98 (exact price from [20])", h.Price)
+	}
+}
+
+// --- parseHotelsFromPageFull ---
+
+func TestParseHotelsFromPageFull_WithTotalAvailable(t *testing.T) {
+	hotel := make([]any, 12)
+	hotel[0] = nil
+	hotel[1] = "Test Hotel"
+	hotel[2] = []any{[]any{60.168, 24.941}}
+	hotel[9] = "/g/test"
+
+	hotelList := []any{
+		[]any{
+			nil,
+			map[string]any{
+				"397419284": []any{hotel},
+			},
+		},
+		[]any{
+			nil,
+			map[string]any{
+				"416343588": []any{float64(5000), float64(0), "Test City"},
+			},
+		},
+	}
+	innerData := []any{[]any{[]any{[]any{nil, hotelList}}}}
+	dataJSON, _ := json.Marshal(innerData)
+
+	page := `AF_initDataCallback({key: 'ds:0', data:` + string(dataJSON) + `});`
+
+	pr := parseHotelsFromPageFull(page, "EUR")
+	if len(pr.Hotels) != 1 {
+		t.Fatalf("expected 1 hotel, got %d", len(pr.Hotels))
+	}
+	if pr.TotalAvailable != 5000 {
+		t.Errorf("TotalAvailable = %d, want 5000", pr.TotalAvailable)
+	}
+}
+
+func TestParseHotelsFromPageFull_NoCallbacks(t *testing.T) {
+	pr := parseHotelsFromPageFull("<html>no callbacks</html>", "USD")
+	if len(pr.Hotels) != 0 {
+		t.Errorf("expected 0 hotels, got %d", len(pr.Hotels))
+	}
+	if pr.TotalAvailable != 0 {
+		t.Errorf("expected 0 total, got %d", pr.TotalAvailable)
+	}
+}

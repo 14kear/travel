@@ -18,10 +18,11 @@ type HotelResult struct {
 
 // HotelSearchResult is the top-level response for a hotel search.
 type HotelSearchResult struct {
-	Success bool          `json:"success"`
-	Count   int           `json:"count"`
-	Hotels  []HotelResult `json:"hotels"`
-	Error   string        `json:"error,omitempty"`
+	Success        bool          `json:"success"`
+	Count          int           `json:"count"`
+	TotalAvailable int           `json:"total_available,omitempty"`
+	Hotels         []HotelResult `json:"hotels"`
+	Error          string        `json:"error,omitempty"`
 }
 
 // ProviderPrice represents a single booking provider's price for a hotel.

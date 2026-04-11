@@ -3,12 +3,19 @@ package hotels
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/jsonutil"
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
+
+// parseResult bundles parsed hotels with metadata extracted from the response.
+type parseResult struct {
+	Hotels         []models.HotelResult
+	TotalAvailable int // total hotels available from Google (0 = unknown)
+}
 
 // parseHotelsFromPage extracts hotel data from a Google Travel Hotels HTML page.
 //
@@ -26,17 +33,38 @@ import (
 //   - [9] = Google Place ID
 //   - [11] = description array
 //
-// 2. Sponsored hotels at data[0][0][0][1][1][1]["300000000"][2]:
+// 2. Sponsored hotels at data[0][0][0][1][N][1]["300000000"][2]:
 //   - [0] = hotel name
 //   - [2] = price string (e.g. "PLN 420")
 //   - [4] = review count
 //   - [5] = rating (float)
 //   - [6] = provider name
+//   - [9] = amenity codes array
+//   - [10] = stars
+//   - [16] = [lat, lon]
+//   - [20] = [?, ?, null, exact_price, ...]
+//
+// 3. Metadata at data[0][0][0][1][N][1]["416343588"]:
+//   - [0] = total number of hotels available
 func parseHotelsFromPage(page string, currency string) ([]models.HotelResult, error) {
+	pr := parseHotelsFromPageFull(page, currency)
+	if pr.Hotels == nil && pr.TotalAvailable == 0 {
+		return nil, fmt.Errorf("no AF_initDataCallback blocks found in page")
+	}
+	if len(pr.Hotels) == 0 {
+		return nil, fmt.Errorf("no hotels found in response payload")
+	}
+	return pr.Hotels, nil
+}
+
+// parseHotelsFromPageFull extracts hotels and metadata from a Google Travel
+// Hotels HTML page. Unlike parseHotelsFromPage, it returns the full parseResult
+// including total available count.
+func parseHotelsFromPageFull(page string, currency string) parseResult {
 	// Extract AF_initDataCallback data blocks from the HTML.
 	callbacks := extractCallbacks(page)
 	if len(callbacks) == 0 {
-		return nil, fmt.Errorf("no AF_initDataCallback blocks found in page")
+		return parseResult{}
 	}
 
 	// Find the largest callback (typically "ds:0") which contains hotel data.
@@ -51,7 +79,7 @@ func parseHotelsFromPage(page string, currency string) ([]models.HotelResult, er
 	}
 
 	if hotelData == nil {
-		return nil, fmt.Errorf("no parseable data callback found")
+		return parseResult{}
 	}
 
 	var hotels []models.HotelResult
@@ -64,14 +92,16 @@ func parseHotelsFromPage(page string, currency string) ([]models.HotelResult, er
 	sponsored := extractSponsoredHotels(hotelData, currency)
 	hotels = append(hotels, sponsored...)
 
-	if len(hotels) == 0 {
-		return nil, fmt.Errorf("no hotels found in response payload")
-	}
-
 	// Deduplicate by name (sponsored and organic can overlap).
 	hotels = deduplicateHotels(hotels)
 
-	return hotels, nil
+	// Extract total results count from metadata keys.
+	totalAvailable := extractTotalAvailable(hotelData)
+
+	return parseResult{
+		Hotels:         hotels,
+		TotalAvailable: totalAvailable,
+	}
 }
 
 // extractCallbacks extracts parsed JSON data from AF_initDataCallback blocks
@@ -407,6 +437,18 @@ func extractSponsoredHotels(data any, currency string) []models.HotelResult {
 }
 
 // parseSponsoredHotel extracts hotel fields from a sponsored hotel entry.
+//
+// The 21-element sponsored entry structure:
+//
+//	[0]  = hotel name
+//	[2]  = price string (e.g. "EUR 98")
+//	[4]  = review count (float)
+//	[5]  = rating (float)
+//	[6]  = provider name
+//	[9]  = amenity codes array (e.g. [18, 11, 23, 4])
+//	[10] = star rating (float)
+//	[16] = [lat, lon]
+//	[20] = [?, ?, null, exact_price, ...]
 func parseSponsoredHotel(entry []any, currency string) models.HotelResult {
 	h := models.HotelResult{Currency: currency}
 
@@ -442,13 +484,65 @@ func parseSponsoredHotel(entry []any, currency string) models.HotelResult {
 		}
 	}
 
+	// [9] = amenity codes array (e.g. [18, 11, 23, 4, 24, 1, 6, 2])
+	if len(entry) > 9 {
+		h.Amenities = extractSponsoredAmenities(entry[9])
+	}
+
+	// [10] = star rating
+	if len(entry) > 10 {
+		if stars, ok := entry[10].(float64); ok && stars >= 1 && stars <= 5 {
+			h.Stars = int(stars)
+		}
+	}
+
+	// [16] = [lat, lon]
+	if len(entry) > 16 {
+		if coords, ok := entry[16].([]any); ok && len(coords) >= 2 {
+			if lat, ok := coords[0].(float64); ok {
+				h.Lat = lat
+			}
+			if lon, ok := coords[1].(float64); ok {
+				h.Lon = lon
+			}
+		}
+	}
+
+	// [20] = price details: [?, ?, null, exact_price, ...]
+	// Use the exact float price, rounded. This is more reliable than parsing
+	// the price string (which may use currency symbols like "€98" without spaces).
+	if len(entry) > 20 {
+		if priceArr, ok := entry[20].([]any); ok && len(priceArr) > 3 {
+			if exactPrice, ok := priceArr[3].(float64); ok && exactPrice > 0 {
+				h.Price = math.Round(exactPrice)
+			}
+		}
+	}
+
 	return h
 }
 
-// parsePriceString parses a price string like "PLN 420" or "USD 150.50".
+// parsePriceString parses a price string like "PLN 420", "USD 150.50", or "€98".
 func parsePriceString(s string) (float64, string) {
 	s = strings.TrimSpace(s)
 	parts := strings.Fields(s)
+
+	// Handle symbol-attached prices like "€98", "$150", "£200".
+	if len(parts) == 1 {
+		// Strip leading/trailing non-digit, non-dot characters.
+		numStr := strings.TrimLeftFunc(s, func(r rune) bool {
+			return r != '.' && (r < '0' || r > '9')
+		})
+		numStr = strings.TrimRightFunc(numStr, func(r rune) bool {
+			return r != '.' && (r < '0' || r > '9')
+		})
+		numStr = strings.ReplaceAll(numStr, ",", "")
+		if amount, err := strconv.ParseFloat(numStr, 64); err == nil && amount > 0 {
+			return amount, ""
+		}
+		return 0, ""
+	}
+
 	if len(parts) < 2 {
 		return 0, ""
 	}
@@ -473,6 +567,85 @@ func parsePriceString(s string) (float64, string) {
 	}
 
 	return amount, currency
+}
+
+// extractSponsoredAmenities extracts amenity names from a sponsored hotel's
+// amenity codes array. Sponsored entries store amenity codes as a flat array
+// of numbers (e.g. [18, 11, 23, 4]) rather than the paired format used by
+// organic entries.
+func extractSponsoredAmenities(raw any) []string {
+	arr, ok := raw.([]any)
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var amenities []string
+
+	for _, v := range arr {
+		code, ok := v.(float64)
+		if !ok {
+			continue
+		}
+		name, known := amenityCodeMap[int(code)]
+		if !known {
+			continue
+		}
+		if !seen[name] {
+			seen[name] = true
+			amenities = append(amenities, name)
+		}
+	}
+
+	return amenities
+}
+
+// extractTotalAvailable searches for the total hotel count in the response
+// metadata. Google embeds this in entries with map key "416343588" at [0]
+// and in pagination entries with key "410579159" at [2].
+func extractTotalAvailable(data any) int {
+	// Navigate to data[0][0][0][1] — the hotel list container.
+	hotelList := jsonutil.NavigateArray(data, 0, 0, 0, 1)
+	if hotelList == nil {
+		return 0
+	}
+
+	arr, ok := hotelList.([]any)
+	if !ok {
+		return 0
+	}
+
+	for _, entry := range arr {
+		entryArr, ok := entry.([]any)
+		if !ok || len(entryArr) < 2 {
+			continue
+		}
+
+		mapVal, ok := entryArr[1].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// Key "416343588" holds [totalCount, 0, "location", ...].
+		if val, ok := mapVal["416343588"]; ok {
+			if countArr, ok := val.([]any); ok && len(countArr) > 0 {
+				if total, ok := countArr[0].(float64); ok && total > 0 {
+					return int(total)
+				}
+			}
+		}
+
+		// Key "410579159" holds ["cursor", "", totalCount, page, pageSize].
+		if val, ok := mapVal["410579159"]; ok {
+			if paginationArr, ok := val.([]any); ok && len(paginationArr) > 2 {
+				if total, ok := paginationArr[2].(float64); ok && total > 0 {
+					return int(total)
+				}
+			}
+		}
+	}
+
+	return 0
 }
 
 // deduplicateHotels removes duplicate hotels by name, keeping the first

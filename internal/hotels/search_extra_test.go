@@ -61,10 +61,26 @@ func TestParsePriceString_InvalidCurrency(t *testing.T) {
 }
 
 func TestParsePriceString_SymbolPrefix(t *testing.T) {
-	// "$123" — single token, not enough parts.
-	amt, _ := parsePriceString("$123")
-	if amt != 0 {
-		t.Errorf("amount = %v, want 0 for single-token price", amt)
+	// "$123" — currency symbol attached to amount (no space).
+	// Google Hotels uses this format for sponsored entries (e.g. "€98").
+	amt, cur := parsePriceString("$123")
+	if amt != 123 {
+		t.Errorf("amount = %v, want 123", amt)
+	}
+	if cur != "" {
+		t.Errorf("currency = %q, want empty (symbol prefix, not 3-letter code)", cur)
+	}
+
+	// "€98" — euro symbol.
+	amt, _ = parsePriceString("€98")
+	if amt != 98 {
+		t.Errorf("amount = %v, want 98", amt)
+	}
+
+	// "£200" — pound symbol.
+	amt, _ = parsePriceString("£200")
+	if amt != 200 {
+		t.Errorf("amount = %v, want 200", amt)
 	}
 }
 

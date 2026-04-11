@@ -117,11 +117,13 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		return nil, fmt.Errorf("parse check-out date: %w", err)
 	}
 
-	// Fetch first page.
-	hotels, err := fetchHotelPage(ctx, client, location, opts, 0)
+	// Fetch first page (with metadata).
+	firstPage, err := fetchHotelPageFull(ctx, client, location, opts, 0)
 	if err != nil {
 		return nil, err
 	}
+	hotels := firstPage.Hotels
+	totalAvailable := firstPage.TotalAvailable
 
 	// Paginate: fetch subsequent pages until we get no new results or hit maxPages.
 	seen := make(map[string]bool, len(hotels))
@@ -180,15 +182,26 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 	}
 
 	return &models.HotelSearchResult{
-		Success: true,
-		Count:   len(hotels),
-		Hotels:  hotels,
+		Success:        true,
+		Count:          len(hotels),
+		TotalAvailable: totalAvailable,
+		Hotels:         hotels,
 	}, nil
 }
 
 // fetchHotelPage fetches a single page of hotel results at the given offset.
 // offset=0 is the first page, offset=20 is the second, etc.
 func fetchHotelPage(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int) ([]models.HotelResult, error) {
+	pr, err := fetchHotelPageFull(ctx, client, location, opts, offset)
+	if err != nil {
+		return nil, err
+	}
+	return pr.Hotels, nil
+}
+
+// fetchHotelPageFull fetches a single page and returns the full parseResult
+// including metadata like total available count.
+func fetchHotelPageFull(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int) (parseResult, error) {
 	travelURL := buildTravelURL(location, opts)
 	if offset > 0 {
 		travelURL += fmt.Sprintf("&start=%d", offset)
@@ -196,25 +209,25 @@ func fetchHotelPage(ctx context.Context, client *batchexec.Client, location stri
 
 	status, body, err := client.Get(ctx, travelURL)
 	if err != nil {
-		return nil, fmt.Errorf("hotel search request: %w", err)
+		return parseResult{}, fmt.Errorf("hotel search request: %w", err)
 	}
 
 	if status == 403 {
-		return nil, batchexec.ErrBlocked
+		return parseResult{}, batchexec.ErrBlocked
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("hotel search returned status %d", status)
+		return parseResult{}, fmt.Errorf("hotel search returned status %d", status)
 	}
 	if len(body) < 1000 {
-		return nil, fmt.Errorf("hotel search returned empty response")
+		return parseResult{}, fmt.Errorf("hotel search returned empty response")
 	}
 
-	hotels, err := parseHotelsFromPage(string(body), opts.Currency)
-	if err != nil {
-		return nil, fmt.Errorf("parse hotel results: %w", err)
+	pr := parseHotelsFromPageFull(string(body), opts.Currency)
+	if len(pr.Hotels) == 0 {
+		return parseResult{}, fmt.Errorf("parse hotel results: no hotels found in response payload")
 	}
 
-	return hotels, nil
+	return pr, nil
 }
 
 // buildHotelBookingURL constructs a Google Hotels deep link for a location and dates.

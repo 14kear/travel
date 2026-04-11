@@ -124,8 +124,11 @@ func formatHotelsTable(ctx context.Context, targetCurrency string, result *model
 		return nil
 	}
 
-	models.Banner(os.Stdout, "🏨", "Hotels",
-		fmt.Sprintf("Found %d hotels", result.Count))
+	summary := fmt.Sprintf("Found %d hotels", result.Count)
+	if result.TotalAvailable > result.Count {
+		summary = fmt.Sprintf("Showing %d of %d hotels", result.Count, result.TotalAvailable)
+	}
+	models.Banner(os.Stdout, "🏨", "Hotels", summary)
 	fmt.Println()
 
 	// Convert prices if --currency specified and differs from API result.
