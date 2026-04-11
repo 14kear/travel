@@ -132,11 +132,14 @@ func SearchFlightsWithClient(ctx context.Context, client *batchexec.Client, orig
 		flights[i].BookingURL = buildFlightBookingURL(origin, destination, date)
 	}
 
-	// Client-side post-filter: require checked bag included.
-	// This is a unique feature — Google returns bag data in responses but
-	// doesn't offer a server-side checked bag filter.
+	// Client-side post-filters.
 	if opts.RequireCheckedBag {
 		flights = filterFlightsWithCheckedBag(flights)
+	}
+	// Alliance filter (client-side) — server-side at outer[1][25] returns 400
+	// for all tested formats. Use airline→alliance map from loyalty.go instead.
+	if len(opts.Alliances) > 0 {
+		flights = filterFlightsByAlliance(flights, opts.Alliances)
 	}
 
 	tripType := "one_way"
@@ -221,7 +224,7 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			nil,                                          // [22]
 			nil,                                          // [23]
 			nil,                                          // [24]
-			alliancesFilter(opts.Alliances),              // [25] alliance filter
+			alliancesFilter(opts.Alliances),              // [25] alliance filter — keep server-side, client-side fallback below
 			nil,                                          // [26]
 			nil,                                          // [27]
 			excludeBasicEconomy(opts.ExcludeBasic),        // [28] exclude basic economy
@@ -322,6 +325,29 @@ func filterFlightsWithCheckedBag(flights []models.FlightResult) []models.FlightR
 	return filtered
 }
 
+// filterFlightsByAlliance keeps only flights where the first leg's airline
+// belongs to one of the requested alliances. Uses the airline→alliance map
+// from loyalty.go. This is a client-side fallback because the server-side
+// alliance filter at outer[1][25] returns 400 for all tested formats.
+func filterFlightsByAlliance(flights []models.FlightResult, alliances []string) []models.FlightResult {
+	want := make(map[string]bool, len(alliances))
+	for _, a := range alliances {
+		want[strings.ToLower(a)] = true
+	}
+
+	filtered := flights[:0]
+	for _, f := range flights {
+		if len(f.Legs) == 0 {
+			continue
+		}
+		airline := f.Legs[0].AirlineCode
+		if alliance, ok := allianceMembership[airline]; ok && want[alliance] {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
+}
+
 // durationLimit returns the max duration in minutes, or nil if unset.
 func durationLimit(maxDuration int) any {
 	if maxDuration <= 0 {
@@ -396,10 +422,12 @@ func parseHour(hhmm string) int {
 	return hour
 }
 
-// emissionsFilter returns 1 when the less-emissions filter is active, nil otherwise.
+// emissionsFilter returns the emissions flag for the batchexecute filter.
+// Wire format is []any{1} — scalar 1 returns 400. Verified via live probe:
+// [1] at segment[13] returns 13 flights (89% reduction), scalar 1 returns 400.
 func emissionsFilter(less bool) any {
 	if less {
-		return 1
+		return []any{1}
 	}
 	return nil
 }

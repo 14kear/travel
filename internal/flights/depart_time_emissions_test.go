@@ -111,8 +111,13 @@ func TestDepartTimeWindow_InvalidInputs(t *testing.T) {
 
 func TestEmissionsFilter_True(t *testing.T) {
 	got := emissionsFilter(true)
-	if got != 1 {
-		t.Errorf("emissionsFilter(true) = %v, want 1", got)
+	// Wire format is []any{1}, not scalar 1 (scalar returns 400 from Google).
+	arr, ok := got.([]any)
+	if !ok || len(arr) != 1 {
+		t.Fatalf("emissionsFilter(true) = %v (%T), want []any{1}", got, got)
+	}
+	if arr[0] != 1 {
+		t.Errorf("emissionsFilter(true)[0] = %v, want 1", arr[0])
 	}
 }
 
@@ -157,8 +162,10 @@ func TestBuildSegment_Emissions_WiredToPosition13(t *testing.T) {
 	seg := buildSegment("HEL", "NRT", "2026-06-01", opts)
 	arr := seg.([]any)
 
-	if arr[13] != 1 {
-		t.Errorf("segment[13] expected 1 (emissions), got %v", arr[13])
+	// Wire format: []any{1}, not scalar (scalar returns 400).
+	emArr, ok := arr[13].([]any)
+	if !ok || len(emArr) != 1 || emArr[0] != 1 {
+		t.Errorf("segment[13] expected []any{1} (emissions), got %v", arr[13])
 	}
 }
 
