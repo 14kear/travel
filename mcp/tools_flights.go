@@ -251,11 +251,13 @@ func handleSearchFlights(ctx context.Context, args map[string]any, elicit Elicit
 		return nil, nil, err
 	}
 
-	// Apply preference-based post-filters (budget, departure time window).
+	// Apply preference-based post-filters (budget, departure time window,
+	// and frequent flyer bag allowance adjustments).
 	prefs, _ := preferences.Load()
 	if prefs != nil && result != nil && result.Success {
 		result.Flights = flights.FilterFlightsByBudget(result.Flights, prefs.BudgetFlightMax)
 		result.Flights = flights.FilterFlightsByTimePreference(result.Flights, prefs.FlightTimeEarliest, prefs.FlightTimeLatest)
+		result.Flights = flights.AdjustBagAllowance(result.Flights, prefs.FrequentFlyerPrograms)
 		result.Count = len(result.Flights)
 	}
 

@@ -40,8 +40,9 @@ type Preferences struct {
 	Locale          string `json:"locale"`           // "en-FI"
 
 	// Loyalty programmes
-	LoyaltyAirlines []string `json:"loyalty_airlines,omitempty"` // IATA codes, e.g. ["KL", "AY"]
-	LoyaltyHotels   []string `json:"loyalty_hotels,omitempty"`   // e.g. ["Marriott Bonvoy", "IHG"]
+	LoyaltyAirlines      []string             `json:"loyalty_airlines,omitempty"`       // IATA codes, e.g. ["KL", "AY"]
+	LoyaltyHotels        []string             `json:"loyalty_hotels,omitempty"`         // e.g. ["Marriott Bonvoy", "IHG"]
+	FrequentFlyerPrograms []FrequentFlyerStatus `json:"frequent_flyer_programs,omitempty"` // alliance status tiers
 
 	// Travel style (extended)
 	DefaultCompanions int      `json:"default_companions"`          // 0 = solo, 1 = couple, 2+ = family/group
@@ -79,6 +80,23 @@ type FamilyMember struct {
 	Name         string `json:"name"`
 	Relationship string `json:"relationship"` // "father", "spouse", etc.
 	Notes        string `json:"notes"`        // free-form preferences
+}
+
+// FrequentFlyerStatus records a user's loyalty tier in an airline alliance
+// or with a specific carrier.
+//
+// Alliance is the alliance name: "oneworld", "skyteam", or "star_alliance"
+// (case-insensitive). Tier is the status level within that alliance, e.g.
+// "ruby", "sapphire", "emerald" (Oneworld), "elite", "elite_plus" (SkyTeam),
+// "silver", "gold" (Star Alliance).
+//
+// AirlineCode is optional: if set (IATA code, e.g. "BA", "AY") the status is
+// treated as belonging to that specific carrier for benefit look-up purposes
+// when the flight's airline matches exactly.
+type FrequentFlyerStatus struct {
+	Alliance    string `json:"alliance"`               // "oneworld", "skyteam", "star_alliance"
+	Tier        string `json:"tier"`                   // tier name, e.g. "gold", "sapphire"
+	AirlineCode string `json:"airline_code,omitempty"` // optional specific IATA carrier code
 }
 
 // defaultPath returns the canonical preferences file path (~/.trvl/preferences.json).
