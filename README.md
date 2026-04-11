@@ -5,12 +5,12 @@
 [![License](https://img.shields.io/badge/license-PolyForm%20NC%201.0-blue)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/MikkoParkkola/trvl.svg)](https://pkg.go.dev/github.com/MikkoParkkola/trvl)
 [![MCP](https://img.shields.io/badge/MCP-2025--11--25-blue)](https://modelcontextprotocol.io)
-[![Providers](https://img.shields.io/badge/providers-17-brightgreen)](https://github.com/MikkoParkkola/trvl#providers)
+[![Providers](https://img.shields.io/badge/providers-18-brightgreen)](https://github.com/MikkoParkkola/trvl#providers)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/MikkoParkkola/trvl)](https://go.dev/)
 
 # trvl — The Travel MCP Server
 
-![trvl demo](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/demo.gif?v=0.3.1)
+![trvl demo](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/demo.gif?v=0.3.2)
 
 > **33 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, destination intel. Free. API-first.**
 >
@@ -236,7 +236,7 @@ That's it. Your AI assistant now has 33 travel tools available. Just ask natural
 
 ## Ground Transport Providers
 
-trvl searches 16 ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes 17 transport providers overall:
+trvl searches 17 ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes 18 transport providers overall:
 
 | Provider | Protocol | Coverage | Starting price | Auth |
 |----------|----------|----------|----------------|------|
@@ -251,10 +251,11 @@ trvl searches 16 ground transport providers in parallel, covering most of Europe
 | **FlixBus** | REST | Pan-European buses (40+ countries) | EUR 5+ | None |
 | **RegioJet** | REST | CZ/SK/AT/HU/DE/PL buses + trains | EUR 5+ | None |
 | **Transitous** | MOTIS2 REST | Pan-European transit (schedule-based fallback) | — | None |
-| **Tallink** | REST API | Baltic Sea ferries (Helsinki, Tallinn, Stockholm, Riga) | EUR 16+ | None |
+| **Tallink** | Booking SPA API | Baltic Sea ferries (Helsinki, Tallinn, Stockholm, Riga) — future dates | EUR 16+ | Session cookie (auto) |
 | **Viking Line** | Reference schedule | Baltic Sea ferries (Helsinki, Tallinn, Stockholm, Turku) | EUR 22+ | None |
 | **Eckerö Line** | Magento AJAX API | Helsinki ↔ Tallinn (M/S Finlandia) | EUR 19+ | None |
 | **Stena Line** | Reference schedule | North Sea + Baltic (Gothenburg, Kiel, Karlskrona, Gdynia, …) | EUR 25+ | None |
+| **Finnlines** | GraphQL (AppSync) | Helsinki ↔ Travemünde, Naantali ↔ Kapellskär, Malmö ↔ Świnoujście | EUR 27+ | Public API key (embedded) |
 | **DFDS** | REST API | North Sea + Baltic (Kiel, Amsterdam, Newcastle, Copenhagen, …) | EUR 49+ | None |
 
 Two providers (NS, Digitransit/VR) use public API keys that are embedded in the binary — no signup or personal key is required from the user.
@@ -264,7 +265,7 @@ Two providers (NS, Digitransit/VR) use public API keys that are embedded in the 
 | Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
 |---------|------|-----|---------------|------------|------|
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bus/train/ferry search | ✅ (16 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Stena Line, DFDS) | ❌ | ❌ | ❌ | ❌ |
+| Bus/train/ferry search | ✅ (17 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS) | ❌ | ❌ | ❌ | ❌ |
 | Price tracking | ✅ (watches with alerts) | ❌ | ❌ | ❌ | ❌ |
 | Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
