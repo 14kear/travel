@@ -37,8 +37,9 @@ type SearchOptions struct {
 	// Server-side filters passed to Google Flights batchexecute.
 	MaxPrice      int    // Max price in whole currency units (0 = no limit)
 	MaxDuration   int    // Max total flight duration in minutes (0 = no limit)
-	CarryOnBags   int    // Number of carry-on bags (0 = no filter)
-	CheckedBags   int    // Number of checked bags (0 = no filter)
+	CarryOnBags   int    // Number of carry-on bags (0 = no filter, 1 = require carry-on included)
+	// Note: Google Flights UI only supports carry-on bag filter. CheckedBags
+	// was removed after research confirmed no server-side checked bag filter exists.
 	ExcludeBasic  bool   // Exclude basic economy fares
 	Alliances     []string // Alliance filter; e.g. ["STAR_ALLIANCE", "ONEWORLD", "SKYTEAM"]
 }
@@ -191,7 +192,7 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			priceLimit(opts.MaxPrice),                     // [7] max price (nil or int)
 			nil,                                          // [8]
 			nil,                                          // [9]
-			bagsFilter(opts.CarryOnBags, opts.CheckedBags), // [10] bags [carryOn, checked]
+			bagsFilter(opts.CarryOnBags),                    // [10] carry-on bags filter
 			nil,                                          // [11]
 			nil,                                          // [12]
 			segments,                                     // [13] flight segments
@@ -281,12 +282,13 @@ func priceLimit(maxPrice int) any {
 	return maxPrice
 }
 
-// bagsFilter returns the bags array for the batchexecute filter, or nil if unset.
-func bagsFilter(carryOn, checked int) any {
-	if carryOn <= 0 && checked <= 0 {
+// bagsFilter returns the carry-on bags count for the batchexecute filter, or nil if unset.
+// Google Flights only supports carry-on bag filtering (verified: UI toggle + SerpAPI).
+func bagsFilter(carryOn int) any {
+	if carryOn <= 0 {
 		return nil
 	}
-	return []any{carryOn, checked}
+	return carryOn
 }
 
 // durationLimit returns the max duration in minutes, or nil if unset.
