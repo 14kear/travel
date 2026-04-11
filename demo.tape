@@ -31,22 +31,37 @@ Sleep 300ms
 Type "# Flights to Prague next month"
 Enter
 Sleep 300ms
-Type "trvl flights HEL PRG 2026-05-01"
+Type "trvl flights HEL PRG 2026-05-15"
 Enter
 Sleep 20s
 
 # ═══════════════════════════════════════════════════════════
-# ACT 3: Ground Transport — ferries + buses
+# ACT 3: Ferries — Helsinki to Tallinn TODAY (live prices)
 # ═══════════════════════════════════════════════════════════
 
 Type "clear"
 Enter
 Sleep 300ms
 
-Type "# Helsinki to Tallinn: ferries, buses — live prices"
+Type "# Helsinki to Tallinn: ferries + buses — live prices"
 Enter
 Sleep 300ms
-Type "trvl ground Helsinki Tallinn 2026-05-01"
+Type "trvl ground Helsinki Tallinn $(date +%Y-%m-%d)"
+Enter
+Sleep 30s
+
+# ═══════════════════════════════════════════════════════════
+# ACT 4: Trip cost — flights + hotel total
+# ═══════════════════════════════════════════════════════════
+
+Type "clear"
+Enter
+Sleep 300ms
+
+Type "# Full trip cost: Helsinki → Paris, flights + hotel"
+Enter
+Sleep 300ms
+Type "trvl trip-cost HEL CDG --depart 2026-06-01 --return 2026-06-05"
 Enter
 Sleep 30s
 
