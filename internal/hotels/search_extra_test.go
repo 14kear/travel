@@ -258,14 +258,20 @@ func TestFilterByStars_ZeroStars(t *testing.T) {
 	hotels := []models.HotelResult{
 		{Name: "Unknown Stars", Stars: 0},
 		{Name: "Five Star", Stars: 5},
+		{Name: "Two Star", Stars: 2},
 	}
 
+	// Stars=0 means "unknown" (Google didn't annotate), not "zero stars".
+	// Unknown should pass through; only known-but-below-minimum should be filtered.
 	result := filterByStars(hotels, 3)
-	if len(result) != 1 {
-		t.Fatalf("expected 1, got %d", len(result))
+	if len(result) != 2 {
+		t.Fatalf("expected 2 (unknown + 5-star), got %d", len(result))
 	}
-	if result[0].Name != "Five Star" {
-		t.Errorf("expected Five Star, got %q", result[0].Name)
+	if result[0].Name != "Unknown Stars" {
+		t.Errorf("expected Unknown Stars first, got %q", result[0].Name)
+	}
+	if result[1].Name != "Five Star" {
+		t.Errorf("expected Five Star second, got %q", result[1].Name)
 	}
 }
 

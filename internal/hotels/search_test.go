@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -408,5 +409,70 @@ func TestParseOneProvider(t *testing.T) {
 	}
 	if p.Currency != "USD" {
 		t.Errorf("Currency = %q, want %q", p.Currency, "USD")
+	}
+}
+
+// TestNormalizeHotelCity verifies that English city names are mapped to the
+// local-language names that Google Hotels uses for geocoding.
+func TestNormalizeHotelCity(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// Cities that need mapping (English → local)
+		{"Prague", "Praha"},
+		{"prague", "Praha"},         // case-insensitive
+		{"  Prague  ", "Praha"},     // trimmed
+		{"Munich", "München"},
+		{"Vienna", "Wien"},
+		{"Cologne", "Köln"},
+		{"Copenhagen", "København"},
+		{"Warsaw", "Warszawa"},
+		{"Bucharest", "București"},
+		{"Gothenburg", "Göteborg"},
+		{"Nuremberg", "Nürnberg"},
+
+		// Cities that should pass through unchanged (Google handles them fine)
+		{"Paris", "Paris"},
+		{"London", "London"},
+		{"Rome", "Rome"},
+		{"Helsinki", "Helsinki"},
+		{"Barcelona", "Barcelona"},
+		{"New York", "New York"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		got := normalizeHotelCity(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizeHotelCity(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+// TestHotelCityAliasesComplete verifies all aliases in the map have non-empty values.
+func TestHotelCityAliasesComplete(t *testing.T) {
+	for eng, local := range hotelCityAliases {
+		if eng == "" {
+			t.Error("hotelCityAliases has empty key")
+		}
+		if local == "" {
+			t.Errorf("hotelCityAliases[%q] has empty value", eng)
+		}
+		// Key should be lowercase (map lookup does ToLower)
+		if eng != strings.ToLower(eng) {
+			t.Errorf("hotelCityAliases key %q should be lowercase", eng)
+		}
+	}
+}
+
+// TestNormalizeHotelCityIdempotent verifies that normalizing an already-local name
+// doesn't break it (i.e., "Praha" stays "Praha", not double-mapped).
+func TestNormalizeHotelCityIdempotent(t *testing.T) {
+	for _, local := range hotelCityAliases {
+		got := normalizeHotelCity(local)
+		if got != local {
+			t.Errorf("normalizeHotelCity(%q) = %q, expected passthrough for already-local name", local, got)
+		}
 	}
 }

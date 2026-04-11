@@ -1,6 +1,8 @@
 package models
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestResolveHotelCity(t *testing.T) {
 	tests := []struct {
@@ -48,5 +50,26 @@ func TestResolveHotelCity(t *testing.T) {
 				t.Errorf("ResolveHotelCity(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestResolveHotelCity_TripCostChain verifies the IATA→city resolution
+// covers all major airports that feed into trip-cost hotel searches.
+// The resolved city name is passed to hotels.normalizeHotelCity() which
+// maps English names to local names for Google Hotels geocoding.
+func TestResolveHotelCity_TripCostChain(t *testing.T) {
+	// These IATA codes are commonly used in trip-cost commands.
+	// Each must resolve to a non-empty city name.
+	codes := []string{
+		"CDG", "ORY", "LHR", "LGW", "STN", "FCO", "MXP",
+		"JFK", "LGA", "NRT", "HND", "ICN", "BKK", "PEK",
+		"SAW", "AMS", "HEL", "BCN", "PRG", "MUC", "VIE",
+		"CPH", "WAW", "BER", "ATH", "LIS", "DUB", "OSL",
+	}
+	for _, code := range codes {
+		got := ResolveHotelCity(code)
+		if got == "" || got == code {
+			t.Errorf("ResolveHotelCity(%q) = %q — should resolve to a city name, not pass through", code, got)
+		}
 	}
 }

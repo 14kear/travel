@@ -196,7 +196,10 @@ func buildTravelURL(location string, opts HotelSearchOptions) string {
 func filterHotels(hotels []models.HotelResult, opts HotelSearchOptions) []models.HotelResult {
 	filtered := make([]models.HotelResult, 0, len(hotels))
 	for _, h := range hotels {
-		if opts.Stars > 0 && h.Stars < opts.Stars {
+		// Stars filter: h.Stars==0 means Google didn't annotate this hotel
+		// with star data (~92% of hotels). Pass those through rather than
+		// treating "unknown" as "zero stars".
+		if opts.Stars > 0 && h.Stars > 0 && h.Stars < opts.Stars {
 			continue
 		}
 		if opts.MinPrice > 0 && h.Price > 0 && h.Price < opts.MinPrice {
@@ -227,10 +230,12 @@ func filterHotels(hotels []models.HotelResult, opts HotelSearchOptions) []models
 }
 
 // filterByStars removes hotels below the requested star rating.
+// Hotels with Stars==0 (no star data from Google) are kept, since "unknown"
+// should not be treated as "zero stars".
 func filterByStars(hotels []models.HotelResult, minStars int) []models.HotelResult {
 	filtered := make([]models.HotelResult, 0, len(hotels))
 	for _, h := range hotels {
-		if h.Stars >= minStars {
+		if h.Stars == 0 || h.Stars >= minStars {
 			filtered = append(filtered, h)
 		}
 	}
