@@ -1,80 +1,38 @@
 Output demo.gif
 
 Set Shell "bash"
-Set FontSize 12
-Set Width 1400
-Set Height 700
+Set FontSize 14
+Set Width 1200
+Set Height 500
 Set Theme "Catppuccin Mocha"
-Set Padding 16
-Set TypingSpeed 50ms
+Set Padding 20
+Set TypingSpeed 40ms
 Set CursorBlink false
 
-# ═══════════════════════════════════════════════════════════
-# ACT 1: Discovery — "Where's cheap from Helsinki?"
-# ═══════════════════════════════════════════════════════════
+# ── ACT 1: The magic moment — budget in, trips out ──
 
-Type "# Where's cheap from Helsinki right now?"
+Type "# I have EUR 500 and a free week in May. Surprise me."
 Enter
-Sleep 300ms
-Type "trvl explore HEL --format table"
+Sleep 600ms
+
+Type "trvl discover --from 2026-05-01 --until 2026-05-31 --budget 500"
 Enter
-Sleep 30s
+Sleep 10s
 
-# ═══════════════════════════════════════════════════════════
-# ACT 2: Flights — real-time prices
-# ═══════════════════════════════════════════════════════════
+# ── ACT 2: Quick follow-up — weekend getaway ──
 
-Type "clear"
-Enter
-Sleep 300ms
-
-Type "# Flights to Prague next month"
-Enter
-Sleep 300ms
-Type "trvl flights HEL PRG 2026-05-15"
-Enter
-Sleep 20s
-
-# ═══════════════════════════════════════════════════════════
-# ACT 3: Ferries — Helsinki to Tallinn (future date, live prices)
-# ═══════════════════════════════════════════════════════════
-
-Type "clear"
-Enter
-Sleep 300ms
-
-Type "# Helsinki to Tallinn: ferries + buses — live prices"
-Enter
-Sleep 300ms
-Type "trvl ground Helsinki Tallinn 2026-05-15"
-Enter
-Sleep 30s
-
-# ═══════════════════════════════════════════════════════════
-# ACT 4: Trip cost — flights + hotel total
-# ═══════════════════════════════════════════════════════════
-
-Type "clear"
-Enter
-Sleep 300ms
-
-Type "# Full trip cost: Helsinki → Paris, flights + hotel"
-Enter
-Sleep 300ms
-Type "trvl trip-cost HEL CDG --depart 2026-06-01 --return 2026-06-05"
-Enter
-Sleep 30s
-
-# ═══════════════════════════════════════════════════════════
-# CLOSING
-# ═══════════════════════════════════════════════════════════
-
-Type ""
+Sleep 600ms
+Type "# That Vienna deal looks good. What about a weekend trip?"
 Enter
 Sleep 500ms
-Type "# 34 MCP tools · 33 CLI commands · 18 providers · No API keys"
+
+Type "trvl weekend HEL --budget 400"
 Enter
-Sleep 400ms
-Type "# github.com/MikkoParkkola/trvl"
+Sleep 10s
+
+# ── CLOSING ──
+
+Sleep 800ms
+Type "# No API keys. No scraping. Just: brew install MikkoParkkola/tap/trvl"
 Enter
-Sleep 4s
+Sleep 3s
