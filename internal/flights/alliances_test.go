@@ -86,17 +86,16 @@ func TestBuildFilters_WithAlliances(t *testing.T) {
 	if !ok {
 		t.Fatalf("arr[1] not []any")
 	}
-	// Alliance filter is at outer[1][25].
-	if len(settings) <= 25 {
-		t.Fatalf("settings has %d elements, need at least 26", len(settings))
-	}
-	alliancesRaw := settings[25]
+	// Alliance filter is at segment[5] (verified via live probe).
+	segments := settings[13].([]any)
+	seg := segments[0].([]any)
+	alliancesRaw := seg[5]
 	if alliancesRaw == nil {
-		t.Fatal("expected alliances at settings[25], got nil")
+		t.Fatal("expected alliances at segment[5], got nil")
 	}
 	alliances, ok := alliancesRaw.([]any)
 	if !ok {
-		t.Fatalf("settings[25] = %T, want []any", alliancesRaw)
+		t.Fatalf("segment[5] = %T, want []any", alliancesRaw)
 	}
 	if len(alliances) != 2 {
 		t.Fatalf("expected 2 alliances, got %d: %v", len(alliances), alliances)
@@ -118,12 +117,11 @@ func TestBuildFilters_NoAlliances(t *testing.T) {
 	json.Unmarshal(data, &arr)
 
 	settings := arr[1].([]any)
-	if len(settings) <= 25 {
-		t.Fatalf("settings has %d elements, need at least 26", len(settings))
-	}
-	// With no alliances, position 25 should be nil.
-	if settings[25] != nil {
-		t.Errorf("expected nil at settings[25] when no alliances, got %v", settings[25])
+	// With no alliances, segment[5] should be nil.
+	segments := settings[13].([]any)
+	seg := segments[0].([]any)
+	if seg[5] != nil {
+		t.Errorf("expected nil at segment[5] when no alliances, got %v", seg[5])
 	}
 }
 
@@ -150,9 +148,9 @@ func TestBuildFilters_AlliancesDoNotAffectSegment(t *testing.T) {
 		t.Errorf("segment airlines = %v, want [AY]", airlinesRaw)
 	}
 
-	// Alliances at settings[25] should be ["ONEWORLD"].
-	alliancesRaw := settings[25].([]any)
+	// Alliances at segment[5] should be ["ONEWORLD"].
+	alliancesRaw := seg[5].([]any)
 	if len(alliancesRaw) != 1 || alliancesRaw[0] != "ONEWORLD" {
-		t.Errorf("alliances = %v, want [ONEWORLD]", alliancesRaw)
+		t.Errorf("segment alliances = %v, want [ONEWORLD]", alliancesRaw)
 	}
 }

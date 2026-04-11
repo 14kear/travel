@@ -224,7 +224,7 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			nil,                                          // [22]
 			nil,                                          // [23]
 			nil,                                          // [24]
-			alliancesFilter(opts.Alliances),              // [25] alliance filter — keep server-side, client-side fallback below
+			nil,                                          // [25] (was alliance — moved to segment[5])
 			nil,                                          // [26]
 			nil,                                          // [27]
 			excludeBasicEconomy(opts.ExcludeBasic),        // [28] exclude basic economy
@@ -268,8 +268,9 @@ func buildSegment(from, to, date string, opts SearchOptions) any {
 		stops,
 		// [4] airlines
 		airlines,
-		// [5]
-		nil,
+		// [5] alliance filter — verified via live probe: segment[5] with
+		// []any{"STAR_ALLIANCE"} returns 45/115 flights (61% reduction)
+		alliancesFilter(opts.Alliances),
 		// [6] date
 		date,
 		// [7] max duration in minutes
