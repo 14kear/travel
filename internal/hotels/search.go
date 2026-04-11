@@ -85,6 +85,15 @@ func normalizeHotelCity(location string) string {
 	return location
 }
 
+// maxPages is the maximum number of paginated requests per search.
+// Each page returns ~20-26 hotels; 3 pages yields up to ~75.
+const maxPages = 3
+
+// pageSize is the offset step between paginated requests. Google Travel
+// Hotels returns ~20 results per page and uses a "start" query parameter
+// for offset-based pagination.
+const pageSize = 20
+
 // SearchHotelsWithClient is like SearchHotels but reuses the provided client.
 func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions) (*models.HotelSearchResult, error) {
 	location = normalizeHotelCity(location)
@@ -108,33 +117,40 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		return nil, fmt.Errorf("parse check-out date: %w", err)
 	}
 
-	// Build the Google Travel Hotels URL.
-	travelURL := buildTravelURL(location, opts)
-
-	status, body, err := client.Get(ctx, travelURL)
+	// Fetch first page.
+	hotels, err := fetchHotelPage(ctx, client, location, opts, 0)
 	if err != nil {
-		return nil, fmt.Errorf("hotel search request: %w", err)
+		return nil, err
 	}
 
-	if status == 403 {
-		return nil, batchexec.ErrBlocked
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("hotel search returned status %d", status)
-	}
-	if len(body) < 1000 {
-		return nil, fmt.Errorf("hotel search returned empty response")
+	// Paginate: fetch subsequent pages until we get no new results or hit maxPages.
+	seen := make(map[string]bool, len(hotels))
+	for _, h := range hotels {
+		seen[strings.ToLower(h.Name)] = true
 	}
 
-	// Parse hotel data from the page's AF_initDataCallback blocks.
-	hotels, err := parseHotelsFromPage(string(body), opts.Currency)
-	if err != nil {
-		return nil, fmt.Errorf("parse hotel results: %w", err)
-	}
+	for page := 1; page < maxPages; page++ {
+		pageHotels, err := fetchHotelPage(ctx, client, location, opts, page*pageSize)
+		if err != nil {
+			// Non-fatal: keep what we have from previous pages.
+			break
+		}
 
-	// Prices are in the API's native currency (set by Google based on gl= param).
-	// The hotel URL already passes opts.Currency to Google — if Google honors it,
-	// prices come back in the requested currency. If not, CLI display layer converts.
+		newCount := 0
+		for _, h := range pageHotels {
+			key := strings.ToLower(h.Name)
+			if !seen[key] {
+				seen[key] = true
+				hotels = append(hotels, h)
+				newCount++
+			}
+		}
+
+		// Stop paginating if this page yielded no new hotels (end of results).
+		if newCount == 0 {
+			break
+		}
+	}
 
 	// Resolve city center for distance filter/sort if needed.
 	if opts.MaxDistanceKm > 0 || strings.EqualFold(opts.Sort, "distance") {
@@ -168,6 +184,37 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		Count:   len(hotels),
 		Hotels:  hotels,
 	}, nil
+}
+
+// fetchHotelPage fetches a single page of hotel results at the given offset.
+// offset=0 is the first page, offset=20 is the second, etc.
+func fetchHotelPage(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int) ([]models.HotelResult, error) {
+	travelURL := buildTravelURL(location, opts)
+	if offset > 0 {
+		travelURL += fmt.Sprintf("&start=%d", offset)
+	}
+
+	status, body, err := client.Get(ctx, travelURL)
+	if err != nil {
+		return nil, fmt.Errorf("hotel search request: %w", err)
+	}
+
+	if status == 403 {
+		return nil, batchexec.ErrBlocked
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("hotel search returned status %d", status)
+	}
+	if len(body) < 1000 {
+		return nil, fmt.Errorf("hotel search returned empty response")
+	}
+
+	hotels, err := parseHotelsFromPage(string(body), opts.Currency)
+	if err != nil {
+		return nil, fmt.Errorf("parse hotel results: %w", err)
+	}
+
+	return hotels, nil
 }
 
 // buildHotelBookingURL constructs a Google Hotels deep link for a location and dates.

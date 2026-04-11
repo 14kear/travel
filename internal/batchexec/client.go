@@ -91,6 +91,40 @@ func NewClient() *Client {
 	}
 }
 
+// NewTestClient creates a Client that redirects all requests to the given
+// test server URL. It uses a plain http.Client (no TLS fingerprinting)
+// with high rate limits for fast tests. The URL rewriting transport
+// preserves the original path and query string.
+func NewTestClient(baseURL string) *Client {
+	return &Client{
+		http: &http.Client{
+			Transport: &testRedirectTransport{baseURL: baseURL},
+			Timeout:   5 * time.Second,
+		},
+		limiter: rate.NewLimiter(rate.Limit(1000), 1),
+	}
+}
+
+// testRedirectTransport rewrites request URLs to point at a local test server
+// while preserving the original path and query string.
+type testRedirectTransport struct {
+	baseURL string
+}
+
+func (t *testRedirectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Rewrite the URL to point at the test server.
+	newURL := t.baseURL + req.URL.Path
+	if req.URL.RawQuery != "" {
+		newURL += "?" + req.URL.RawQuery
+	}
+	newReq, err := http.NewRequestWithContext(req.Context(), req.Method, newURL, req.Body)
+	if err != nil {
+		return nil, err
+	}
+	newReq.Header = req.Header
+	return http.DefaultTransport.RoundTrip(newReq)
+}
+
 // SetNoCache disables the response cache for this client.
 func (c *Client) SetNoCache(disable bool) {
 	c.noCache = disable
