@@ -38,6 +38,7 @@ func hotelSearchOutputSchema() interface{} {
 							"type":  "array",
 							"items": map[string]interface{}{"type": "string"},
 						},
+						"eco_certified": map[string]interface{}{"type": "boolean"},
 					},
 				},
 			},
@@ -111,6 +112,7 @@ func searchHotelsTool() ToolDef {
 				"free_cancellation": {Type: "boolean", Description: "Only show hotels with free cancellation (default: false)"},
 				"property_type":     {Type: "string", Description: "Filter by property type: hotel, apartment, hostel, resort, bnb, or villa (default: no filter)"},
 				"brand":             {Type: "string", Description: "Filter by hotel brand/chain name (case-insensitive substring match, e.g. hilton, marriott, ibis)"},
+				"eco_certified":     {Type: "boolean", Description: "Only show eco-certified hotels with sustainability certifications (default: false)"},
 			},
 			Required: []string{"location", "check_in", "check_out"},
 		},
@@ -206,6 +208,7 @@ func handleSearchHotels(ctx context.Context, args map[string]any, elicit ElicitF
 		FreeCancellation: argBool(args, "free_cancellation", false),
 		PropertyType:     argString(args, "property_type"),
 		Brand:            argString(args, "brand"),
+		EcoCertified:     argBool(args, "eco_certified", false),
 	}
 
 	// Apply user preferences when MCP caller hasn't set these explicitly.

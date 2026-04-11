@@ -74,6 +74,11 @@ type HotelSearchOptions struct {
 	// Hotels does not expose a server-side brand/chain parameter.
 	// Examples: "hilton", "marriott", "ibis", "hyatt".
 	Brand string
+
+	// EcoCertified filters for hotels with sustainability certifications
+	// (Google's "Eco-certified" badge). Applied server-side via the &ecof=1
+	// URL parameter. When true, all returned hotels are marked EcoCertified.
+	EcoCertified bool
 }
 
 // SearchHotels searches for hotels in the given location.
@@ -247,6 +252,14 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		hotels = enrichHotelAmenities(ctx, hotels, opts.EnrichLimit)
 	}
 
+	// When the eco-certified filter is active, all returned hotels have
+	// Google's sustainability certification — mark them accordingly.
+	if opts.EcoCertified {
+		for i := range hotels {
+			hotels[i].EcoCertified = true
+		}
+	}
+
 	// Add booking URLs to each hotel.
 	for i := range hotels {
 		hotels[i].BookingURL = buildHotelBookingURL(location, opts.CheckIn, opts.CheckOut)
@@ -350,6 +363,9 @@ func buildTravelURL(location string, opts HotelSearchOptions) string {
 	}
 	if ptype := propertyTypeCode(opts.PropertyType); ptype != "" {
 		query.Set("ptype", ptype)
+	}
+	if opts.EcoCertified {
+		query.Set("ecof", "1")
 	}
 
 	return fmt.Sprintf("https://www.google.com/travel/hotels/%s?%s", encoded, query.Encode())

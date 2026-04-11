@@ -2,18 +2,19 @@ package models
 
 // HotelResult represents a single hotel from a search.
 type HotelResult struct {
-	Name        string   `json:"name"`
-	HotelID     string   `json:"hotel_id"`
-	Rating      float64  `json:"rating"`
-	ReviewCount int      `json:"review_count"`
-	Stars       int      `json:"stars"`
-	Price       float64  `json:"price"`
-	Currency    string   `json:"currency"`
-	Address     string   `json:"address"`
-	Lat         float64  `json:"lat"`
-	Lon         float64  `json:"lon"`
-	Amenities   []string `json:"amenities,omitempty"`
-	BookingURL  string   `json:"booking_url,omitempty"`
+	Name         string   `json:"name"`
+	HotelID      string   `json:"hotel_id"`
+	Rating       float64  `json:"rating"`
+	ReviewCount  int      `json:"review_count"`
+	Stars        int      `json:"stars"`
+	Price        float64  `json:"price"`
+	Currency     string   `json:"currency"`
+	Address      string   `json:"address"`
+	Lat          float64  `json:"lat"`
+	Lon          float64  `json:"lon"`
+	Amenities    []string `json:"amenities,omitempty"`
+	BookingURL   string   `json:"booking_url,omitempty"`
+	EcoCertified bool     `json:"eco_certified,omitempty"`
 }
 
 // HotelSearchResult is the top-level response for a hotel search.
