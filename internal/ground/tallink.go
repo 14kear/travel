@@ -24,6 +24,12 @@ const tallinkBookingBase = "https://booking.tallink.com"
 // HEL-TAL typically costs EUR 20–40; anything below EUR 20 is promotional.
 const tallinkDealThreshold = 20.0
 
+// tallinkOvernightThreshold is the route duration (minutes) above which a route
+// is considered overnight and requires a cabin. HEL↔STO (960 min), TUR↔STO (660 min),
+// STO↔RIG (1020 min), HEL↔VIS (780 min) — all overnight ferry services where the
+// timetable personPrice already includes a basic cabin.
+const tallinkOvernightThreshold = 600
+
 // tallinkLimiter: 10 req/min — allows multiple detectors in a single hacks run
 // without hitting the context deadline (previously 5 req/min / 12s caused
 // "rate limiter: Wait(n=1) would exceed context deadline" during hacks searches).
@@ -139,6 +145,110 @@ func tallinkRouteDuration(fromCode, toCode string) int {
 	return 120
 }
 
+// tallinkIsOvernightRoute returns true if the route between two port codes is
+// an overnight ferry requiring a cabin (duration > tallinkOvernightThreshold).
+func tallinkIsOvernightRoute(fromCode, toCode string) bool {
+	return tallinkRouteDuration(fromCode, toCode) >= tallinkOvernightThreshold
+}
+
+// tallinkCabinClass represents a cabin/travel class returned by the travelclasses API.
+type tallinkCabinClass struct {
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price"`
+	Capacity    int     `json:"capacity"`
+}
+
+// fetchTallinkCabinClasses attempts to fetch cabin class pricing for an overnight sailing.
+//
+// The booking.tallink.com SPA flow for cabin classes is:
+//  1. GET / (with from/to/date params) → obtain JSESSIONID + sessionGUID
+//  2. GET /api/timetables (with sessionGUID) → get sailings with sailId
+//  3. POST /api/reservation/cruiseSummary (with sessionGUID) → initialize booking state
+//  4. GET /api/travelclasses (with sessionGUID) → cabin categories with prices
+//
+// The POST to cruiseSummary requires a full browser-like session with F5 WAF cookies
+// (TS01614805, iki3persistance) that must persist across requests. The WAF rejects
+// POST requests from non-browser clients with 302 redirects, making steps 3-4
+// unreliable from a server-side HTTP client.
+//
+// When the API call fails, this returns nil (no cabin classes) and the caller
+// falls back to the timetable's personPrice which already includes a basic cabin
+// on overnight routes.
+func fetchTallinkCabinClasses(ctx context.Context, cookies []*http.Cookie, sessionGUID string, sailID int64) ([]tallinkCabinClass, error) {
+	// Step 3: POST reservation/cruiseSummary to select the sail.
+	summaryURL := fmt.Sprintf(
+		"%s/api/reservation/cruiseSummary?locale=en&country=FI&sessionGUID=%s",
+		tallinkBookingBase, sessionGUID,
+	)
+
+	summaryBody := fmt.Sprintf(
+		`{"outwardSailId":%d,"returnSailId":null,"passengers":[{"passengerAge":"ADULT","passengerBirthDate":null}],"vehicles":[],"pets":[],"campaignCode":"","locale":"en","country":"FI"}`,
+		sailID,
+	)
+
+	summaryReq, err := http.NewRequestWithContext(ctx, http.MethodPost, summaryURL, strings.NewReader(summaryBody))
+	if err != nil {
+		return nil, fmt.Errorf("cabin classes: build summary request: %w", err)
+	}
+	summaryReq.Header.Set("Content-Type", "application/json; charset=utf-8")
+	summaryReq.Header.Set("Accept", "application/json")
+	summaryReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	for _, c := range cookies {
+		summaryReq.AddCookie(c)
+	}
+
+	summaryResp, err := tallinkClient.Do(summaryReq)
+	if err != nil {
+		return nil, fmt.Errorf("cabin classes: summary request: %w", err)
+	}
+	defer summaryResp.Body.Close()
+	io.Copy(io.Discard, summaryResp.Body) //nolint:errcheck
+
+	if summaryResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cabin classes: summary HTTP %d", summaryResp.StatusCode)
+	}
+
+	// Step 4: GET travelclasses.
+	classesURL := fmt.Sprintf(
+		"%s/api/travelclasses?locale=en&country=FI&sessionGUID=%s",
+		tallinkBookingBase, sessionGUID,
+	)
+
+	classesReq, err := http.NewRequestWithContext(ctx, http.MethodGet, classesURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cabin classes: build travelclasses request: %w", err)
+	}
+	classesReq.Header.Set("Accept", "application/json")
+	classesReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	for _, c := range cookies {
+		classesReq.AddCookie(c)
+	}
+
+	classesResp, err := tallinkClient.Do(classesReq)
+	if err != nil {
+		return nil, fmt.Errorf("cabin classes: travelclasses request: %w", err)
+	}
+	defer classesResp.Body.Close()
+
+	if classesResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(classesResp.Body, 512))
+		return nil, fmt.Errorf("cabin classes: travelclasses HTTP %d: %s", classesResp.StatusCode, body)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(classesResp.Body, 256*1024))
+	if err != nil {
+		return nil, fmt.Errorf("cabin classes: read travelclasses: %w", err)
+	}
+
+	var classes []tallinkCabinClass
+	if err := json.Unmarshal(body, &classes); err != nil {
+		return nil, fmt.Errorf("cabin classes: decode travelclasses: %w", err)
+	}
+	return classes, nil
+}
+
 // tallinkSail is a single sailing from the booking timetables API response.
 type tallinkSail struct {
 	SailID               int64   `json:"sailId"`
@@ -185,9 +295,15 @@ func buildTallinkBookingURL(fromCode, toCode, date string) string {
 	)
 }
 
-// tallinkGetSession loads the booking page to obtain a JSESSIONID cookie,
-// which is required for subsequent API calls. Returns cookies to attach.
-func tallinkGetSession(ctx context.Context, fromCode, toCode, date string) ([]*http.Cookie, error) {
+// tallinkSession holds session state obtained from the booking page.
+type tallinkSession struct {
+	Cookies     []*http.Cookie
+	SessionGUID string // from window.Env.sessionGuid in the page HTML
+}
+
+// tallinkGetSession loads the booking page to obtain a JSESSIONID cookie and
+// sessionGUID, which are required for subsequent API calls.
+func tallinkGetSession(ctx context.Context, fromCode, toCode, date string) (*tallinkSession, error) {
 	pageURL := buildTallinkBookingURL(fromCode, toCode, date)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
@@ -197,33 +313,56 @@ func tallinkGetSession(ctx context.Context, fromCode, toCode, date string) ([]*h
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html")
 
-	// Use a client that does NOT follow redirects so we can capture cookies.
-	noRedirectClient := &http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	resp, err := noRedirectClient.Do(req)
+	resp, err := tallinkClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("tallink session: %w", err)
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
+
+	// Read body to extract sessionGuid (limited to 256KB).
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
 
 	cookies := resp.Cookies()
 	if len(cookies) == 0 {
 		return nil, fmt.Errorf("tallink session: no cookies returned")
 	}
-	return cookies, nil
+
+	// Extract sessionGuid from the page HTML: sessionGuid: 'UUID-HERE',
+	guid := tallinkExtractSessionGUID(string(body))
+
+	return &tallinkSession{Cookies: cookies, SessionGUID: guid}, nil
+}
+
+// tallinkExtractSessionGUID extracts the sessionGuid value from the booking page HTML.
+// The SPA embeds it as: sessionGuid: 'UUID',
+func tallinkExtractSessionGUID(html string) string {
+	const marker = "sessionGuid: '"
+	idx := strings.Index(html, marker)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(marker)
+	end := strings.Index(html[start:], "'")
+	if end < 0 || end > 64 {
+		return ""
+	}
+	return html[start : start+end]
+}
+
+// tallinkFetchResult bundles a timetable response with the session that produced it,
+// so callers can reuse the session for subsequent API calls (e.g. travelclasses).
+type tallinkFetchResult struct {
+	Timetable *tallinkTimetableResponse
+	Session   *tallinkSession
 }
 
 // fetchTallinkTimetables calls the booking.tallink.com timetables API
 // which supports arbitrary future dates (unlike the old voyage-avails endpoint).
-func fetchTallinkTimetables(ctx context.Context, fromCode, toCode, date string) (*tallinkTimetableResponse, error) {
-	// Step 1: obtain session cookie
-	cookies, err := tallinkGetSession(ctx, fromCode, toCode, date)
+// For overnight routes (duration >= tallinkOvernightThreshold), it uses
+// voyageType=CRUISE with includeOvernight=true to get cabin-inclusive pricing.
+func fetchTallinkTimetables(ctx context.Context, fromCode, toCode, date string) (*tallinkFetchResult, error) {
+	// Step 1: obtain session cookie + sessionGUID
+	session, err := tallinkGetSession(ctx, fromCode, toCode, date)
 	if err != nil {
 		return nil, err
 	}
@@ -236,11 +375,27 @@ func fetchTallinkTimetables(ctx context.Context, fromCode, toCode, date string) 
 		dateTo = parsedDate.Add(2 * 24 * time.Hour).Format("2006-01-02")
 	}
 
+	overnight := tallinkIsOvernightRoute(fromCode, toCode)
+	voyageType := "SHUTTLE"
+	includeOvernight := "false"
+	if overnight {
+		voyageType = "CRUISE"
+		includeOvernight = "true"
+	}
+
+	sessionParam := ""
+	if session.SessionGUID != "" {
+		sessionParam = "&sessionGUID=" + session.SessionGUID
+	}
+
 	apiURL := fmt.Sprintf(
-		"%s/api/timetables?locale=en&country=FI&from=%s&to=%s&oneWay=false&dateFrom=%s&dateTo=%s&voyageType=SHUTTLE&includeOvernight=false&searchFutureSails=false",
+		"%s/api/timetables?locale=en&country=FI&from=%s&to=%s&oneWay=%s&dateFrom=%s&dateTo=%s&voyageType=%s&includeOvernight=%s&searchFutureSails=false%s",
 		tallinkBookingBase,
 		strings.ToLower(fromCode), strings.ToLower(toCode),
+		fmt.Sprintf("%t", overnight), // oneWay=true for overnight (one-leg cruises)
 		date, dateTo,
+		voyageType, includeOvernight,
+		sessionParam,
 	)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
@@ -249,7 +404,7 @@ func fetchTallinkTimetables(ctx context.Context, fromCode, toCode, date string) 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-	for _, c := range cookies {
+	for _, c := range session.Cookies {
 		req.AddCookie(c)
 	}
 
@@ -273,7 +428,7 @@ func fetchTallinkTimetables(ctx context.Context, fromCode, toCode, date string) 
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("tallink timetables decode: %w", err)
 	}
-	return &result, nil
+	return &tallinkFetchResult{Timetable: &result, Session: session}, nil
 }
 
 // tallinkNormalizeDateTime normalizes the timetable API datetime format.
@@ -314,17 +469,18 @@ func SearchTallink(ctx context.Context, from, to, date, currency string) ([]mode
 		return nil, fmt.Errorf("tallink: rate limiter: %w", err)
 	}
 
-	slog.Debug("tallink search", "from", fromPort.City, "to", toPort.City, "date", date)
+	overnight := tallinkIsOvernightRoute(fromPort.Code, toPort.Code)
+	slog.Debug("tallink search", "from", fromPort.City, "to", toPort.City, "date", date, "overnight", overnight)
 
-	timetable, err := fetchTallinkTimetables(ctx, fromPort.Code, toPort.Code, date)
+	result, err := fetchTallinkTimetables(ctx, fromPort.Code, toPort.Code, date)
 	if err != nil {
 		return nil, fmt.Errorf("tallink: %w", err)
 	}
 
 	// Collect outward sails for the requested date from the timetable.
-	dayTrips, ok := timetable.Trips[date]
+	dayTrips, ok := result.Timetable.Trips[date]
 	if !ok {
-		slog.Debug("tallink: no trips for date", "date", date, "available_dates", len(timetable.Trips))
+		slog.Debug("tallink: no trips for date", "date", date, "available_dates", len(result.Timetable.Trips))
 		return nil, nil
 	}
 
@@ -333,6 +489,20 @@ func SearchTallink(ctx context.Context, from, to, date, currency string) ([]mode
 
 	if len(sails) == 0 {
 		return nil, nil
+	}
+
+	// For overnight routes, attempt to fetch cabin class details.
+	// This requires POSTing to reservation/cruiseSummary then GETting travelclasses.
+	// The API often rejects non-browser clients (WAF), so cabin classes are best-effort.
+	var cabinClasses []tallinkCabinClass
+	if overnight && len(sails) > 0 {
+		firstSail := sails[0]
+		classes, cabinErr := fetchTallinkCabinClasses(ctx, result.Session.Cookies, result.Session.SessionGUID, firstSail.SailID)
+		if cabinErr != nil {
+			slog.Debug("tallink cabin classes unavailable (expected)", "error", cabinErr)
+		} else {
+			cabinClasses = classes
+		}
 	}
 
 	bookingURL := buildTallinkBookingURL(fromPort.Code, toPort.Code, date)
@@ -359,6 +529,16 @@ func SearchTallink(ctx context.Context, from, to, date, currency string) ([]mode
 		}
 
 		var amenities []string
+
+		if overnight {
+			// Overnight routes: personPrice includes a basic cabin.
+			amenities = append(amenities, "Overnight", "Cabin included")
+			// If we got cabin class details, add them as amenities.
+			if len(cabinClasses) > 0 {
+				amenities = append(amenities, tallinkFormatCabinClasses(cabinClasses))
+			}
+		}
+
 		if price > 0 && price < tallinkDealThreshold {
 			amenities = append(amenities, "Deal")
 		}
@@ -390,6 +570,24 @@ func SearchTallink(ctx context.Context, from, to, date, currency string) ([]mode
 
 	slog.Debug("tallink results", "routes", len(routes))
 	return routes, nil
+}
+
+// tallinkFormatCabinClasses formats cabin class details into a human-readable amenity string.
+// Example: "Cabins: A2 €89, B4 €65, Deck €39"
+func tallinkFormatCabinClasses(classes []tallinkCabinClass) string {
+	if len(classes) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, c := range classes {
+		if c.Price > 0 {
+			parts = append(parts, fmt.Sprintf("%s €%.0f", c.Code, c.Price))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Cabins: " + strings.Join(parts, ", ")
 }
 
 // tallinkShipSuffix returns a ship name suffix for the station display, or empty string.
