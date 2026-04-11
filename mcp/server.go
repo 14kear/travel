@@ -29,7 +29,7 @@ import (
 
 const (
 	serverName      = "trvl"
-	serverVersion   = "0.3.0"
+	serverVersion   = "0.3.12"
 	protocolVersion = "2025-11-25"
 )
 
