@@ -61,8 +61,33 @@ func SearchHotels(ctx context.Context, location string, opts HotelSearchOptions)
 	return SearchHotelsWithClient(ctx, DefaultClient(), location, opts)
 }
 
+// hotelCityAliases maps common English city names to the form that Google
+// Hotels actually resolves correctly. Without this, "Prague" returns zero
+// results while "Praha" works fine.
+var hotelCityAliases = map[string]string{
+	"prague":     "Praha",
+	"munich":     "München",
+	"vienna":     "Wien",
+	"cologne":    "Köln",
+	"copenhagen": "København",
+	"warsaw":     "Warszawa",
+	"bucharest":  "București",
+	"gothenburg": "Göteborg",
+	"nuremberg":  "Nürnberg",
+}
+
+// normalizeHotelCity replaces known English city names with the form Google
+// Hotels expects. Passthrough for unknown cities.
+func normalizeHotelCity(location string) string {
+	if mapped, ok := hotelCityAliases[strings.ToLower(strings.TrimSpace(location))]; ok {
+		return mapped
+	}
+	return location
+}
+
 // SearchHotelsWithClient is like SearchHotels but reuses the provided client.
 func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions) (*models.HotelSearchResult, error) {
+	location = normalizeHotelCity(location)
 	if opts.CheckIn == "" || opts.CheckOut == "" {
 		return nil, fmt.Errorf("check-in and check-out dates are required")
 	}
