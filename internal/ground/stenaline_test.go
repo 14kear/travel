@@ -8,6 +8,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func init() {
@@ -413,9 +414,7 @@ func TestSearchStenaLine_CurrencyDefault(t *testing.T) {
 }
 
 func TestSearchStenaLine_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

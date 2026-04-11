@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // TestAllianceCodes probes the Google Flights batchexecute API to determine:
@@ -19,9 +20,7 @@ import (
 //
 // Run: go test ./internal/flights/ -run TestAllianceCodes -v -count=1 -timeout 300s
 func TestAllianceCodes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveProbe(t)
 
 	client := batchexec.NewClient()
 	client.SetNoCache(true)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestApplyDefaults(t *testing.T) {
@@ -188,9 +190,7 @@ func TestFind_AllBusy(t *testing.T) {
 }
 
 func TestFind_MaxCandidatesCap(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	t.Parallel()
 	candidates, err := Find(context.Background(), Input{
 		Origin:        "HEL",
@@ -210,9 +210,7 @@ func TestFind_MaxCandidatesCap(t *testing.T) {
 }
 
 func TestFind_PreferredIntervalInResults(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	t.Parallel()
 	// Short window, one trip fits; mark it preferred.
 	candidates, err := Find(context.Background(), Input{

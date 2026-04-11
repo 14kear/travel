@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // TestFiltersProbe makes real batchexecute calls to Google Flights to verify
@@ -24,9 +25,7 @@ import (
 // If the constrained value returns fewer flights than nil, the filter works.
 // If any probe returns HTTP 400, the wire format is wrong.
 func TestFiltersProbe(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: makes real HTTP calls to Google Flights")
-	}
+	testutil.RequireLiveProbe(t)
 
 	client := batchexec.NewClient()
 	client.SetNoCache(true)
@@ -99,13 +98,13 @@ func TestFiltersProbe(t *testing.T) {
 		probes := []filterProbe{
 			{"nil", nil},
 			{"str_STAR_ALLIANCE", []any{"STAR_ALLIANCE"}},
-			{"int_1", []any{1}},         // maybe integer codes?
-			{"int_2", []any{2}},         // ONEWORLD as int?
-			{"int_3", []any{3}},         // SKYTEAM as int?
+			{"int_1", []any{1}},                           // maybe integer codes?
+			{"int_2", []any{2}},                           // ONEWORLD as int?
+			{"int_3", []any{3}},                           // SKYTEAM as int?
 			{"nested_str", []any{[]any{"STAR_ALLIANCE"}}}, // nested array?
 			{"nested_int", []any{[]any{1}}},               // nested int array?
-			{"scalar_1", 1},             // scalar int
-			{"scalar_str", "STAR_ALLIANCE"}, // scalar string
+			{"scalar_1", 1},                               // scalar int
+			{"scalar_str", "STAR_ALLIANCE"},               // scalar string
 		}
 		results := runSettingsProbes(t, client, "HEL", "LHR", searchDate, baseOpts, 25, probes)
 		analyzeResults(t, "ALLIANCE_pos25", results)

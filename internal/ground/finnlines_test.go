@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestLookupFinnlinesPort(t *testing.T) {
@@ -387,9 +389,7 @@ func TestFinnlinesOvernightRoutes_Complete(t *testing.T) {
 }
 
 func TestSearchFinnlines_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

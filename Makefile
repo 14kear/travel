@@ -1,27 +1,51 @@
+GOTOOLCHAIN ?= go1.26.2
+GO ?= go
+GO_RUN = GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO)
+
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
 
-.PHONY: build test test-proof lint clean cross
+.PHONY: build test test-proof test-coverage test-live-integrations test-live-probes lint clean cross
 
 build:
-	go build $(LDFLAGS) -o bin/trvl ./cmd/trvl
+	$(GO_RUN) build $(LDFLAGS) -o bin/trvl ./cmd/trvl
 
 test:
-	go test ./...
+	$(GO_RUN) test ./...
 
 test-proof:
-	go test -v -count=1 -race ./...
+	$(GO_RUN) test -v -count=1 -race ./...
+
+test-coverage:
+	$(GO_RUN) test -race -coverprofile coverage.out ./...
+	$(GO_RUN) tool cover -func=coverage.out | tail -1
+
+test-live-integrations:
+	TRVL_TEST_LIVE_INTEGRATIONS=1 $(GO_RUN) test -v -count=1 ./...
+
+test-live-probes:
+	TRVL_TEST_LIVE_PROBES=1 $(GO_RUN) test -v -count=1 ./internal/flights ./internal/hotels -run Probe
 
 lint:
-	go vet ./...
-	@command -v staticcheck >/dev/null 2>&1 && staticcheck ./... || echo "staticcheck not installed, skipping"
+	$(GO_RUN) vet ./...
+	@if command -v staticcheck >/dev/null 2>&1; then \
+		GOTOOLCHAIN=$(GOTOOLCHAIN) staticcheck ./...; \
+	else \
+		echo "staticcheck not installed, skipping"; \
+	fi
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		GOTOOLCHAIN=$(GOTOOLCHAIN) govulncheck ./...; \
+	else \
+		echo "govulncheck not installed, skipping"; \
+	fi
 
 clean:
 	rm -f bin/trvl
+	rm -f coverage.out
 	rm -rf dist/
 
 cross:
-	GOOS=linux  GOARCH=amd64 go build $(LDFLAGS) -o dist/trvl-linux-amd64  ./cmd/trvl
-	GOOS=linux  GOARCH=arm64 go build $(LDFLAGS) -o dist/trvl-linux-arm64  ./cmd/trvl
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/trvl-darwin-amd64 ./cmd/trvl
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/trvl-darwin-arm64 ./cmd/trvl
+	GOOS=linux  GOARCH=amd64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-linux-amd64  ./cmd/trvl
+	GOOS=linux  GOARCH=arm64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-linux-arm64  ./cmd/trvl
+	GOOS=darwin GOARCH=amd64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-darwin-amd64 ./cmd/trvl
+	GOOS=darwin GOARCH=arm64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-darwin-arm64 ./cmd/trvl

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestLookupDBStation(t *testing.T) {
@@ -557,9 +559,7 @@ func TestParseDBVerbindungen_ZeroPrice(t *testing.T) {
 }
 
 func TestSearchDeutscheBahn_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

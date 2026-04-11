@@ -57,6 +57,15 @@ func FetchDeals(ctx context.Context, sources []string, filter DealFilter) (*Deal
 	var wg sync.WaitGroup
 
 	for i, src := range sources {
+		if src == "google" {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				deals, err := fetchGoogleExplore(ctx, filter.Origins)
+				results[idx] = feedResult{deals: deals, err: err}
+			}(i)
+			continue
+		}
 		feedURL, ok := SourceFeeds[src]
 		if !ok {
 			results[i] = feedResult{err: fmt.Errorf("unknown source: %s", src)}

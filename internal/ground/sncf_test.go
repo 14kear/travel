@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestLookupSNCFStation(t *testing.T) {
@@ -144,9 +146,7 @@ func TestSNCFRateLimiterConfiguration(t *testing.T) {
 }
 
 func TestSearchSNCF_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

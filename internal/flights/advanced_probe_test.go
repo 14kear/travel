@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // TestAdvancedProbe runs two live probes to fill remaining knowledge gaps:
@@ -19,9 +20,7 @@ import (
 //     STAR_ALLIANCE was confirmed working. Verify the other two alliances
 //     and a multi-alliance combo on HEL->LHR (good alliance mix).
 func TestAdvancedProbe(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: makes real HTTP calls to Google Flights")
-	}
+	testutil.RequireLiveProbe(t)
 
 	client := batchexec.NewClient()
 	client.SetNoCache(true)

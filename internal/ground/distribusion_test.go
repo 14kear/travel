@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 	"golang.org/x/time/rate"
 )
 
@@ -498,18 +499,18 @@ func TestSearchDistribusion_MockServer_HTTP(t *testing.T) {
 		},
 		Included: []distribusionIncluded{
 			{
-				ID:   "FIHELS",
-				Type: "station",
+				ID:         "FIHELS",
+				Type:       "station",
 				Attributes: distribusionIncludedAttrs{City: "Helsinki"},
 			},
 			{
-				ID:   "EETLLS",
-				Type: "station",
+				ID:         "EETLLS",
+				Type:       "station",
 				Attributes: distribusionIncludedAttrs{City: "Tallinn"},
 			},
 			{
-				ID:   "LUXEX",
-				Type: "marketing_carrier",
+				ID:         "LUXEX",
+				Type:       "marketing_carrier",
 				Attributes: distribusionIncludedAttrs{TradeNameEn: "Lux Express"},
 			},
 		},
@@ -690,9 +691,7 @@ func TestSearchDistribusion_RateLimiterConfiguration(t *testing.T) {
 // ---- Integration test ----
 
 func TestSearchDistribusion_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	if os.Getenv("DISTRIBUSION_API_KEY") == "" {
 		t.Skip("DISTRIBUSION_API_KEY not set — skipping live test")
 	}

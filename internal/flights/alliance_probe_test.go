@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // TestAllianceProbe exhaustively probes the Google Flights batchexecute API to
@@ -27,9 +28,7 @@ import (
 //
 // Run: go test ./internal/flights/ -run TestAllianceProbe -v -count=1 -timeout 300s
 func TestAllianceProbe(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: makes real HTTP calls to Google Flights")
-	}
+	testutil.RequireLiveProbe(t)
 
 	client := batchexec.NewClient()
 	client.SetNoCache(true)

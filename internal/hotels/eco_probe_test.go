@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/jsonutil"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // --- Unit tests for eco-certified filter ---
@@ -126,9 +127,7 @@ func buildMockHotelPage() string {
 //
 // Run: go test -run TestProbeEcoCertification -v -count=1
 func TestProbeEcoCertification(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping live probe in short mode")
-	}
+	testutil.RequireLiveProbe(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

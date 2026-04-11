@@ -5,13 +5,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestLookupOebbStation(t *testing.T) {
 	tests := []struct {
-		city       string
-		wantExtID  string
-		wantOK     bool
+		city      string
+		wantExtID string
+		wantOK    bool
 	}{
 		{"Vienna", "1190100", true},
 		{"vienna", "1190100", true},
@@ -81,7 +83,7 @@ func TestHasOebbRoute(t *testing.T) {
 		{"Vienna", "Budapest", true},
 		{"Vienna", "Prague", true},
 		{"Berlin", "Munich", true},
-		{"Vienna", "London", false},  // London not in ÖBB network
+		{"Vienna", "London", false}, // London not in ÖBB network
 		{"Atlantis", "Vienna", false},
 		{"Vienna", "Atlantis", false},
 		{"", "Vienna", false},
@@ -186,9 +188,9 @@ func TestOebbParseDuration(t *testing.T) {
 		{"051100", 311}, // 5h 11m
 		{"000000", 0},
 		// 7-char "DHHMMSS" format (legacy / overnight)
-		{"0035500", 235}, // 0d 3h 55m = 235 min
-		{"0010000", 60},  // 0d 1h 0m
-		{"0020000", 120}, // 0d 2h 0m
+		{"0035500", 235},  // 0d 3h 55m = 235 min
+		{"0010000", 60},   // 0d 1h 0m
+		{"0020000", 120},  // 0d 2h 0m
 		{"1000000", 1440}, // 1d 0h 0m = 1440 min
 		{"0000000", 0},
 		// Edge cases
@@ -380,9 +382,7 @@ func TestOebbRateLimiterConfiguration(t *testing.T) {
 }
 
 func TestSearchOebb_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

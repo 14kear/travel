@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.26.1"]
+        go-version: ["1.26.2"]
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,7 +93,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.9"
+          go-version: "1.26.2"
       # Register QEMU user-static interpreters so buildx can emit
       # linux/arm64 images on the amd64 GitHub-hosted runner.
       - uses: docker/setup-qemu-action@v3

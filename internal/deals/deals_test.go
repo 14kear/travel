@@ -448,7 +448,14 @@ func TestFetchDeals_MockHTTP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := FetchDeals(ctx, AllSources, DealFilter{HoursAgo: 999999})
+	// Exclude "google" source — it uses live API, not the mock HTTP server.
+	rssSources := make([]string, 0, len(AllSources))
+	for _, s := range AllSources {
+		if s != "google" {
+			rssSources = append(rssSources, s)
+		}
+	}
+	result, err := FetchDeals(ctx, rssSources, DealFilter{HoursAgo: 999999})
 	if err != nil {
 		t.Fatalf("FetchDeals error: %v", err)
 	}
@@ -583,13 +590,16 @@ func TestParseFloat(t *testing.T) {
 // --- Data types ---
 
 func TestAllSources(t *testing.T) {
-	if len(AllSources) != 4 {
-		t.Errorf("AllSources length = %d, want 4", len(AllSources))
+	if len(AllSources) != 5 {
+		t.Errorf("AllSources length = %d, want 5", len(AllSources))
 	}
 
 	for _, src := range AllSources {
-		if _, ok := SourceFeeds[src]; !ok {
-			t.Errorf("source %q missing from SourceFeeds", src)
+		// "google" uses fetchGoogleExplore, not SourceFeeds.
+		if src != "google" {
+			if _, ok := SourceFeeds[src]; !ok {
+				t.Errorf("source %q missing from SourceFeeds", src)
+			}
 		}
 		if _, ok := SourceNames[src]; !ok {
 			t.Errorf("source %q missing from SourceNames", src)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func init() {
@@ -535,9 +536,7 @@ func TestSearchDFDS_OfferAnnotation(t *testing.T) {
 }
 
 func TestSearchDFDS_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -578,9 +577,7 @@ func TestSearchDFDS_Integration(t *testing.T) {
 }
 
 func TestSearchDFDS_Amsterdam_Newcastle_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // --- Progress notification tests ---
@@ -336,9 +338,7 @@ func TestDetectHacks_ProgressEmitted(t *testing.T) {
 	// Run with short-circuit: origin/destination/date are required.
 	// Use dummy values — in short mode the detectors themselves time out or return nothing,
 	// but progress should still fire at the pre-call checkpoints.
-	if testing.Short() {
-		t.Skip("skipping detector progress test in short mode (requires network)")
-	}
+	testutil.RequireLiveIntegration(t)
 
 	handleDetectTravelHacks(context.Background(), map[string]any{
 		"origin":      "HEL",
@@ -367,9 +367,7 @@ func TestSearchRoute_ProgressEmitted(t *testing.T) {
 		calls = append(calls, progress)
 	}
 
-	if testing.Short() {
-		t.Skip("skipping route progress test in short mode (requires network)")
-	}
+	testutil.RequireLiveIntegration(t)
 
 	handleSearchRoute(context.Background(), map[string]any{
 		"origin":      "HEL",

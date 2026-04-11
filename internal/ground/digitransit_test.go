@@ -5,15 +5,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // --- Station lookup ---
 
 func TestLookupDigitransitStation(t *testing.T) {
 	tests := []struct {
-		city    string
+		city     string
 		wantName string
-		wantOK  bool
+		wantOK   bool
 	}{
 		{"Helsinki", "Helsinki", true},
 		{"helsinki", "Helsinki", true},
@@ -96,8 +98,8 @@ func TestLookupVRPrice(t *testing.T) {
 		want float64
 	}{
 		{"Helsinki", "Tampere", 22.50},
-		{"Tampere", "Helsinki", 22.50},   // reverse direction
-		{"helsinki", "tampere", 22.50},   // case-insensitive
+		{"Tampere", "Helsinki", 22.50}, // reverse direction
+		{"helsinki", "tampere", 22.50}, // case-insensitive
 		{"Helsinki", "Turku", 19.90},
 		{"Helsinki", "Oulu", 59.90},
 		{"Helsinki", "Jyväskylä", 34.90},
@@ -110,7 +112,7 @@ func TestLookupVRPrice(t *testing.T) {
 		{"Tampere", "Turku", 19.90},
 		{"Tampere", "Oulu", 39.90},
 		{"Tampere", "Jyväskylä", 14.90},
-		{"Tampere", "jyvaskyla", 14.90},  // ASCII alias
+		{"Tampere", "jyvaskyla", 14.90}, // ASCII alias
 		{"Helsinki", "Nonexistent", 0},
 		{"Stockholm", "Oslo", 0},
 	}
@@ -260,7 +262,10 @@ func TestParseDigitransitItineraries_Basic(t *testing.T) {
 					EndTime:   arrMS,
 					From:      digitransitStop{Name: "Helsinki asema", Lat: 60.1719, Lon: 24.9414},
 					To:        digitransitStop{Name: "Tampere asema", Lat: 61.4978, Lon: 23.7610},
-					Route:     &struct{ ShortName string `json:"shortName"`; LongName string `json:"longName"` }{ShortName: "IC 27"},
+					Route: &struct {
+						ShortName string `json:"shortName"`
+						LongName  string `json:"longName"`
+					}{ShortName: "IC 27"},
 				},
 			},
 		},
@@ -324,10 +329,16 @@ func TestParseDigitransitItineraries_MultiLeg(t *testing.T) {
 			Legs: []digitransitLeg{
 				{Mode: "RAIL", StartTime: dep1, EndTime: arr1,
 					From: digitransitStop{Name: "Helsinki asema"}, To: digitransitStop{Name: "Tampere asema"},
-					Route: &struct{ ShortName string `json:"shortName"`; LongName string `json:"longName"` }{ShortName: "IC 53"}},
+					Route: &struct {
+						ShortName string `json:"shortName"`
+						LongName  string `json:"longName"`
+					}{ShortName: "IC 53"}},
 				{Mode: "RAIL", StartTime: dep2, EndTime: arr2,
 					From: digitransitStop{Name: "Tampere asema"}, To: digitransitStop{Name: "Oulu asema"},
-					Route: &struct{ ShortName string `json:"shortName"`; LongName string `json:"longName"` }{ShortName: "IC 53"}},
+					Route: &struct {
+						ShortName string `json:"shortName"`
+						LongName  string `json:"longName"`
+					}{ShortName: "IC 53"}},
 			},
 		},
 	}
@@ -418,9 +429,7 @@ func TestSearchDigitransit_UnknownTo(t *testing.T) {
 // --- Integration test (skipped in short mode / CI) ---
 
 func TestSearchDigitransit_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

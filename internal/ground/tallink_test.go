@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 func TestLookupTallinkPort(t *testing.T) {
@@ -179,11 +181,11 @@ func TestTallinkNormalizeDateTime(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"2026-05-01T07:30", "2026-05-01T07:30:00"},       // short format → normalized
-		{"2026-05-01T07:30:00", "2026-05-01T07:30:00"},    // already full → unchanged
-		{"2026-04-05T00:00:00", "2026-04-05T00:00:00"},    // full format
-		{"", ""},                                           // empty
-		{"2026-05-01T13:30", "2026-05-01T13:30:00"},       // afternoon
+		{"2026-05-01T07:30", "2026-05-01T07:30:00"},    // short format → normalized
+		{"2026-05-01T07:30:00", "2026-05-01T07:30:00"}, // already full → unchanged
+		{"2026-04-05T00:00:00", "2026-04-05T00:00:00"}, // full format
+		{"", ""}, // empty
+		{"2026-05-01T13:30", "2026-05-01T13:30:00"}, // afternoon
 	}
 
 	for _, tt := range tests {
@@ -268,16 +270,16 @@ func TestTallinkIsOvernightRoute(t *testing.T) {
 		want bool
 	}{
 		// Overnight routes (>= 600 min)
-		{"HEL", "STO", true},  // 960 min
-		{"STO", "HEL", true},  // 960 min
-		{"TUR", "STO", true},  // 660 min
-		{"STO", "TUR", true},  // 660 min
-		{"STO", "RIG", true},  // 1020 min
-		{"RIG", "STO", true},  // 1020 min
-		{"HEL", "VIS", true},  // 780 min
-		{"VIS", "HEL", true},  // 780 min
-		{"STO", "TAL", true},  // 960 min
-		{"TAL", "STO", true},  // 960 min
+		{"HEL", "STO", true}, // 960 min
+		{"STO", "HEL", true}, // 960 min
+		{"TUR", "STO", true}, // 660 min
+		{"STO", "TUR", true}, // 660 min
+		{"STO", "RIG", true}, // 1020 min
+		{"RIG", "STO", true}, // 1020 min
+		{"HEL", "VIS", true}, // 780 min
+		{"VIS", "HEL", true}, // 780 min
+		{"STO", "TAL", true}, // 960 min
+		{"TAL", "STO", true}, // 960 min
 
 		// Shuttle routes (< 600 min)
 		{"HEL", "TAL", false}, // 120 min
@@ -769,9 +771,7 @@ func TestTallinkDealFlag(t *testing.T) {
 }
 
 func TestSearchTallink_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -823,9 +823,7 @@ func TestSearchTallink_Integration(t *testing.T) {
 }
 
 func TestSearchTallink_Overnight_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 

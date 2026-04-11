@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // sendRequest writes a JSON-RPC request to the server and returns the response.
@@ -192,9 +194,7 @@ func TestToolsList(t *testing.T) {
 }
 
 func TestToolsCallSearchFlights(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	s := NewServer()
 	params := ToolCallParams{
 		Name: "search_flights",
@@ -230,9 +230,7 @@ func TestToolsCallSearchFlights(t *testing.T) {
 }
 
 func TestToolsCallSearchDates(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	s := NewServer()
 	params := ToolCallParams{
 		Name: "search_dates",
@@ -253,9 +251,7 @@ func TestToolsCallSearchDates(t *testing.T) {
 }
 
 func TestToolsCallSearchHotels(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	s := NewServer()
 	params := ToolCallParams{
 		Name: "search_hotels",
@@ -275,9 +271,7 @@ func TestToolsCallSearchHotels(t *testing.T) {
 }
 
 func TestToolsCallHotelPrices(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
+	testutil.RequireLiveIntegration(t)
 	s := NewServer()
 	params := ToolCallParams{
 		Name: "hotel_prices",

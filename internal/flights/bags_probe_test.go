@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
 // TestBagsProbe makes real batchexecute calls to Google Flights with different
@@ -28,9 +29,7 @@ import (
 // Key question: if [1,1] returns FEWER results than [1,0], that proves the
 // checked bags field works server-side.
 func TestBagsProbe(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping: makes real HTTP calls to Google Flights")
-	}
+	testutil.RequireLiveProbe(t)
 
 	type probe struct {
 		name  string

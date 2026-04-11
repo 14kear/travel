@@ -42,8 +42,9 @@ type DealFilter struct {
 	HoursAgo int      // only deals from last N hours (default: 48)
 }
 
-// AllSources lists all supported RSS feed source keys.
-var AllSources = []string{"secretflying", "fly4free", "holidaypirates", "thepointsguy"}
+// AllSources lists all supported deal source keys.
+// "google" fetches cheapest destinations from Google Flights Explore.
+var AllSources = []string{"google", "secretflying", "fly4free", "holidaypirates", "thepointsguy"}
 
 // SourceFeeds maps source keys to their RSS feed URLs.
 var SourceFeeds = map[string]string{
@@ -55,6 +56,7 @@ var SourceFeeds = map[string]string{
 
 // SourceNames maps source keys to display names.
 var SourceNames = map[string]string{
+	"google":         "Google Flights",
 	"secretflying":   "Secret Flying",
 	"fly4free":       "Fly4Free",
 	"holidaypirates": "Holiday Pirates",

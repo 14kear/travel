@@ -36,10 +36,13 @@ capabilities/      MCP capability YAML definitions
 
 ```bash
 make build                          # Build binary to bin/trvl
-make test                           # go test ./...
+make test                           # go test ./... (deterministic default suite)
 make test-proof                     # go test -v -count=1 -race ./...
+make test-coverage                  # go test -race -coverprofile coverage.out ./...
+make test-live-integrations         # TRVL_TEST_LIVE_INTEGRATIONS=1 go test ./...
+make test-live-probes               # TRVL_TEST_LIVE_PROBES=1 ... -run Probe
 make lint                           # go vet + staticcheck
-go test -short ./...                # Fast tests (skip network)
+go test -short ./...                # Fastest suite
 go test ./internal/flights/...      # Single package
 staticcheck ./...                   # Lint (CI runs this)
 go vet ./...                        # Vet (CI runs this)
@@ -47,7 +50,9 @@ go vet ./...                        # Vet (CI runs this)
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yaml`): build, vet, staticcheck, govulncheck, test with race detector, coverage threshold (50%). Runs on ubuntu + windows, Go 1.25.9.
+GitHub Actions (`.github/workflows/ci.yaml`): build, vet, staticcheck, govulncheck, test with race detector, coverage threshold (50%). Runs on ubuntu + windows, Go 1.26.2.
+
+Make targets pin `GOTOOLCHAIN=go1.26.2` so local build/test entrypoints match CI even when the host `go` on `PATH` is older. For raw `go ...` commands on such hosts, prefix `GOTOOLCHAIN=go1.26.2`.
 
 ## Key Details
 
@@ -61,6 +66,7 @@ GitHub Actions (`.github/workflows/ci.yaml`): build, vet, staticcheck, govulnche
 
 - Protobuf-style encoding for Google Flights requests (no .proto files, hand-rolled)
 - Flight filters use nested protobuf arrays with precise slot indexing
-- Test files ending in `_probe_test.go` hit live Google endpoints (skip with `-short`)
+- Live provider/MCP integration tests are opt in via `TRVL_TEST_LIVE_INTEGRATIONS=1`
+- Test files ending in `_probe_test.go` hit live Google endpoints (opt in with `TRVL_TEST_LIVE_PROBES=1`; `-short` also skips them)
 - `internal/models/` is the shared type package -- all packages import from here
 - MCP tool handlers in `mcp/tools*.go` delegate to `internal/` packages

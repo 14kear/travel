@@ -14,10 +14,15 @@ Found wrong data? Prices off? Missing airline? **File an issue.** You don't need
 ```bash
 git clone https://github.com/MikkoParkkola/trvl.git
 cd trvl
-make build    # binary at ./bin/trvl
-make test     # run all tests
-make lint     # go vet
+make build             # binary at ./bin/trvl
+make test              # default deterministic test suite
+make test-coverage     # race + coverage proof (writes coverage.out)
+make test-live-integrations # opt-in live provider/MCP integration tests
+make test-live-probes  # opt-in live Google probe tests
+make lint              # go vet + staticcheck + govulncheck (when installed)
 ```
+
+The Makefile pins `GOTOOLCHAIN=go1.26.2`, so local validation matches CI even if the `go` binary on your `PATH` is older.
 
 ## Project Structure
 
@@ -51,13 +56,16 @@ capabilities/       mcp-gateway YAML files
 
 1. Fork, branch, make changes
 2. `make test` passes
-3. `go vet ./...` clean
-4. Add tests for new features
-5. PR description explains what and why
+3. If you touched toolchain / race / coverage behavior, run `make test-coverage`
+4. `make lint` clean
+5. If you touched live provider/MCP integration coverage, run `make test-live-integrations`
+6. If you touched Google Flights/Hotels wire-format probes, run `make test-live-probes`
+7. Add tests for new features
+8. PR description explains what and why
 
 ## Code Style
 
-Standard Go. No special rules beyond `go vet` and the patterns you see in the codebase.
+Standard Go. No special rules beyond `go vet`, `staticcheck`, `govulncheck`, and the patterns you see in the codebase.
 
 ## License
 
