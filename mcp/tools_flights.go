@@ -123,6 +123,7 @@ func searchFlightsTool() ToolDef {
 				"cabin_class":    {Type: "string", Description: "Cabin class: economy, premium_economy, business, or first (default: economy)"},
 				"max_stops":      {Type: "string", Description: "Maximum stops: any, nonstop, one_stop, or two_plus (default: any)"},
 				"sort_by":        {Type: "string", Description: "Sort order: cheapest, duration, departure, or arrival (default: cheapest)"},
+				"alliances":      {Type: "string", Description: "Filter by airline alliance (comma-separated): STAR_ALLIANCE, ONEWORLD, SKYTEAM (default: no filter)"},
 			},
 			Required: []string{"origin", "destination", "departure_date"},
 		},
@@ -200,6 +201,7 @@ func handleSearchFlights(ctx context.Context, args map[string]any, elicit Elicit
 
 	opts := flights.SearchOptions{
 		ReturnDate: argString(args, "return_date"),
+		Alliances:  argStringSlice(args, "alliances"),
 	}
 
 	if cc := argString(args, "cabin_class"); cc != "" {

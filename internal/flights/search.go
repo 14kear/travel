@@ -3,6 +3,7 @@ package flights
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
@@ -34,11 +35,12 @@ type SearchOptions struct {
 	Adults     int               // Number of adult passengers (default: 1)
 
 	// Server-side filters passed to Google Flights batchexecute.
-	MaxPrice      int // Max price in whole currency units (0 = no limit)
-	MaxDuration   int // Max total flight duration in minutes (0 = no limit)
-	CarryOnBags   int // Number of carry-on bags (0 = no filter)
-	CheckedBags   int // Number of checked bags (0 = no filter)
-	ExcludeBasic  bool // Exclude basic economy fares
+	MaxPrice      int    // Max price in whole currency units (0 = no limit)
+	MaxDuration   int    // Max total flight duration in minutes (0 = no limit)
+	CarryOnBags   int    // Number of carry-on bags (0 = no filter)
+	CheckedBags   int    // Number of checked bags (0 = no filter)
+	ExcludeBasic  bool   // Exclude basic economy fares
+	Alliances     []string // Alliance filter; e.g. ["STAR_ALLIANCE", "ONEWORLD", "SKYTEAM"]
 }
 
 // defaults fills in zero-value fields with sensible defaults.
@@ -204,7 +206,7 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			nil,                                          // [22]
 			nil,                                          // [23]
 			nil,                                          // [24]
-			nil,                                          // [25]
+			alliancesFilter(opts.Alliances),              // [25] alliance filter
 			nil,                                          // [26]
 			nil,                                          // [27]
 			excludeBasicEconomy(opts.ExcludeBasic),        // [28] exclude basic economy
@@ -301,4 +303,20 @@ func excludeBasicEconomy(exclude bool) int {
 		return 1
 	}
 	return 0
+}
+
+// alliancesFilter returns the alliances array for the batchexecute filter,
+// or nil if no alliances are specified.
+//
+// Accepted alliance names (case-insensitive): STAR_ALLIANCE, ONEWORLD, SKYTEAM.
+// Unknown values are passed through as-is to avoid silently dropping filters.
+func alliancesFilter(alliances []string) any {
+	if len(alliances) == 0 {
+		return nil
+	}
+	entries := make([]any, len(alliances))
+	for i, a := range alliances {
+		entries[i] = strings.ToUpper(strings.TrimSpace(a))
+	}
+	return entries
 }
