@@ -188,6 +188,9 @@ func TestFind_AllBusy(t *testing.T) {
 }
 
 func TestFind_MaxCandidatesCap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	t.Parallel()
 	candidates, err := Find(context.Background(), Input{
 		Origin:        "HEL",
@@ -207,6 +210,9 @@ func TestFind_MaxCandidatesCap(t *testing.T) {
 }
 
 func TestFind_PreferredIntervalInResults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
 	t.Parallel()
 	// Short window, one trip fits; mark it preferred.
 	candidates, err := Find(context.Background(), Input{
