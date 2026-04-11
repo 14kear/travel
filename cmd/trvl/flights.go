@@ -17,14 +17,15 @@ import (
 
 func flightsCmd() *cobra.Command {
 	var (
-		returnDate     string
-		cabin          string
-		maxStops       string
-		sortBy         string
-		airlines       []string
-		adults         int
-		format         string
+		returnDate    string
+		cabin         string
+		maxStops      string
+		sortBy        string
+		airlines      []string
+		adults        int
+		format        string
 		targetCurrency string
+		compareCabins bool
 	)
 
 	cmd := &cobra.Command{
@@ -79,6 +80,11 @@ Examples:
 				Adults:     adults,
 			}
 
+			// --compare-cabins: search all cabin classes in parallel.
+			if compareCabins {
+				return runCabinComparison(cmd.Context(), origins, destinations, date, opts, format)
+			}
+
 			var result *models.FlightSearchResult
 			if len(origins) > 1 || len(destinations) > 1 {
 				result, err = flights.SearchMultiAirport(cmd.Context(), origins, destinations, date, opts)
@@ -131,6 +137,7 @@ Examples:
 	cmd.Flags().IntVar(&adults, "adults", 1, "Number of adult passengers")
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json")
 	cmd.Flags().StringVar(&targetCurrency, "currency", "", "Convert prices to this currency (e.g. EUR, USD). Empty = show API default")
+	cmd.Flags().BoolVar(&compareCabins, "compare-cabins", false, "Compare prices across all cabin classes (economy, premium, business, first)")
 
 	cmd.ValidArgsFunction = airportCompletion
 
