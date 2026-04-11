@@ -55,7 +55,7 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 |------|-----|-----------|
 | `search_flights` | Flights A→B | origin,destination,departure_date,[return_date,cabin_class,max_stops] |
 | `search_dates` | Cheapest dates | origin,destination,start_date,end_date |
-| `search_hotels` | Hotels by city | location,check_in,check_out,[guests,stars] |
+| `search_hotels` | Hotels by city | location,check_in,check_out,[guests,stars,eco_certified] |
 | `hotel_prices` | Provider comparison | hotel_id,check_in,check_out |
 | `hotel_reviews` | Reviews for hotel | hotel_id,[limit,sort] |
 | `explore_destinations` | Where to go? | origin,[start_date,end_date] |
