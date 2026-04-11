@@ -119,7 +119,6 @@ func GetNearbyPOIs(ctx context.Context, lat, lon float64, radiusMeters int, cate
 	osmRateLimiter.lastReq = time.Now()
 	osmRateLimiter.Unlock()
 
-	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, overpassAPIURL, strings.NewReader("data="+query))
 	if err != nil {
 		return nil, fmt.Errorf("create overpass request: %w", err)
@@ -127,7 +126,7 @@ func GetNearbyPOIs(ctx context.Context, lat, lon float64, radiusMeters int, cate
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "trvl/1.0 (nearby POI search)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsSlowClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("overpass request: %w", err)
 	}

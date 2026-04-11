@@ -102,7 +102,6 @@ func GetRatedPlaces(ctx context.Context, lat, lon float64, category string, limi
 	q.Set("fields", "name,rating,location,categories,hours,price,tips,distance")
 	u.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create foursquare request: %w", err)
@@ -110,7 +109,7 @@ func GetRatedPlaces(ctx context.Context, lat, lon float64, category string, limi
 	req.Header.Set("Authorization", apiKey)
 	req.Header.Set("User-Agent", "trvl/1.0 (rated places)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("foursquare request: %w", err)
 	}

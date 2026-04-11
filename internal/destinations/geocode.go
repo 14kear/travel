@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 )
 
 const nominatimURL = "https://nominatim.openstreetmap.org/search"
@@ -71,14 +70,13 @@ func nominatimLookup(ctx context.Context, query string) (GeoResult, error) {
 	q.Set("addressdetails", "1")
 	u.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return GeoResult{}, fmt.Errorf("create nominatim request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination intelligence)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return GeoResult{}, fmt.Errorf("nominatim request: %w", err)
 	}

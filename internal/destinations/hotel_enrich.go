@@ -49,7 +49,6 @@ out tags center 20;`, lat, lon, lat, lon)
 	reqCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 
-	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, overpassAPIURL,
 		strings.NewReader("data="+query))
 	if err != nil {
@@ -58,7 +57,7 @@ out tags center 20;`, lat, lon, lat, lon)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "trvl/1.0 (hotel enrichment)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsSlowClient.Do(req)
 	if err != nil {
 		return nil
 	}

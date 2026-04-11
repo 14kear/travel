@@ -72,14 +72,13 @@ func GetAttractions(ctx context.Context, lat, lon float64, radiusMeters int) ([]
 	apiURL := fmt.Sprintf("%s?radius=%d&lon=%.6f&lat=%.6f&kinds=interesting_places&rate=3&format=json&apikey=%s",
 		openTripMapAPIURL, radiusMeters, lon, lat, apiKey)
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create opentripmap request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (tourist attractions)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("opentripmap request: %w", err)
 	}

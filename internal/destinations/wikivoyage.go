@@ -62,14 +62,13 @@ func GetWikivoyageGuide(ctx context.Context, location string) (*models.Wikivoyag
 	q.Set("format", "json")
 	u.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create wikivoyage request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (travel guide)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("wikivoyage request: %w", err)
 	}

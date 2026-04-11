@@ -53,14 +53,13 @@ func FetchCurrency(ctx context.Context, currencyCode string) (models.CurrencyInf
 	}
 	currencyCache.RUnlock()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, exchangeRateURL, nil)
 	if err != nil {
 		return models.CurrencyInfo{}, fmt.Errorf("create currency request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination currency)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return models.CurrencyInfo{}, fmt.Errorf("currency request: %w", err)
 	}

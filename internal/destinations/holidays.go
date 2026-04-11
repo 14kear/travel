@@ -53,14 +53,13 @@ func FetchHolidays(ctx context.Context, countryCode string, year int, startDate,
 
 	apiURL := fmt.Sprintf("%s/%d/%s", nagerDateAPIURL, year, countryCode)
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create holidays request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination holidays)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("holidays request: %w", err)
 	}

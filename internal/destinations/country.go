@@ -58,14 +58,13 @@ func FetchCountry(ctx context.Context, countryCode string) (models.CountryInfo, 
 
 	apiURL := restCountriesAPIURL + countryCode
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return models.CountryInfo{}, fmt.Errorf("create country request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination country)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return models.CountryInfo{}, fmt.Errorf("country request: %w", err)
 	}

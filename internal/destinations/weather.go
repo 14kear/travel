@@ -62,14 +62,13 @@ func FetchWeather(ctx context.Context, lat, lon float64) (models.WeatherInfo, st
 	q.Set("forecast_days", "7")
 	u.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return models.WeatherInfo{}, "", fmt.Errorf("create weather request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination weather)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return models.WeatherInfo{}, "", fmt.Errorf("weather request: %w", err)
 	}

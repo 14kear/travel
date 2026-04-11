@@ -61,14 +61,13 @@ func FetchSafety(ctx context.Context, countryCode string) (models.SafetyInfo, er
 
 	apiURL := fmt.Sprintf("%s?countrycode=%s", travelAdvisoryAPIURL, countryCode)
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return models.SafetyInfo{}, fmt.Errorf("create safety request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (destination safety)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return models.SafetyInfo{}, fmt.Errorf("safety request: %w", err)
 	}

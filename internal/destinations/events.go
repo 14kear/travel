@@ -93,14 +93,13 @@ func GetEvents(ctx context.Context, location string, startDate, endDate string) 
 	q.Set("sort", "date,asc")
 	u.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create ticketmaster request: %w", err)
 	}
 	req.Header.Set("User-Agent", "trvl/1.0 (event search)")
 
-	resp, err := client.Do(req)
+	resp, err := destinationsClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ticketmaster request: %w", err)
 	}
