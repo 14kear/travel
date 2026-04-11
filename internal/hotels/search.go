@@ -311,6 +311,27 @@ func buildTravelURL(location string, opts HotelSearchOptions) string {
 	query.Set("hl", "en")
 	query.Set("currency", opts.Currency)
 
+	// Server-side filters — let Google do the heavy lifting.
+	// Client-side filterHotels() remains as a safety net.
+	if opts.MinPrice > 0 {
+		query.Set("min_price", fmt.Sprintf("%.0f", opts.MinPrice))
+	}
+	if opts.MaxPrice > 0 {
+		query.Set("max_price", fmt.Sprintf("%.0f", opts.MaxPrice))
+	}
+	if opts.Stars > 0 {
+		query.Set("class", fmt.Sprintf("%d", opts.Stars))
+	}
+	if opts.MinRating > 0 {
+		// Google uses rating=8 for 4.0+, rating=6 for 3.0+, etc.
+		// The scale is rating * 2.
+		query.Set("rating", fmt.Sprintf("%.0f", opts.MinRating*2))
+	}
+	if opts.MaxDistanceKm > 0 {
+		// Google uses meters for the lrad (location radius) parameter.
+		query.Set("lrad", fmt.Sprintf("%.0f", opts.MaxDistanceKm*1000))
+	}
+
 	return fmt.Sprintf("https://www.google.com/travel/hotels/%s?%s", encoded, query.Encode())
 }
 

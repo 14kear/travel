@@ -179,10 +179,10 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			[]any{},                                      // [4]
 			int(opts.CabinClass),                         // [5] cabin class
 			[]any{opts.Adults, 0, 0, 0},                  // [6] passengers
-			nil,                                          // [7] price limit
+			nil,                                          // [7] TODO: price limit — set to maxPrice (int, whole currency units) when SearchOptions gains MaxPrice
 			nil,                                          // [8]
 			nil,                                          // [9]
-			nil,                                          // [10] bags
+			nil,                                          // [10] TODO: bags — likely []any{carryOn, checked} (int counts) when SearchOptions gains Bags
 			nil,                                          // [11]
 			nil,                                          // [12]
 			segments,                                     // [13] flight segments
@@ -235,7 +235,7 @@ func buildSegment(from, to, date string, opts SearchOptions) any {
 		[]any{[]any{[]any{from, 0}}},
 		// [1] arrival airports
 		[]any{[]any{[]any{to, 0}}},
-		// [2] time restrictions
+		// [2] TODO: departure time window — likely []any{startHour, endHour} when SearchOptions gains DepartureTimeEarliest/Latest
 		nil,
 		// [3] stops
 		stops,
@@ -245,7 +245,7 @@ func buildSegment(from, to, date string, opts SearchOptions) any {
 		nil,
 		// [6] date
 		date,
-		// [7] max duration
+		// [7] TODO: max duration in minutes (int) when SearchOptions gains MaxDuration
 		nil,
 		// [8] selected flight
 		nil,

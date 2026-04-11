@@ -1211,3 +1211,85 @@ func TestSortHotels_DistanceNoCenter(t *testing.T) {
 		t.Errorf("expected 2 hotels, got %d", len(hotels))
 	}
 }
+
+// TestBuildTravelURL_ServerSideFilters verifies that server-side filter params
+// are included in the URL when the corresponding options are set.
+func TestBuildTravelURL_ServerSideFilters(t *testing.T) {
+	opts := HotelSearchOptions{
+		CheckIn:       "2026-07-01",
+		CheckOut:      "2026-07-05",
+		Guests:        2,
+		Currency:      "EUR",
+		MinPrice:      50,
+		MaxPrice:      200,
+		Stars:         4,
+		MinRating:     4.0,
+		MaxDistanceKm: 5,
+	}
+
+	u := buildTravelURL("Helsinki", opts)
+
+	checks := map[string]string{
+		"min_price": "50",
+		"max_price": "200",
+		"class":     "4",
+		"rating":    "8",  // 4.0 * 2
+		"lrad":      "5000", // 5 km * 1000
+	}
+	for param, want := range checks {
+		if !strings.Contains(u, param+"="+want) {
+			t.Errorf("URL missing %s=%s: %s", param, want, u)
+		}
+	}
+}
+
+// TestBuildTravelURL_NoFiltersWhenZero verifies that filter params are omitted
+// when their values are zero (the default).
+func TestBuildTravelURL_NoFiltersWhenZero(t *testing.T) {
+	opts := HotelSearchOptions{
+		CheckIn:  "2026-07-01",
+		CheckOut: "2026-07-05",
+		Guests:   2,
+		Currency: "USD",
+	}
+
+	u := buildTravelURL("Paris", opts)
+
+	absent := []string{"min_price", "max_price", "class", "rating", "lrad"}
+	for _, param := range absent {
+		if strings.Contains(u, param+"=") {
+			t.Errorf("URL should not contain %s when zero: %s", param, u)
+		}
+	}
+}
+
+// TestBuildTravelURL_PartialFilters verifies that only the set filters appear.
+func TestBuildTravelURL_PartialFilters(t *testing.T) {
+	opts := HotelSearchOptions{
+		CheckIn:  "2026-07-01",
+		CheckOut: "2026-07-05",
+		Guests:   2,
+		Currency: "USD",
+		MaxPrice: 300,
+		Stars:    3,
+	}
+
+	u := buildTravelURL("London", opts)
+
+	if !strings.Contains(u, "max_price=300") {
+		t.Errorf("URL missing max_price=300: %s", u)
+	}
+	if !strings.Contains(u, "class=3") {
+		t.Errorf("URL missing class=3: %s", u)
+	}
+	// These should be absent.
+	if strings.Contains(u, "min_price=") {
+		t.Errorf("URL should not contain min_price when zero: %s", u)
+	}
+	if strings.Contains(u, "rating=") {
+		t.Errorf("URL should not contain rating when zero: %s", u)
+	}
+	if strings.Contains(u, "lrad=") {
+		t.Errorf("URL should not contain lrad when zero: %s", u)
+	}
+}
