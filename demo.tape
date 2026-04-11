@@ -9,118 +9,62 @@ Set Padding 20
 Set TypingSpeed 30ms
 Set CursorBlink false
 
-# ── ACT 1: Budget discovery — the magic moment ──
+# Hidden setup: mock trvl function dispatches to pre-rendered output files
+Hide
+Type `trvl() { case "$1" in prefs) cat .demo/prefs.txt;; discover) cat .demo/discover2.txt;; when) cat .demo/when2.txt;; multi-city) cat .demo/multicity2.txt;; ground) cat .demo/ground2.txt;; esac; }`
+Enter
+Type "export PS1='$ '"
+Enter
+Type "clear"
+Enter
+Show
 
-Type "# Surprise me. EUR 500, free week in June."
+# ═══ ACT 1: "It knows me" — preferences set the stage ═══
+
+Type "# trvl knows me. No hostels. My neighborhoods. My airline status."
 Enter
 Sleep 300ms
+Type "trvl prefs"
+Enter
+Sleep 3s
 
+# ═══ ACT 2: "Where should I go?" — budget discovery ═══
+
+Type "# EUR 500, free week in June. Surprise me."
+Enter
+Sleep 300ms
 Type "trvl discover --budget 500 --from 2026-06-01 --until 2026-06-30"
 Enter
+Sleep 4s
+
+# ═══ ACT 3: "When can I go?" — calendar-aware planning ═══
+
+Type "# Krakow looks great. When? Skip the 20-22nd."
+Enter
 Sleep 300ms
-
-Set TypingSpeed 0
-Type "Top 5 value trips from HEL within EUR 500"
+Type "trvl when --to KRK --from 2026-06-01 --until 2026-06-30 --busy 2026-06-20:2026-06-22"
 Enter
-Enter
-Type "  #  Destination       Dates                    Flight   Hotel                     Total    Slack"
-Enter
-Type "+----+-----------------+--------------------------+---------+---------------------------+---------+---------+"
-Enter
-Type "  1  Vienna (VIE)     06-09 -> 06-12  3 nights   EUR 127  Hotel Capri               EUR 265  EUR 235"
-Enter
-Type "  2  Krakow (KRK)     06-16 -> 06-19  3 nights   EUR 89   Hotel Stary               EUR 191  EUR 309"
-Enter
-Type "  3  Dubrovnik (DBV)  06-23 -> 06-26  3 nights   EUR 167  Old Town Studios           EUR 251  EUR 249"
-Enter
-Type "  4  Lisbon (LIS)     06-10 -> 06-14  4 nights   EUR 189  Alma Lusa Baixa-Chiado     EUR 385  EUR 115"
-Enter
-Type "  5  Milan (MXP)      06-15 -> 06-18  3 nights   EUR 109  Biocity Hotel              EUR 244  EUR 256"
-Enter
-Set TypingSpeed 30ms
-
 Sleep 3s
 
-# ── ACT 2: Multi-city — saves EUR 174 ──
+# ═══ ACT 4: "I want 3 cities" — multi-city optimization ═══
 
-Type "# Cheapest order for 3 cities?"
+Type "# Actually, Prague and Madrid too. Cheapest order?"
 Enter
 Sleep 300ms
-
 Type "trvl multi-city HEL --visit PRG,KRK,MAD --dates 2026-07-01,2026-07-21"
 Enter
-Sleep 300ms
-
-Set TypingSpeed 0
-Type "Optimal route (6 permutations): HEL -> KRK -> PRG -> MAD -> HEL"
-Enter
-Enter
-Type "  Helsinki -> Krakow      EUR 89"
-Enter
-Type "  Krakow -> Prague        EUR 34"
-Enter
-Type "  Prague -> Madrid        EUR 112"
-Enter
-Type "  Madrid -> Helsinki      EUR 148"
-Enter
-Type "  ─────────────────────────────"
-Enter
-Type "  Total: EUR 383  (saves EUR 174 vs worst order)"
-Enter
-Set TypingSpeed 30ms
-
 Sleep 3s
 
-# ── ACT 3: Calendar-aware — skips busy dates ──
+# ═══ ACT 5: "How do I get there?" — ground transport ═══
 
-Type "# Barcelona, skip July 11-13."
+Type "# Side trip to Tallinn. Ferry or bus?"
 Enter
 Sleep 300ms
-
-Type "trvl when --to BCN --until 2026-08-31 --busy 2026-07-11:2026-07-13"
+Type "trvl ground HEL TLL --date 2026-06-16"
 Enter
-Sleep 300ms
-
-Set TypingSpeed 0
-Type "Best windows HEL -> BCN (avoiding Jul 11-13)"
-Enter
-Enter
-Type "  #  Dates                  Nights  Flight   Hotel          Total"
-Enter
-Type "+----+------------------------+--------+---------+----------------+---------+"
-Enter
-Type "  1  Jun 23 -> Jun 26        3       EUR 127  Casa Bonay     EUR 268"
-Enter
-Type "  2  Jul 07 -> Jul 10        3       EUR 149  Yurbban        EUR 284"
-Enter
-Type "  3  Aug 18 -> Aug 22        4       EUR 144  Sir Victor     EUR 320"
-Enter
-Set TypingSpeed 30ms
-
 Sleep 3s
 
-# ── ACT 4: MCP — real data for AI agents ──
-
-Type "# Works as an MCP server. Claude gets real prices."
-Enter
-Sleep 300ms
-
-Type "trvl mcp install --client claude-code"
-Enter
-Sleep 300ms
-
-Set TypingSpeed 0
-Type "Installed trvl MCP server for claude-code"
-Enter
-Type "  34 tools · 5 prompts · 9 resources"
-Enter
-Type "  Restart claude-code to activate."
-Enter
-Set TypingSpeed 30ms
-
-Sleep 2s
-
-# ── CLOSING ──
+# ═══ CLOSING ═══
 
 Sleep 300ms
 Type "# 34 MCP tools · 33 CLI commands · 18 providers · No API keys"

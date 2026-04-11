@@ -1,0 +1,9 @@
+Top 5 trips from HEL under EUR 500 (Jun 1-30) — hostels excluded, your districts preferred
+
+  #  Destination       Dates              Flight   Hotel                      Total    Slack
++----+-----------------+--------------------+---------+----------------------------+---------+---------+
+  1  Krakow (KRK)     Jun 16-19  3 nights  EUR 89   Hotel Stary (Old Town)     EUR 191  EUR 309
+  2  Milan (MXP)      Jun 15-18  3 nights  EUR 109  Biocity Hotel (Centrale)   EUR 244  EUR 256
+  3  Vienna (VIE)     Jun 09-12  3 nights  EUR 127  Hotel Capri (Innere Stadt) EUR 265  EUR 235
+  4  Dubrovnik (DBV)  Jun 23-26  3 nights  EUR 167  Old Town Studios           EUR 251  EUR 249
+  5  Lisbon (LIS)     Jun 10-14  4 nights  EUR 189  Alma Lusa (Baixa-Chiado)   EUR 385  EUR 115

@@ -1,0 +1,8 @@
+Optimal route (6 permutations): HEL -> KRK -> PRG -> MAD -> HEL
+
+  Helsinki -> Krakow      EUR 89   Finnair       nonstop   2h 40m
+  Krakow -> Prague        EUR 34   Wizz Air      nonstop   1h 15m
+  Prague -> Madrid        EUR 112  Vueling       nonstop   3h 20m
+  Madrid -> Helsinki      EUR 148  Finnair       1 stop    5h 45m
+  ───────────────────────────────────────────────────────────────
+  Total: EUR 383         (saves EUR 174 vs booking in your order)

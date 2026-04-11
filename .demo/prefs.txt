@@ -1,0 +1,9 @@
+Preferences loaded from ~/.trvl/preferences.json
+
+  home_airports:          HEL, AMS
+  display_currency:       EUR
+  preferred_districts:    Prague: Prague 1, Prague 5
+                          Barcelona: Gothic Quarter, Eixample
+  exclude_property_types: hostel, guest house
+  frequent_flyer:         Oneworld Sapphire (Finnair Plus Gold)
+  lounge_cards:           Priority Pass
