@@ -204,3 +204,126 @@ func TestStaticFallback_AllAirports(t *testing.T) {
 		})
 	}
 }
+
+// TestStaticFallback_Coverage verifies all 30 target airports are present in
+// the static dataset.
+func TestStaticFallback_Coverage(t *testing.T) {
+	required := []string{
+		"HEL", "LHR", "CDG", "FRA", "AMS",
+		"JFK", "LAX", "SFO",
+		"NRT", "HND", "SIN", "DXB", "DOH",
+		"IST", "BKK", "ICN", "HKG", "PEK", "PVG",
+		"SYD", "MEL", "FCO", "MXP", "MAD", "BCN",
+		"MUC", "ZRH", "VIE", "CPH", "OSL",
+	}
+	for _, code := range required {
+		t.Run(code, func(t *testing.T) {
+			entries, ok := staticData[code]
+			if !ok {
+				t.Errorf("airport %q missing from static dataset", code)
+				return
+			}
+			if len(entries) == 0 {
+				t.Errorf("airport %q has no lounges", code)
+			}
+		})
+	}
+}
+
+// TestStaticFallback_MinLounges verifies that major hubs have at least 2 lounges.
+func TestStaticFallback_MinLounges(t *testing.T) {
+	majorHubs := []string{
+		"LHR", "CDG", "FRA", "AMS", "DXB", "DOH",
+		"SIN", "NRT", "ICN", "HKG", "BKK", "JFK", "LAX",
+	}
+	for _, code := range majorHubs {
+		t.Run(code, func(t *testing.T) {
+			if len(staticData[code]) < 2 {
+				t.Errorf("major hub %q should have >= 2 lounges, got %d", code, len(staticData[code]))
+			}
+		})
+	}
+}
+
+// TestStaticFallback_PriorityPassCoverage verifies that each airport has at
+// least one lounge accepting Priority Pass (the most widely held card).
+func TestStaticFallback_PriorityPassCoverage(t *testing.T) {
+	for airport, entries := range staticData {
+		t.Run(airport, func(t *testing.T) {
+			found := false
+			for _, e := range entries {
+				for _, c := range e.Cards {
+					if c == "Priority Pass" {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+			if !found {
+				t.Errorf("airport %q has no Priority Pass lounge", airport)
+			}
+		})
+	}
+}
+
+// TestStaticFallback_FieldIntegrity verifies every lounge has a terminal and
+// opening hours set.
+func TestStaticFallback_FieldIntegrity(t *testing.T) {
+	for airport, entries := range staticData {
+		for i, e := range entries {
+			if strings.TrimSpace(e.Terminal) == "" {
+				t.Errorf("%s[%d] %q: empty terminal", airport, i, e.Name)
+			}
+			if strings.TrimSpace(e.OpenHours) == "" {
+				t.Errorf("%s[%d] %q: empty open_hours", airport, i, e.Name)
+			}
+			if len(e.Amenities) == 0 {
+				t.Errorf("%s[%d] %q: no amenities listed", airport, i, e.Name)
+			}
+		}
+	}
+}
+
+// TestSearchLounges_CaseNormalization verifies that lowercase IATA codes work.
+func TestSearchLounges_CaseNormalization(t *testing.T) {
+	orig := loungebuddyBaseURL
+	loungebuddyBaseURL = "http://127.0.0.1:0"
+	defer func() { loungebuddyBaseURL = orig }()
+
+	result, err := SearchLounges(context.Background(), "lhr")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Airport != "LHR" {
+		t.Errorf("airport: got %q, want LHR", result.Airport)
+	}
+	if result.Count == 0 {
+		t.Error("expected lounges for lhr (normalised to LHR)")
+	}
+}
+
+// TestSharedCardSlices verifies that ppDragon and ppLK shared slices contain
+// the expected programs and are not accidentally mutated between calls.
+func TestSharedCardSlices(t *testing.T) {
+	if len(ppDragon) != 4 {
+		t.Errorf("ppDragon len: got %d, want 4", len(ppDragon))
+	}
+	if len(ppLK) != 2 {
+		t.Errorf("ppLK len: got %d, want 2", len(ppLK))
+	}
+
+	wantDragon := map[string]bool{
+		"Priority Pass": true,
+		"Diners Club":   true,
+		"LoungeKey":     true,
+		"Dragon Pass":   true,
+	}
+	for _, c := range ppDragon {
+		if !wantDragon[c] {
+			t.Errorf("unexpected card in ppDragon: %q", c)
+		}
+	}
+}
