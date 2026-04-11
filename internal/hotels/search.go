@@ -25,6 +25,10 @@ var (
 func DefaultClient() *batchexec.Client {
 	defaultClientOnce.Do(func() {
 		defaultClient = batchexec.NewClient()
+		// Hotel searches make many sequential page requests across multiple
+		// sort orders. Google Travel rate-limits at ~2 req/s; the default
+		// 10 req/s triggers persistent 429 blocks.
+		defaultClient.SetRateLimit(2)
 	})
 	return defaultClient
 }
@@ -91,14 +95,23 @@ func normalizeHotelCity(location string) string {
 	return location
 }
 
-// maxPages is the maximum number of paginated requests per search.
-// Each page returns ~20-26 hotels; 3 pages yields up to ~75.
+// maxPages is the maximum number of paginated requests per sort order.
+// Each page returns ~20-26 hotels; 3 sort orders x 3 pages = up to ~180 unique.
+// Kept at 3 per sort to limit total requests (9 max) and avoid 429 rate limits.
 const maxPages = 3
 
 // pageSize is the offset step between paginated requests. Google Travel
 // Hotels returns ~20 results per page and uses a "start" query parameter
 // for offset-based pagination.
 const pageSize = 20
+
+// googleSortOrders are the Google Hotels &sort= parameter values used to
+// diversify results. The primary sort (empty string = Google's default
+// relevance) is always fetched first. Additional sort orders pull in hotels
+// that rank differently, significantly increasing unique coverage.
+//
+// Known values: 3=highest rated, 4=most reviewed, 8=price low-to-high.
+var googleSortOrders = []string{"", "3", "8"}
 
 // SearchHotelsWithClient is like SearchHotels but reuses the provided client.
 func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions) (*models.HotelSearchResult, error) {
@@ -123,45 +136,78 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		return nil, fmt.Errorf("parse check-out date: %w", err)
 	}
 
-	// Fetch first page (with metadata).
-	firstPage, err := fetchHotelPageFull(ctx, client, location, opts, 0)
-	if err != nil {
-		return nil, err
-	}
-	hotels := firstPage.Hotels
-	totalAvailable := firstPage.TotalAvailable
-
-	// Paginate: fetch subsequent pages until we get no new results or hit page limit.
 	pageLimit := maxPages
 	if opts.MaxPages > 0 && opts.MaxPages < maxPages {
 		pageLimit = opts.MaxPages
 	}
 
-	seen := make(map[string]bool, len(hotels))
-	for _, h := range hotels {
-		seen[strings.ToLower(h.Name)] = true
+	// Determine which sort orders to use. When MaxPages is 1 (compound
+	// commands that only need the cheapest result), skip sort diversity.
+	sortOrders := googleSortOrders
+	if pageLimit <= 1 {
+		sortOrders = []string{""}
 	}
 
-	for page := 1; page < pageLimit; page++ {
-		pageHotels, err := fetchHotelPage(ctx, client, location, opts, page*pageSize)
+	var hotels []models.HotelResult
+	var totalAvailable int
+	seen := make(map[string]bool)
+
+	for sortIdx, googleSort := range sortOrders {
+		// Brief cooldown between sort orders to avoid Google 429 rate limits.
+		// Skip for the first sort order (no prior requests to cool down from).
+		if sortIdx > 0 {
+			select {
+			case <-time.After(500 * time.Millisecond):
+			case <-ctx.Done():
+				break
+			}
+		}
+
+		// Fetch first page for this sort order (with metadata on the primary sort).
+		firstPage, err := fetchHotelPageFull(ctx, client, location, opts, 0, googleSort)
 		if err != nil {
-			// Non-fatal: keep what we have from previous pages.
+			if sortIdx == 0 {
+				// Primary sort failed — fatal.
+				return nil, err
+			}
+			// Secondary sort failed — non-fatal, keep what we have.
 			break
 		}
 
-		newCount := 0
-		for _, h := range pageHotels {
+		if sortIdx == 0 {
+			totalAvailable = firstPage.TotalAvailable
+		}
+
+		for _, h := range firstPage.Hotels {
 			key := strings.ToLower(h.Name)
 			if !seen[key] {
 				seen[key] = true
 				hotels = append(hotels, h)
-				newCount++
 			}
 		}
 
-		// Stop paginating if this page yielded no new hotels (end of results).
-		if newCount == 0 {
-			break
+		// Paginate within this sort order.
+		for page := 1; page < pageLimit; page++ {
+			pageHotels, err := fetchHotelPage(ctx, client, location, opts, page*pageSize, googleSort)
+			if err != nil {
+				// Non-fatal: keep what we have from previous pages.
+				break
+			}
+
+			newCount := 0
+			for _, h := range pageHotels {
+				key := strings.ToLower(h.Name)
+				if !seen[key] {
+					seen[key] = true
+					hotels = append(hotels, h)
+					newCount++
+				}
+			}
+
+			// Stop paginating this sort if no new hotels (end of results).
+			if newCount == 0 {
+				break
+			}
 		}
 	}
 
@@ -202,8 +248,9 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 
 // fetchHotelPage fetches a single page of hotel results at the given offset.
 // offset=0 is the first page, offset=20 is the second, etc.
-func fetchHotelPage(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int) ([]models.HotelResult, error) {
-	pr, err := fetchHotelPageFull(ctx, client, location, opts, offset)
+// googleSort is the Google Hotels &sort= parameter value ("" for default).
+func fetchHotelPage(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int, googleSort string) ([]models.HotelResult, error) {
+	pr, err := fetchHotelPageFull(ctx, client, location, opts, offset, googleSort)
 	if err != nil {
 		return nil, err
 	}
@@ -212,8 +259,12 @@ func fetchHotelPage(ctx context.Context, client *batchexec.Client, location stri
 
 // fetchHotelPageFull fetches a single page and returns the full parseResult
 // including metadata like total available count.
-func fetchHotelPageFull(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int) (parseResult, error) {
+// googleSort is the Google Hotels &sort= parameter value ("" for default).
+func fetchHotelPageFull(ctx context.Context, client *batchexec.Client, location string, opts HotelSearchOptions, offset int, googleSort string) (parseResult, error) {
 	travelURL := buildTravelURL(location, opts)
+	if googleSort != "" {
+		travelURL += "&sort=" + googleSort
+	}
 	if offset > 0 {
 		travelURL += fmt.Sprintf("&start=%d", offset)
 	}

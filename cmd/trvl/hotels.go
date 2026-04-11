@@ -62,7 +62,7 @@ func runHotels(cmd *cobra.Command, args []string) error {
 	minRating, _ := cmd.Flags().GetFloat64("min-rating")
 	maxDistance, _ := cmd.Flags().GetFloat64("max-distance")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Load preferences and apply defaults where flags weren't explicitly set.
