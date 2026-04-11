@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/jsonutil"
 	"github.com/MikkoParkkola/trvl/internal/models"
@@ -98,6 +99,16 @@ func parseOneFlight(entry []any) (models.FlightResult, error) {
 		parseBagAllowance(entry[4], &fr)
 	}
 
+	// Parse CO2 emissions from entry[0][12] (grams CO2, when present).
+	if len(flightInfo) > 12 {
+		if v := jsonutil.ToInt(flightInfo[12]); v > 0 {
+			fr.Emissions = v
+		}
+	}
+
+	// Compute layover durations between consecutive legs.
+	computeLayovers(fr.Legs)
+
 	return fr, nil
 }
 
@@ -169,6 +180,11 @@ func parseOneLeg(leg []any) models.FlightLeg {
 
 	if len(leg) > 11 {
 		fl.Duration = jsonutil.ToInt(leg[11])
+	}
+
+	// Aircraft type at leg[17]: string e.g. "Airbus A350", "Boeing 787"
+	if len(leg) > 17 {
+		fl.Aircraft = toString(leg[17])
 	}
 
 	// Airline info at leg[22]: [code, flight_number, null, airline_name]
@@ -379,6 +395,32 @@ func formatTime(raw any) string {
 	}
 
 	return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d", year, month, day, hour, minute)
+}
+
+// computeLayovers fills LayoverMinutes for each leg after the first.
+// It computes the gap between the arrival time of leg N-1 and the departure
+// time of leg N. Both times must be parseable ISO 8601 strings
+// ("YYYY-MM-DDTHH:MM"). If either time is missing or unparseable the layover
+// is left at 0.
+func computeLayovers(legs []models.FlightLeg) {
+	const layout = "2006-01-02T15:04"
+	for i := 1; i < len(legs); i++ {
+		prev := legs[i-1]
+		curr := &legs[i]
+
+		if prev.ArrivalTime == "" || curr.DepartureTime == "" {
+			continue
+		}
+		arr, err1 := time.Parse(layout, prev.ArrivalTime)
+		dep, err2 := time.Parse(layout, curr.DepartureTime)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		diff := dep.Sub(arr)
+		if diff > 0 {
+			curr.LayoverMinutes = int(diff.Minutes())
+		}
+	}
 }
 
 // toString safely converts a JSON value to string.

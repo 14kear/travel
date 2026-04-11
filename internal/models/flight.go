@@ -17,22 +17,25 @@ type FlightLeg struct {
 	ArrivalAirport   AirportInfo `json:"arrival_airport"`
 	DepartureTime    string      `json:"departure_time"`
 	ArrivalTime      string      `json:"arrival_time"`
-	Duration         int         `json:"duration"` // minutes
+	Duration         int         `json:"duration"`        // minutes
 	Airline          string      `json:"airline"`
 	AirlineCode      string      `json:"airline_code"`
 	FlightNumber     string      `json:"flight_number"`
+	Aircraft         string      `json:"aircraft,omitempty"`       // e.g. "Airbus A350"
+	LayoverMinutes   int         `json:"layover_minutes,omitempty"` // time between arrival of previous leg and this departure (0 for first leg)
 }
 
 // FlightResult represents a single flight option with price and routing.
 type FlightResult struct {
-	Price             float64     `json:"price"`
-	Currency          string      `json:"currency"`
-	Duration          int         `json:"duration"` // total minutes
-	Stops             int         `json:"stops"`
-	Legs              []FlightLeg `json:"legs"`
-	BookingURL        string      `json:"booking_url,omitempty"`
-	CarryOnIncluded   *bool       `json:"carry_on_included,omitempty"`   // true if carry-on bag is included in price
-	CheckedBagsIncluded *int      `json:"checked_bags_included,omitempty"` // 0=not included, 1=one bag, 2=two bags
+	Price               float64     `json:"price"`
+	Currency            string      `json:"currency"`
+	Duration            int         `json:"duration"` // total minutes
+	Stops               int         `json:"stops"`
+	Legs                []FlightLeg `json:"legs"`
+	BookingURL          string      `json:"booking_url,omitempty"`
+	CarryOnIncluded     *bool       `json:"carry_on_included,omitempty"`     // true if carry-on bag is included in price
+	CheckedBagsIncluded *int        `json:"checked_bags_included,omitempty"` // 0=not included, 1=one bag, 2=two bags
+	Emissions           int         `json:"emissions,omitempty"`             // estimated CO2 in grams; 0 if unavailable
 }
 
 // FlightSearchResult is the top-level response for a flight search.

@@ -305,3 +305,126 @@ func TestSearchFlights_MissingParams(t *testing.T) {
 		t.Error("expected error for missing date")
 	}
 }
+
+// TestParseFlights_Aircraft verifies that leg[17] is parsed into Aircraft.
+func TestParseFlights_Aircraft(t *testing.T) {
+	rawFlights := loadGoldenResponse(t)
+	flights := parseFlights(rawFlights)
+
+	if len(flights) < 3 {
+		t.Fatalf("expected ≥3 flights, got %d", len(flights))
+	}
+
+	tests := []struct {
+		name   string
+		flIdx  int
+		legIdx int
+		want   string
+	}{
+		{"finnair A350", 0, 0, "Airbus A350"},
+		{"lufthansa A320 leg0", 1, 0, "Airbus A320"},
+		{"lufthansa B747 leg1", 1, 1, "Boeing 747"},
+		{"jal B787", 2, 0, "Boeing 787"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := flights[tt.flIdx]
+			if tt.legIdx >= len(f.Legs) {
+				t.Fatalf("flight %d has %d legs, want leg %d", tt.flIdx, len(f.Legs), tt.legIdx)
+			}
+			if got := f.Legs[tt.legIdx].Aircraft; got != tt.want {
+				t.Errorf("aircraft: got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseFlights_Emissions verifies CO2 emission parsing from flightInfo[12].
+func TestParseFlights_Emissions(t *testing.T) {
+	rawFlights := loadGoldenResponse(t)
+	flights := parseFlights(rawFlights)
+
+	if len(flights) < 3 {
+		t.Fatalf("expected ≥3 flights, got %d", len(flights))
+	}
+
+	// Flights 1 and 2 have emissions in golden file; flight 3 does not.
+	if flights[0].Emissions != 95000 {
+		t.Errorf("flight 1 emissions: got %d, want 95000", flights[0].Emissions)
+	}
+	if flights[1].Emissions != 140000 {
+		t.Errorf("flight 2 emissions: got %d, want 140000", flights[1].Emissions)
+	}
+	if flights[2].Emissions != 0 {
+		t.Errorf("flight 3 emissions: got %d, want 0 (absent)", flights[2].Emissions)
+	}
+}
+
+// TestParseFlights_Layovers verifies layover computation for connecting flights.
+func TestParseFlights_Layovers(t *testing.T) {
+	rawFlights := loadGoldenResponse(t)
+	flights := parseFlights(rawFlights)
+
+	if len(flights) < 2 {
+		t.Fatalf("expected ≥2 flights, got %d", len(flights))
+	}
+
+	// Flight 1 (nonstop): first leg has no layover.
+	if flights[0].Legs[0].LayoverMinutes != 0 {
+		t.Errorf("nonstop leg 0 layover: got %d, want 0", flights[0].Legs[0].LayoverMinutes)
+	}
+
+	// Flight 2 (HEL->FRA->NRT):
+	//   leg 0 arrives FRA at 2026-06-15T10:30
+	//   leg 1 departs FRA at 2026-06-15T13:45
+	//   layover = 195 minutes
+	f2 := flights[1]
+	if f2.Legs[0].LayoverMinutes != 0 {
+		t.Errorf("f2 leg 0 layover: got %d, want 0 (first leg)", f2.Legs[0].LayoverMinutes)
+	}
+	if f2.Legs[1].LayoverMinutes != 195 {
+		t.Errorf("f2 leg 1 layover: got %d, want 195", f2.Legs[1].LayoverMinutes)
+	}
+}
+
+// TestComputeLayovers_Direct tests the layover helper directly.
+func TestComputeLayovers_Direct(t *testing.T) {
+	legs := []models.FlightLeg{
+		{ArrivalTime: "2026-06-15T10:30"},
+		{DepartureTime: "2026-06-15T14:00"},
+		{DepartureTime: "2026-06-16T08:00"},
+	}
+	// Seed arrival times for legs 1 and 2.
+	legs[1].ArrivalTime = "2026-06-15T21:00"
+	legs[2].ArrivalTime = "2026-06-16T20:00"
+	// Fix dep time for leg 0 (not needed by computeLayovers but keep struct valid).
+	legs[0].DepartureTime = "2026-06-15T07:00"
+
+	computeLayovers(legs)
+
+	// leg[0] layover must remain 0.
+	if legs[0].LayoverMinutes != 0 {
+		t.Errorf("leg 0 layover: got %d, want 0", legs[0].LayoverMinutes)
+	}
+	// leg[1]: arr[0]=10:30, dep[1]=14:00 → 210 min
+	if legs[1].LayoverMinutes != 210 {
+		t.Errorf("leg 1 layover: got %d, want 210", legs[1].LayoverMinutes)
+	}
+	// leg[2]: arr[1]=21:00, dep[2]=next day 08:00 → 11h = 660 min
+	if legs[2].LayoverMinutes != 660 {
+		t.Errorf("leg 2 layover: got %d, want 660", legs[2].LayoverMinutes)
+	}
+}
+
+// TestComputeLayovers_MissingTimes verifies graceful handling of absent timestamps.
+func TestComputeLayovers_MissingTimes(t *testing.T) {
+	legs := []models.FlightLeg{
+		{ArrivalTime: ""},                   // missing arrival on first
+		{DepartureTime: "2026-06-15T14:00"}, // missing departure on second
+	}
+	computeLayovers(legs)
+	if legs[1].LayoverMinutes != 0 {
+		t.Errorf("expected 0 layover on missing time, got %d", legs[1].LayoverMinutes)
+	}
+}
