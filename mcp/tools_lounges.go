@@ -99,10 +99,11 @@ func handleSearchLounges(ctx context.Context, args map[string]any, elicit Elicit
 		return nil, nil, fmt.Errorf("lounge search: %w", err)
 	}
 
-	// Annotate with user's lounge cards from preferences.
+	// Annotate with user's lounge cards and frequent flyer status.
 	prefs, _ := preferences.Load()
-	if prefs != nil && len(prefs.LoungeCards) > 0 {
-		lounges.AnnotateAccess(result, prefs.LoungeCards)
+	if prefs != nil {
+		ffCards := ffStatusToCards(prefs.FrequentFlyerPrograms)
+		lounges.AnnotateAccessFull(result, prefs.LoungeCards, ffCards)
 	}
 
 	summary := loungeSummary(result, prefs)
@@ -146,4 +147,134 @@ func loungeSummary(result *lounges.SearchResult, prefs *preferences.Preferences)
 	}
 
 	return summary
+}
+
+// allianceTierCards maps (normalised alliance, normalised tier) to the card
+// name that airline lounges use in their Cards list.
+//
+// These names match the conventions used in the static lounge dataset and by
+// airline alliance published benefit tiers.
+var allianceTierCards = map[string]map[string]string{
+	"oneworld": {
+		"ruby":     "Oneworld Ruby",
+		"sapphire": "Oneworld Sapphire",
+		"emerald":  "Oneworld Emerald",
+	},
+	"star_alliance": {
+		"silver": "Star Alliance Silver",
+		"gold":   "Star Alliance Gold",
+	},
+	"skyteam": {
+		"elite":      "SkyTeam Elite",
+		"elite_plus": "SkyTeam Elite Plus",
+		"eliteplus":  "SkyTeam Elite Plus",
+	},
+}
+
+// airlineProgramNames maps IATA airline codes to their frequent flyer program
+// name prefix. Used to generate airline-specific card names like
+// "Finnair Plus Gold" from FrequentFlyerStatus{AirlineCode: "AY", Tier: "Gold"}.
+var airlineProgramNames = map[string]string{
+	"AY": "Finnair Plus",
+	"BA": "BA",
+	"AA": "AAdvantage",
+	"QF": "Qantas Frequent Flyer",
+	"CX": "Cathay",
+	"JL": "JAL Mileage Bank",
+	"QR": "Qatar Airways Privilege Club",
+	"IB": "Iberia Plus",
+	"MH": "Malaysia Airlines Enrich",
+	"RJ": "Royal Plus",
+	"AF": "Flying Blue",
+	"KL": "Flying Blue",
+	"DL": "Delta SkyMiles",
+	"KE": "Korean Air SKYPASS",
+	"LH": "Miles & More",
+	"UA": "MileagePlus",
+	"SQ": "KrisFlyer",
+	"TG": "Royal Orchid Plus",
+	"NH": "ANA Mileage Club",
+	"AC": "Aeroplan",
+	"TK": "Miles&Smiles",
+	"SK": "EuroBonus",
+}
+
+// ffStatusToCards converts a slice of FrequentFlyerStatus into synthetic card
+// names that can be matched against lounge access cards. For example, a user
+// with Oneworld Sapphire status via Finnair produces:
+//
+//	["Oneworld Sapphire", "Finnair Plus Sapphire"]
+//
+// The result is suitable for passing as the ffCards argument to
+// lounges.AnnotateAccessFull.
+func ffStatusToCards(programs []preferences.FrequentFlyerStatus) []string {
+	if len(programs) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var cards []string
+	add := func(c string) {
+		key := strings.ToLower(c)
+		if !seen[key] {
+			seen[key] = true
+			cards = append(cards, c)
+		}
+	}
+
+	for _, p := range programs {
+		alliance := strings.ToLower(strings.TrimSpace(p.Alliance))
+		alliance = strings.ReplaceAll(alliance, "-", "_")
+		alliance = strings.ReplaceAll(alliance, " ", "_")
+		tier := normalizeTierName(p.Tier)
+		displayTier := tierDisplayName(alliance, tier)
+
+		// Alliance-level card: "Oneworld Sapphire", "Star Alliance Gold", etc.
+		if tiers, ok := allianceTierCards[alliance]; ok {
+			if card, ok := tiers[tier]; ok {
+				add(card)
+			}
+		}
+
+		// Airline-specific card: "Finnair Plus Gold", "BA Gold", etc.
+		code := strings.ToUpper(strings.TrimSpace(p.AirlineCode))
+		if code != "" {
+			if program, ok := airlineProgramNames[code]; ok {
+				add(program + " " + displayTier)
+			}
+		}
+	}
+
+	return cards
+}
+
+// normalizeTierName lowercases and normalises a tier string: "Elite Plus" ->
+// "elite_plus", "SAPPHIRE" -> "sapphire".
+func normalizeTierName(tier string) string {
+	t := strings.ToLower(strings.TrimSpace(tier))
+	t = strings.ReplaceAll(t, "-", "_")
+	t = strings.ReplaceAll(t, " ", "_")
+	return t
+}
+
+// tierDisplayName returns the human-readable tier name for card generation.
+// e.g. ("oneworld", "sapphire") -> "Sapphire", ("skyteam", "elite_plus") -> "Elite Plus".
+func tierDisplayName(alliance, normalizedTier string) string {
+	// Look up the full card name and extract the tier portion after the
+	// alliance prefix.
+	if tiers, ok := allianceTierCards[alliance]; ok {
+		if card, ok := tiers[normalizedTier]; ok {
+			// Card is "Oneworld Sapphire" — extract everything after the first space.
+			if idx := strings.Index(card, " "); idx >= 0 {
+				return card[idx+1:]
+			}
+		}
+	}
+	// Fallback: title-case the normalised tier.
+	parts := strings.Split(normalizedTier, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ")
 }

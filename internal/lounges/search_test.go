@@ -305,3 +305,111 @@ func TestSharedCardSlices(t *testing.T) {
 		}
 	}
 }
+
+// TestAnnotateAccessFull_FFCards verifies that frequent-flyer-derived synthetic
+// cards are matched against lounge access requirements.
+func TestAnnotateAccessFull_FFCards(t *testing.T) {
+	result := &SearchResult{
+		Lounges: []Lounge{
+			{
+				Name:  "Finnair Premium Lounge",
+				Cards: []string{"Finnair Plus Gold", "Oneworld Sapphire", "Oneworld Emerald"},
+			},
+			{
+				Name:  "BA Galleries Club",
+				Cards: []string{"BA Business Class", "Oneworld Sapphire", "Oneworld Emerald"},
+			},
+			{
+				Name:  "Aspire Lounge",
+				Cards: []string{"Priority Pass", "LoungeKey"},
+			},
+		},
+	}
+
+	userCards := []string{"Priority Pass"}
+	ffCards := []string{"Oneworld Sapphire", "Finnair Plus Gold"}
+
+	AnnotateAccessFull(result, userCards, ffCards)
+
+	// Finnair lounge: user matches via Oneworld Sapphire AND Finnair Plus Gold.
+	if len(result.Lounges[0].AccessibleWith) != 2 {
+		t.Errorf("Finnair lounge: got %v, want 2 matches", result.Lounges[0].AccessibleWith)
+	}
+	// BA Galleries: user matches via Oneworld Sapphire.
+	if len(result.Lounges[1].AccessibleWith) != 1 || result.Lounges[1].AccessibleWith[0] != "Oneworld Sapphire" {
+		t.Errorf("BA Galleries: got %v, want [Oneworld Sapphire]", result.Lounges[1].AccessibleWith)
+	}
+	// Aspire: user matches via Priority Pass (explicit card).
+	if len(result.Lounges[2].AccessibleWith) != 1 || result.Lounges[2].AccessibleWith[0] != "Priority Pass" {
+		t.Errorf("Aspire: got %v, want [Priority Pass]", result.Lounges[2].AccessibleWith)
+	}
+}
+
+// TestAnnotateAccessFull_CaseInsensitive verifies case-insensitive matching
+// for FF-derived cards.
+func TestAnnotateAccessFull_CaseInsensitive(t *testing.T) {
+	result := &SearchResult{
+		Lounges: []Lounge{
+			{Name: "Test", Cards: []string{"oneworld sapphire"}},
+		},
+	}
+	AnnotateAccessFull(result, nil, []string{"Oneworld Sapphire"})
+	if len(result.Lounges[0].AccessibleWith) != 1 {
+		t.Errorf("case-insensitive FF match failed: got %v", result.Lounges[0].AccessibleWith)
+	}
+}
+
+// TestAnnotateAccessFull_NoDuplicates verifies that when both userCards and
+// ffCards match the same lounge card, only one entry appears in AccessibleWith.
+func TestAnnotateAccessFull_NoDuplicates(t *testing.T) {
+	result := &SearchResult{
+		Lounges: []Lounge{
+			{Name: "Test", Cards: []string{"Oneworld Sapphire"}},
+		},
+	}
+	// Same card in both lists (different case).
+	AnnotateAccessFull(result, []string{"oneworld sapphire"}, []string{"Oneworld Sapphire"})
+	if len(result.Lounges[0].AccessibleWith) != 1 {
+		t.Errorf("expected 1 match (no duplicate), got %v", result.Lounges[0].AccessibleWith)
+	}
+}
+
+// TestAnnotateAccessFull_OnlyFFCards verifies that AnnotateAccessFull works
+// with nil userCards and only FF-derived cards.
+func TestAnnotateAccessFull_OnlyFFCards(t *testing.T) {
+	result := &SearchResult{
+		Lounges: []Lounge{
+			{Name: "Star Lounge", Cards: []string{"Star Alliance Gold", "Priority Pass"}},
+		},
+	}
+	AnnotateAccessFull(result, nil, []string{"Star Alliance Gold"})
+	if len(result.Lounges[0].AccessibleWith) != 1 || result.Lounges[0].AccessibleWith[0] != "Star Alliance Gold" {
+		t.Errorf("got %v, want [Star Alliance Gold]", result.Lounges[0].AccessibleWith)
+	}
+}
+
+// TestAnnotateAccessFull_NilSafety verifies nil/empty inputs don't panic.
+func TestAnnotateAccessFull_NilSafety(t *testing.T) {
+	AnnotateAccessFull(nil, []string{"x"}, []string{"y"})
+	AnnotateAccessFull(&SearchResult{}, nil, nil)
+	AnnotateAccessFull(&SearchResult{}, []string{}, []string{})
+	AnnotateAccessFull(&SearchResult{Lounges: []Lounge{{Name: "X"}}}, nil, nil)
+}
+
+// TestAnnotateAccessFull_BackwardCompatible verifies that the old
+// AnnotateAccess function still works identically via the new implementation.
+func TestAnnotateAccessFull_BackwardCompatible(t *testing.T) {
+	result := &SearchResult{
+		Lounges: []Lounge{
+			{Name: "A", Cards: []string{"Priority Pass", "LoungeKey"}},
+			{Name: "B", Cards: []string{"Amex Platinum"}},
+		},
+	}
+	AnnotateAccess(result, []string{"priority pass"})
+	if len(result.Lounges[0].AccessibleWith) != 1 || result.Lounges[0].AccessibleWith[0] != "priority pass" {
+		t.Errorf("backward compat: got %v, want [priority pass]", result.Lounges[0].AccessibleWith)
+	}
+	if len(result.Lounges[1].AccessibleWith) != 0 {
+		t.Errorf("backward compat: got %v, want []", result.Lounges[1].AccessibleWith)
+	}
+}

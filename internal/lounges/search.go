@@ -84,12 +84,35 @@ func SearchLounges(ctx context.Context, airport string) (*SearchResult, error) {
 // own lounge card names (from preferences.LoungeCards). The intersection is
 // stored in Lounge.AccessibleWith. This mutates the result in place.
 func AnnotateAccess(result *SearchResult, userCards []string) {
-	if result == nil || len(userCards) == 0 {
+	AnnotateAccessFull(result, userCards, nil)
+}
+
+// AnnotateAccessFull cross-references each lounge's Cards list against both
+// the user's explicit lounge card names (e.g. "Priority Pass") and synthetic
+// card names derived from frequent flyer status (e.g. "Oneworld Sapphire",
+// "Finnair Plus Gold"). The union of matches is stored in
+// Lounge.AccessibleWith. This mutates the result in place.
+//
+// The ffCards parameter should contain pre-built card names generated from
+// the user's FrequentFlyerPrograms by the caller (keeping the lounges
+// package decoupled from the preferences package).
+func AnnotateAccessFull(result *SearchResult, userCards []string, ffCards []string) {
+	if result == nil {
 		return
 	}
-	userSet := make(map[string]string, len(userCards))
+	total := len(userCards) + len(ffCards)
+	if total == 0 {
+		return
+	}
+	userSet := make(map[string]string, total)
 	for _, c := range userCards {
 		userSet[strings.ToLower(c)] = c
+	}
+	for _, c := range ffCards {
+		key := strings.ToLower(c)
+		if _, exists := userSet[key]; !exists {
+			userSet[key] = c
+		}
 	}
 	for i := range result.Lounges {
 		l := &result.Lounges[i]
@@ -371,6 +394,29 @@ var staticData = map[string][]staticLounge{
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
 			OpenHours: "05:00–21:00",
 		},
+		// Air France airline lounges (NOT Priority Pass)
+		{
+			Name:      "Air France Business Lounge",
+			Terminal:  "Terminal 2E, Hall L",
+			Cards:     []string{"Air France Business Class", "SkyTeam Elite Plus", "Flying Blue Gold", "Flying Blue Platinum"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Champagne bar", "Showers", "Workstations"},
+			OpenHours: "05:30–23:00",
+		},
+		{
+			Name:      "Air France La Première Lounge",
+			Terminal:  "Terminal 2E, Hall L",
+			Cards:     []string{"Air France First Class", "Flying Blue Ultimate"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Champagne bar", "Showers", "Spa", "Private suites"},
+			OpenHours: "06:00–23:00",
+		},
+		// Amex Centurion Lounge (opened 2024)
+		{
+			Name:      "The Centurion Lounge",
+			Terminal:  "Terminal 2E",
+			Cards:     amexCenturion,
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
+			OpenHours: "06:00–22:00",
+		},
 	},
 	"FRA": {
 		{
@@ -400,6 +446,28 @@ var staticData = map[string][]staticLounge{
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
 			OpenHours: "05:30–22:00",
+		},
+		// Lufthansa airline lounges (status-only, NOT Priority Pass)
+		{
+			Name:      "Lufthansa Senator Lounge",
+			Terminal:  "Terminal 1, Concourse B",
+			Cards:     []string{"Lufthansa First Class", "Lufthansa Business Class", "Star Alliance Gold", "Miles & More Senator", "Miles & More HON Circle"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Sleeping chairs", "Workstations"},
+			OpenHours: "05:15–22:00",
+		},
+		{
+			Name:      "Lufthansa Business Lounge (Pier A)",
+			Terminal:  "Terminal 1, Pier A",
+			Cards:     []string{"Lufthansa Business Class", "Star Alliance Gold", "Miles & More Senator", "Miles & More HON Circle", "Miles & More Frequent Traveller"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Workstations"},
+			OpenHours: "05:15–22:00",
+		},
+		{
+			Name:      "Lufthansa First Class Terminal",
+			Terminal:  "Terminal 1, separate building",
+			Cards:     []string{"Lufthansa First Class", "Miles & More HON Circle"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Cigar lounge", "Showers", "Bath", "Personal assistant", "Porsche transfer"},
+			OpenHours: "05:00–22:00",
 		},
 	},
 	"AMS": {
@@ -634,6 +702,28 @@ var staticData = map[string][]staticLounge{
 			Amenities: []string{"Wi-Fi", "Buffet", "Showers", "Prayer room"},
 			OpenHours: "24 hours",
 		},
+		// Emirates airline lounges (NOT Priority Pass)
+		{
+			Name:      "Emirates Business Class Lounge",
+			Terminal:  "Terminal 3, Concourse B",
+			Cards:     []string{"Emirates Business Class", "Emirates Skywards Gold", "Emirates Skywards Platinum"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Spa", "Barber"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Emirates First Class Lounge",
+			Terminal:  "Terminal 3, Concourse A",
+			Cards:     []string{"Emirates First Class", "Emirates Skywards Platinum"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Champagne bar", "Showers", "Spa", "Cigar bar", "Shoe shine"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Emirates Business Class Lounge",
+			Terminal:  "Terminal 3, Concourse C",
+			Cards:     []string{"Emirates Business Class", "Emirates Skywards Gold", "Emirates Skywards Platinum"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
+			OpenHours: "24 hours",
+		},
 	},
 	"DOH": {
 		{
@@ -655,6 +745,28 @@ var staticData = map[string][]staticLounge{
 			Terminal:  "Hamad International, Concourse D",
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers"},
+			OpenHours: "24 hours",
+		},
+		// Qatar Airways airline lounges (NOT Priority Pass)
+		{
+			Name:      "Qatar Airways Al Mourjan Business Lounge",
+			Terminal:  "Hamad International, near Gate A2",
+			Cards:     []string{"Qatar Airways Business Class", "Oneworld Sapphire", "Oneworld Emerald", "Qatar Privilege Club Gold", "Qatar Privilege Club Platinum"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Restaurant", "Bar", "Showers", "Quiet rooms", "Family area", "Games room"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Qatar Airways Al Mourjan Business Lounge — The Garden",
+			Terminal:  "Hamad International, near Gate B",
+			Cards:     []string{"Qatar Airways Business Class", "Oneworld Sapphire", "Oneworld Emerald", "Qatar Privilege Club Gold", "Qatar Privilege Club Platinum"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Bar", "Showers", "Indoor garden", "Deli", "Quiet rooms"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Qatar Airways Al Safwa First Lounge",
+			Terminal:  "Hamad International, near Gate A",
+			Cards:     []string{"Qatar Airways First Class", "Oneworld Emerald", "Qatar Privilege Club Platinum"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Champagne bar", "Spa", "Showers", "Private suites", "Family lounge"},
 			OpenHours: "24 hours",
 		},
 	},
@@ -718,6 +830,28 @@ var staticData = map[string][]staticLounge{
 			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Napping pods"},
 			OpenHours: "24 hours",
 		},
+		// Singapore Airlines airline lounges (NOT Priority Pass)
+		{
+			Name:      "Singapore Airlines SilverKris Business Class Lounge",
+			Terminal:  "Terminal 3",
+			Cards:     []string{"SQ Business Class", "Star Alliance Gold", "KrisFlyer Elite Gold", "KrisFlyer PPS Club"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Workstations"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Singapore Airlines SilverKris First Class Lounge",
+			Terminal:  "Terminal 3",
+			Cards:     []string{"SQ First Class", "Star Alliance Gold", "KrisFlyer PPS Club", "KrisFlyer Solitaire PPS"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Champagne bar", "Showers", "Private rooms"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Singapore Airlines The Private Room",
+			Terminal:  "Terminal 3",
+			Cards:     []string{"SQ Suites Class", "SQ First Class", "KrisFlyer Solitaire PPS"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Champagne bar", "Showers", "Private suites"},
+			OpenHours: "24 hours",
+		},
 	},
 	"NRT": {
 		{
@@ -740,6 +874,28 @@ var staticData = map[string][]staticLounge{
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers"},
 			OpenHours: "07:00–22:00",
+		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "ANA Lounge",
+			Terminal:  "Terminal 1, Satellite 4F",
+			Cards:     []string{"ANA Business Class", "Star Alliance Gold", "ANA Super Flyers Card", "ANA Diamond"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Noodle bar"},
+			OpenHours: "07:00–21:30",
+		},
+		{
+			Name:      "JAL Sakura Lounge",
+			Terminal:  "Terminal 2, Main Building 3F",
+			Cards:     []string{"JAL Business Class", "Oneworld Sapphire", "Oneworld Emerald", "JAL Global Club"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Massage chairs"},
+			OpenHours: "07:30–21:30",
+		},
+		{
+			Name:      "JAL First Class Lounge",
+			Terminal:  "Terminal 2, Main Building 3F",
+			Cards:     []string{"JAL First Class", "Oneworld Emerald", "JAL Diamond", "JAL JGC Premier"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Sushi bar", "Champagne bar", "Showers", "Massage"},
+			OpenHours: "07:30–21:30",
 		},
 	},
 	"HND": {
@@ -780,6 +936,28 @@ var staticData = map[string][]staticLounge{
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
 			OpenHours: "24 hours",
 		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "Korean Air Prestige Class Lounge",
+			Terminal:  "Terminal 2, Concourse",
+			Cards:     []string{"Korean Air Business Class", "Korean Air First Class", "SkyTeam Elite Plus", "Korean Air Morning Calm Premium"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Napping area", "Workstations"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Korean Air First Class Lounge",
+			Terminal:  "Terminal 2, Concourse",
+			Cards:     []string{"Korean Air First Class", "Korean Air Morning Calm Premium", "SkyTeam Elite Plus"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Bar", "Showers", "Private suites", "Spa"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Asiana Business Class Lounge",
+			Terminal:  "Terminal 1, Concourse A",
+			Cards:     []string{"Asiana Business Class", "Asiana First Class", "Star Alliance Gold", "Asiana Diamond Plus", "Asiana Diamond"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Napping area"},
+			OpenHours: "24 hours",
+		},
 	},
 	"HKG": {
 		{
@@ -802,6 +980,35 @@ var staticData = map[string][]staticLounge{
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers"},
 			OpenHours: "24 hours",
+		},
+		// Cathay Pacific airline lounges (NOT Priority Pass)
+		{
+			Name:      "Cathay Pacific The Pier Business Class Lounge",
+			Terminal:  "Terminal 1, near Gate 65",
+			Cards:     []string{"Cathay Business Class", "Oneworld Sapphire", "Oneworld Emerald", "Cathay Marco Polo Gold", "Cathay Marco Polo Diamond"},
+			Amenities: []string{"Wi-Fi", "Noodle bar", "Teahouse", "Bar", "Showers", "Day suites"},
+			OpenHours: "05:30–00:30",
+		},
+		{
+			Name:      "Cathay Pacific The Pier First Class Lounge",
+			Terminal:  "Terminal 1, near Gate 65",
+			Cards:     []string{"Cathay First Class", "Oneworld Emerald", "Cathay Marco Polo Diamond"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Champagne bar", "Showers", "Day suites", "Spa"},
+			OpenHours: "05:30–00:30",
+		},
+		{
+			Name:      "Cathay Pacific The Wing Business Class Lounge",
+			Terminal:  "Terminal 1, near Gate 1",
+			Cards:     []string{"Cathay Business Class", "Oneworld Sapphire", "Oneworld Emerald", "Cathay Marco Polo Gold", "Cathay Marco Polo Diamond"},
+			Amenities: []string{"Wi-Fi", "Noodle bar", "Bar", "Showers"},
+			OpenHours: "05:30–00:30",
+		},
+		{
+			Name:      "Cathay Pacific The Wing First Class Lounge",
+			Terminal:  "Terminal 1, near Gate 1",
+			Cards:     []string{"Cathay First Class", "Oneworld Emerald", "Cathay Marco Polo Diamond"},
+			Amenities: []string{"Wi-Fi", "Fine dining", "Champagne bar", "Showers", "Cabanas"},
+			OpenHours: "05:30–00:30",
 		},
 	},
 	"BKK": {
@@ -832,6 +1039,21 @@ var staticData = map[string][]staticLounge{
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Snacks", "Bar"},
 			OpenHours: "05:00–23:00",
+		},
+		// Thai Airways airline lounges (NOT Priority Pass)
+		{
+			Name:      "Thai Airways Royal Silk Lounge",
+			Terminal:  "Suvarnabhumi, Concourse D",
+			Cards:     []string{"Thai Business Class", "Star Alliance Gold", "Royal Orchid Plus Gold", "Royal Orchid Plus Platinum"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Spa", "Napping area"},
+			OpenHours: "24 hours",
+		},
+		{
+			Name:      "Thai Airways Royal First Lounge",
+			Terminal:  "Suvarnabhumi, Concourse D",
+			Cards:     []string{"Thai First Class", "Star Alliance Gold", "Royal Orchid Plus Platinum"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Champagne bar", "Showers", "Spa", "Private suites"},
+			OpenHours: "24 hours",
 		},
 	},
 	"PEK": {
@@ -979,6 +1201,28 @@ var staticData = map[string][]staticLounge{
 			Amenities: []string{"Wi-Fi", "Buffet", "Bar", "Showers"},
 			OpenHours: "06:00–22:00",
 		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "Delta Sky Club",
+			Terminal:  "Terminal 2",
+			Cards:     []string{"Delta One", "Delta Business Class", "SkyTeam Elite Plus", "Delta SkyMiles Diamond", "Delta SkyMiles Platinum", "Delta Sky Club Membership"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers", "Sky Deck"},
+			OpenHours: "04:30–23:00",
+		},
+		{
+			Name:      "Delta Sky Club",
+			Terminal:  "Terminal 3",
+			Cards:     []string{"Delta One", "Delta Business Class", "SkyTeam Elite Plus", "Delta SkyMiles Diamond", "Delta SkyMiles Platinum", "Delta Sky Club Membership"},
+			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
+			OpenHours: "04:30–23:00",
+		},
+		{
+			Name:      "United Polaris Lounge",
+			Terminal:  "Terminal 7",
+			Cards:     []string{"United Business Class", "United First Class", "Star Alliance Gold", "United MileagePlus 1K", "United MileagePlus Global Services"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Bar", "Showers", "Daybeds", "Workstations"},
+			OpenHours: "06:00–23:00",
+		},
 	},
 	"SFO": {
 		{
@@ -1001,6 +1245,14 @@ var staticData = map[string][]staticLounge{
 			Cards:     ppDragon,
 			Amenities: []string{"Wi-Fi", "Hot food", "Bar", "Showers"},
 			OpenHours: "05:00–23:00",
+		},
+		// Airline-specific lounges (NOT Priority Pass)
+		{
+			Name:      "United Polaris Lounge",
+			Terminal:  "International Terminal G",
+			Cards:     []string{"United Business Class", "United First Class", "Star Alliance Gold", "United MileagePlus 1K", "United MileagePlus Global Services"},
+			Amenities: []string{"Wi-Fi", "À la carte dining", "Bar", "Showers", "Daybeds", "Workstations"},
+			OpenHours: "06:00–23:30",
 		},
 	},
 }
