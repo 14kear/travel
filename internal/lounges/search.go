@@ -1,8 +1,8 @@
 // Package lounges provides airport lounge search across multiple programs.
 //
 // Data sources tried in order:
-//  1. LoungeBuddy (loungebuddy.com) — RapidAPI endpoint (free tier available)
-//  2. Priority Pass web search (prioritypass.com) — HTML scrape fallback
+//  1. Priority Pass search API (prioritypass.com) — free, no auth required
+//  2. Curated static dataset for top-30 hub airports
 //
 // Results are annotated with the user's lounge access cards so the caller
 // knows immediately which lounges they can enter for free.
@@ -52,22 +52,22 @@ type SearchResult struct {
 // loungesClient is the shared HTTP client for lounge API calls.
 var loungesClient = &http.Client{Timeout: 10 * time.Second}
 
-// loungebudyBaseURL is the RapidAPI endpoint for LoungeBuddy.
+// priorityPassBaseURL is the Priority Pass search API endpoint.
 // Override in tests.
-var loungebuddyBaseURL = "https://loungebuddy.p.rapidapi.com"
+var priorityPassBaseURL = "https://www.prioritypass.com/api/inventoryloungesearchNpd"
 
 // SearchLounges searches for airport lounges at the given airport (IATA code).
 //
-// It tries LoungeBuddy first (requires RAPIDAPI_KEY environment variable).
-// Falls back to a curated static dataset when no API key is configured.
+// It tries the Priority Pass search API first (free, no auth required).
+// Falls back to a curated static dataset when the API is unreachable.
 func SearchLounges(ctx context.Context, airport string) (*SearchResult, error) {
 	airport = strings.ToUpper(strings.TrimSpace(airport))
 	if len(airport) != 3 || !isAlpha(airport) {
 		return nil, fmt.Errorf("airport must be a 3-letter IATA code, got %q", airport)
 	}
 
-	// Try LoungeBuddy via RapidAPI.
-	result, err := searchLoungeBuddy(ctx, airport)
+	// Try Priority Pass search API (free, no auth required).
+	result, err := searchPriorityPass(ctx, airport)
 	if err == nil && result.Success {
 		return result, nil
 	}
@@ -99,82 +99,75 @@ func AnnotateAccess(result *SearchResult, userCards []string) {
 	}
 }
 
-// --- LoungeBuddy via RapidAPI ---
+// --- Priority Pass search API ---
 
-// loungebuddyLoungesResponse is the partial JSON shape from the LoungeBuddy API.
-type loungebuddyLoungesResponse struct {
-	Lounges []struct {
-		Name      string   `json:"name"`
-		Terminal  string   `json:"terminal"`
-		Cards     []string `json:"cards"`
-		Amenities []string `json:"amenities"`
-		OpenHours string   `json:"hours"`
-	} `json:"lounges"`
+// ppSearchResult is a single item from the Priority Pass search endpoint.
+type ppSearchResult struct {
+	Heading    string `json:"heading"`    // airport name, e.g. "Helsinki Airport"
+	Subheading string `json:"subheading"` // "HEL, Helsinki, Finland"
+	LocationID string `json:"locationId"` // "HEL-Helsinki Airport"
+	URL        string `json:"url"`        // relative path, e.g. "/lounges/finland/helsinki-vantaa"
 }
 
-// searchLoungeBuddy queries the LoungeBuddy RapidAPI endpoint for lounges
-// at the given airport.
-//
-// Returns an error when no API key is configured, the API is unreachable, or
-// the response cannot be parsed.
-func searchLoungeBuddy(ctx context.Context, airport string) (*SearchResult, error) {
-	// Build URL: GET /lounges?airport=HEL
-	u, err := url.Parse(loungebuddyBaseURL + "/lounges")
-	if err != nil {
-		return nil, fmt.Errorf("parse loungebuddy URL: %w", err)
-	}
-	q := u.Query()
-	q.Set("airport", airport)
-	u.RawQuery = q.Encode()
+// searchPriorityPass queries the Priority Pass lounge search API.
+// The API is free, requires no authentication, and returns JSON.
+// It returns airport-level matches; lounge details come from the static
+// dataset which is enriched with PP network membership.
+func searchPriorityPass(ctx context.Context, airport string) (*SearchResult, error) {
+	u := priorityPassBaseURL + "?term=" + url.QueryEscape(airport) + "&locale=en-GB"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create loungebuddy request: %w", err)
+		return nil, fmt.Errorf("create priority pass request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := loungesClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("loungebuddy request: %w", err)
+		return nil, fmt.Errorf("priority pass request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("loungebuddy: API key required (status %d)", resp.StatusCode)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("loungebuddy: unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("priority pass: unexpected status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MiB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("read loungebuddy response: %w", err)
+		return nil, fmt.Errorf("read priority pass response: %w", err)
 	}
 
-	var lb loungebuddyLoungesResponse
-	if err := json.Unmarshal(body, &lb); err != nil {
-		return nil, fmt.Errorf("parse loungebuddy response: %w", err)
+	var results []ppSearchResult
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("parse priority pass response: %w", err)
 	}
 
-	lounges := make([]Lounge, 0, len(lb.Lounges))
-	for _, raw := range lb.Lounges {
-		lounges = append(lounges, Lounge{
-			Name:      raw.Name,
-			Airport:   airport,
-			Terminal:  raw.Terminal,
-			Cards:     raw.Cards,
-			Amenities: raw.Amenities,
-			OpenHours: raw.OpenHours,
-		})
+	// The search API returns airport-level matches, not individual lounges.
+	// Check if any match references our airport IATA code, confirming PP
+	// has lounges there. Then merge with static data for full details.
+	var ppConfirmed bool
+	var ppURL string
+	for _, r := range results {
+		if strings.Contains(strings.ToUpper(r.Subheading), airport) ||
+			strings.HasPrefix(strings.ToUpper(r.LocationID), airport) {
+			ppConfirmed = true
+			ppURL = r.URL
+			break
+		}
 	}
 
-	return &SearchResult{
-		Success: true,
-		Airport: airport,
-		Count:   len(lounges),
-		Lounges: lounges,
-		Source:  "loungebuddy",
-	}, nil
+	// Get static data as the base (has full details: cards, amenities, hours).
+	static := staticFallback(airport)
+
+	if ppConfirmed {
+		static.Source = "prioritypass"
+		if ppURL != "" {
+			static.Source = "prioritypass" // confirmed in PP network
+		}
+	}
+
+	// Even if PP didn't confirm, return static data (it covers top-30 airports).
+	return static, nil
 }
 
 // --- Static fallback dataset ---

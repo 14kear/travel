@@ -12,10 +12,10 @@ import (
 // TestSearchLounges_StaticFallback verifies that known hub airports return results
 // without any external API call.
 func TestSearchLounges_StaticFallback(t *testing.T) {
-	// Point LoungeBuddy at an address that always fails so the static fallback runs.
-	orig := loungebuddyBaseURL
-	loungebuddyBaseURL = "http://127.0.0.1:0" // unreachable
-	defer func() { loungebuddyBaseURL = orig }()
+	// Point Priority Pass API at an address that always fails so the static fallback runs.
+	orig := priorityPassBaseURL
+	priorityPassBaseURL = "http://127.0.0.1:0" // unreachable
+	defer func() { priorityPassBaseURL = orig }()
 
 	result, err := SearchLounges(context.Background(), "HEL")
 	if err != nil {
@@ -53,9 +53,9 @@ func TestSearchLounges_StaticFallback(t *testing.T) {
 // TestSearchLounges_UnknownAirport verifies that an unknown airport returns a
 // successful empty result (graceful degradation, not an error).
 func TestSearchLounges_UnknownAirport(t *testing.T) {
-	orig := loungebuddyBaseURL
-	loungebuddyBaseURL = "http://127.0.0.1:0"
-	defer func() { loungebuddyBaseURL = orig }()
+	orig := priorityPassBaseURL
+	priorityPassBaseURL = "http://127.0.0.1:0"
+	defer func() { priorityPassBaseURL = orig }()
 
 	result, err := SearchLounges(context.Background(), "XYZ")
 	if err != nil {
@@ -79,34 +79,22 @@ func TestSearchLounges_InvalidIATA(t *testing.T) {
 	}
 }
 
-// TestSearchLounges_LoungebuddyAPI tests the live-API path against a mock server.
-func TestSearchLounges_LoungebuddyAPI(t *testing.T) {
-	mockBody := loungebuddyLoungesResponse{
-		Lounges: []struct {
-			Name      string   `json:"name"`
-			Terminal  string   `json:"terminal"`
-			Cards     []string `json:"cards"`
-			Amenities []string `json:"amenities"`
-			OpenHours string   `json:"hours"`
-		}{
-			{
-				Name:      "Test Lounge",
-				Terminal:  "Terminal 1",
-				Cards:     []string{"Priority Pass", "LoungeKey"},
-				Amenities: []string{"Wi-Fi", "Bar"},
-				OpenHours: "06:00–22:00",
-			},
+// TestSearchLounges_PriorityPassAPI tests the live-API path against a mock server.
+func TestSearchLounges_PriorityPassAPI(t *testing.T) {
+	// Mock the Priority Pass search API response for airport "HEL".
+	mockResults := []ppSearchResult{
+		{
+			Heading:    "Helsinki Airport",
+			Subheading: "HEL, Helsinki, Finland",
+			LocationID: "HEL-Helsinki Airport",
+			URL:        "/lounges/finland/helsinki-vantaa",
 		},
 	}
-	body, _ := json.Marshal(mockBody)
+	body, _ := json.Marshal(mockResults)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/lounges" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.URL.Query().Get("airport") != "TST" {
-			http.Error(w, "bad airport", http.StatusBadRequest)
+		if r.URL.Query().Get("term") == "" {
+			http.Error(w, "missing term", http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -114,35 +102,25 @@ func TestSearchLounges_LoungebuddyAPI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	orig := loungebuddyBaseURL
-	loungebuddyBaseURL = srv.URL
-	defer func() { loungebuddyBaseURL = orig }()
+	orig := priorityPassBaseURL
+	priorityPassBaseURL = srv.URL
+	defer func() { priorityPassBaseURL = orig }()
 
-	result, err := SearchLounges(context.Background(), "TST")
+	result, err := SearchLounges(context.Background(), "HEL")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.Success {
 		t.Fatalf("expected success, got: %s", result.Error)
 	}
-	if result.Source != "loungebuddy" {
-		t.Errorf("source: got %q, want loungebuddy", result.Source)
+	if result.Source != "prioritypass" {
+		t.Errorf("source: got %q, want prioritypass", result.Source)
 	}
-	if result.Count != 1 {
-		t.Fatalf("count: got %d, want 1", result.Count)
+	if result.Count == 0 {
+		t.Fatal("expected at least 1 lounge for HEL")
 	}
-	lounge := result.Lounges[0]
-	if lounge.Name != "Test Lounge" {
-		t.Errorf("name: got %q, want Test Lounge", lounge.Name)
-	}
-	if lounge.Terminal != "Terminal 1" {
-		t.Errorf("terminal: got %q, want Terminal 1", lounge.Terminal)
-	}
-	if len(lounge.Cards) != 2 {
-		t.Errorf("cards: got %d, want 2", len(lounge.Cards))
-	}
-	if lounge.Airport != "TST" {
-		t.Errorf("airport: got %q, want TST", lounge.Airport)
+	if result.Airport != "HEL" {
+		t.Errorf("airport: got %q, want HEL", result.Airport)
 	}
 }
 
@@ -289,9 +267,9 @@ func TestStaticFallback_FieldIntegrity(t *testing.T) {
 
 // TestSearchLounges_CaseNormalization verifies that lowercase IATA codes work.
 func TestSearchLounges_CaseNormalization(t *testing.T) {
-	orig := loungebuddyBaseURL
-	loungebuddyBaseURL = "http://127.0.0.1:0"
-	defer func() { loungebuddyBaseURL = orig }()
+	orig := priorityPassBaseURL
+	priorityPassBaseURL = "http://127.0.0.1:0"
+	defer func() { priorityPassBaseURL = orig }()
 
 	result, err := SearchLounges(context.Background(), "lhr")
 	if err != nil {
