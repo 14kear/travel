@@ -152,7 +152,12 @@ func Find(ctx context.Context, in Input) ([]Candidate, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
+			// Respect context cancellation while waiting for semaphore.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
 			defer func() { <-sem }()
 
 			depDate := c.start.Format(dateLayout)
