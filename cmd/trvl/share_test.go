@@ -322,10 +322,11 @@ func TestSaveAndLoadLastSearch(t *testing.T) {
 func TestLoadLastSearch_NotFound(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	_, err := loadLastSearch()
 	if err == nil {
-		t.Error("expected error when no last search exists")
+		t.Fatal("expected error when no last search exists")
 	}
 	if !strings.Contains(err.Error(), "no recent search") {
 		t.Errorf("error = %q, want to contain 'no recent search'", err.Error())
