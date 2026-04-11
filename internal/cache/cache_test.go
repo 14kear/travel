@@ -112,6 +112,45 @@ func TestKey(t *testing.T) {
 	}
 }
 
+func TestEviction_MaxEntries(t *testing.T) {
+	c := NewWithMax(3)
+	defer c.Close()
+
+	c.Set("a", []byte("1"), 5*time.Minute)
+	c.Set("b", []byte("2"), 5*time.Minute)
+	c.Set("c", []byte("3"), 5*time.Minute)
+
+	if c.Len() != 3 {
+		t.Fatalf("Len() = %d, want 3", c.Len())
+	}
+
+	// Fourth entry should trigger eviction of the oldest ("a").
+	c.Set("d", []byte("4"), 5*time.Minute)
+
+	if c.Len() != 3 {
+		t.Errorf("Len() after eviction = %d, want 3", c.Len())
+	}
+
+	// "a" should have been evicted.
+	if _, ok := c.Get("a"); ok {
+		t.Error("expected 'a' to be evicted")
+	}
+
+	// "d" should be present.
+	if _, ok := c.Get("d"); !ok {
+		t.Error("expected 'd' to be present")
+	}
+}
+
+func TestNewWithMax_DefaultsOnZero(t *testing.T) {
+	c := NewWithMax(0)
+	defer c.Close()
+
+	if c.maxEntries != defaultMaxEntries {
+		t.Errorf("maxEntries = %d, want %d", c.maxEntries, defaultMaxEntries)
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	c := New()
 	defer c.Close()

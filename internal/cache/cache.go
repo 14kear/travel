@@ -11,25 +11,44 @@ import (
 	"time"
 )
 
+// defaultMaxEntries is the maximum number of items a cache will hold before
+// evicting the oldest entry. This prevents unbounded memory growth in
+// long-running processes.
+const defaultMaxEntries = 1000
+
 // cacheItem holds a single cached value with its expiration time.
 type cacheItem struct {
-	data      []byte
-	expiresAt time.Time
+	data       []byte
+	expiresAt  time.Time
+	insertedAt time.Time
 }
 
-// Cache is a concurrency-safe in-memory key-value store with TTL expiration.
+// Cache is a concurrency-safe in-memory key-value store with TTL expiration
+// and a maximum entry count. When the entry count exceeds maxEntries, the
+// oldest entry (by insertion time) is evicted.
 type Cache struct {
-	mu    sync.RWMutex
-	items map[string]cacheItem
-	stop  chan struct{}
+	mu         sync.RWMutex
+	items      map[string]cacheItem
+	maxEntries int
+	stop       chan struct{}
 }
 
-// New creates a new Cache and starts a background cleanup goroutine that
-// removes expired entries every 60 seconds.
+// New creates a new Cache with the default max-entries limit and starts a
+// background cleanup goroutine that removes expired entries every 60 seconds.
 func New() *Cache {
+	return NewWithMax(defaultMaxEntries)
+}
+
+// NewWithMax creates a new Cache with the given max-entries limit and starts
+// a background cleanup goroutine. If maxEntries <= 0, defaultMaxEntries is used.
+func NewWithMax(maxEntries int) *Cache {
+	if maxEntries <= 0 {
+		maxEntries = defaultMaxEntries
+	}
 	c := &Cache{
-		items: make(map[string]cacheItem),
-		stop:  make(chan struct{}),
+		items:      make(map[string]cacheItem),
+		maxEntries: maxEntries,
+		stop:       make(chan struct{}),
 	}
 	go c.janitor()
 	return c
@@ -55,14 +74,38 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	return item.data, true
 }
 
-// Set stores a value in the cache with the given TTL.
+// Set stores a value in the cache with the given TTL. If the cache exceeds
+// maxEntries, the oldest entry (by insertion time) is evicted.
 func (c *Cache) Set(key string, data []byte, ttl time.Duration) {
+	now := time.Now()
 	c.mu.Lock()
 	c.items[key] = cacheItem{
-		data:      data,
-		expiresAt: time.Now().Add(ttl),
+		data:       data,
+		expiresAt:  now.Add(ttl),
+		insertedAt: now,
+	}
+	if len(c.items) > c.maxEntries {
+		c.evictOldestLocked()
 	}
 	c.mu.Unlock()
+}
+
+// evictOldestLocked removes the entry with the earliest insertion time.
+// Caller must hold c.mu.
+func (c *Cache) evictOldestLocked() {
+	var oldestKey string
+	var oldestTime time.Time
+	first := true
+	for k, v := range c.items {
+		if first || v.insertedAt.Before(oldestTime) {
+			oldestKey = k
+			oldestTime = v.insertedAt
+			first = false
+		}
+	}
+	if !first {
+		delete(c.items, oldestKey)
+	}
 }
 
 // Len returns the number of items in the cache (including expired ones that
