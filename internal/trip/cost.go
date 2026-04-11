@@ -98,12 +98,15 @@ func CalculateTripCost(ctx context.Context, input TripCostInput) (*TripCostResul
 	prefs, _ := preferences.Load()
 
 	// Build hotel search options with preference-based filters.
+	// MaxPages=1: compound commands only need the cheapest hotel, not 75 results.
+	// This avoids fetching 3 paginated HTML pages (~1.5-3MB each) per search.
 	hotelOpts := hotels.HotelSearchOptions{
 		CheckIn:  input.DepartDate,
 		CheckOut: input.ReturnDate,
 		Guests:   input.Guests,
 		Sort:     "cheapest",
 		Currency: input.Currency,
+		MaxPages: 1,
 	}
 	if prefs != nil {
 		if prefs.MinHotelStars > 0 {

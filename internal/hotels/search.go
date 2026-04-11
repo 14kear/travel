@@ -50,6 +50,12 @@ type HotelSearchOptions struct {
 	// Enrichment options.
 	EnrichAmenities bool // fetch detail pages for top hotels to get full amenity lists
 	EnrichLimit     int  // max hotels to enrich (default: 5, max: 10)
+
+	// MaxPages overrides the default pagination depth (maxPages).
+	// Compound commands (trip-cost, weekend, multi-city) set this to 1
+	// because they only need the cheapest result, not 75 hotels.
+	// 0 means use the default (maxPages).
+	MaxPages int
 }
 
 // SearchHotels searches for hotels in the given location.
@@ -125,13 +131,18 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 	hotels := firstPage.Hotels
 	totalAvailable := firstPage.TotalAvailable
 
-	// Paginate: fetch subsequent pages until we get no new results or hit maxPages.
+	// Paginate: fetch subsequent pages until we get no new results or hit page limit.
+	pageLimit := maxPages
+	if opts.MaxPages > 0 && opts.MaxPages < maxPages {
+		pageLimit = opts.MaxPages
+	}
+
 	seen := make(map[string]bool, len(hotels))
 	for _, h := range hotels {
 		seen[strings.ToLower(h.Name)] = true
 	}
 
-	for page := 1; page < maxPages; page++ {
+	for page := 1; page < pageLimit; page++ {
 		pageHotels, err := fetchHotelPage(ctx, client, location, opts, page*pageSize)
 		if err != nil {
 			// Non-fatal: keep what we have from previous pages.

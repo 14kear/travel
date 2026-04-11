@@ -245,7 +245,7 @@ func Discover(ctx context.Context, opts DiscoverOptions) (*DiscoverOutput, error
 	hotelMu := sync.Mutex{}
 	hotelResults := make(map[trialKey]*hotelInfo)
 
-	hotelSem := make(chan struct{}, 5)
+	hotelSem := make(chan struct{}, 3) // reduced from 5: each hotel search fetches ~1MB HTML
 	var hotelWg sync.WaitGroup
 
 	for _, t := range trials {
@@ -266,6 +266,7 @@ func Discover(ctx context.Context, opts DiscoverOptions) (*DiscoverOutput, error
 				CheckOut: t.window.end.Format("2006-01-02"),
 				Guests:   1,
 				Sort:     "cheapest",
+				MaxPages: 1, // single page: compound command only needs cheapest
 			}
 			if prefs != nil {
 				if prefs.MinHotelStars > 0 {

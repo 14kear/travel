@@ -135,6 +135,9 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 	prefs, _ := preferences.Load()
 
 	// Search real hotel prices with bounded concurrency.
+	// Concurrency=3 (not 5): each hotel search fetches a full HTML page (~0.5-1MB).
+	// With 10 destinations, 5 concurrent searches peaked at ~10MB of live HTML
+	// bodies + JSON parse trees, triggering OOM on constrained systems.
 	type hotelResult struct {
 		perNight float64
 		total    float64
@@ -143,7 +146,7 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 	var mu sync.Mutex
 	hotelPrices := make(map[int]*hotelResult)
 
-	sem := make(chan struct{}, 5)
+	sem := make(chan struct{}, 3)
 	var wg sync.WaitGroup
 
 	for i, d := range dests {
@@ -163,6 +166,7 @@ func FindWeekendGetaways(ctx context.Context, origin string, opts WeekendOptions
 				CheckOut: returnDate,
 				Guests:   1,
 				Sort:     "cheapest",
+				MaxPages: 1, // single page: we only need cheapest hotel per destination
 			}
 			if prefs != nil {
 				if prefs.MinHotelStars > 0 {
