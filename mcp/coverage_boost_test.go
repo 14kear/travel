@@ -42,19 +42,19 @@ func TestLoggingSetLevel(t *testing.T) {
 	if resp.Error != nil {
 		t.Errorf("error: %v", resp.Error)
 	}
-	if logLevel != "debug" {
-		t.Errorf("logLevel = %q, want debug", logLevel)
+	if got := getLogLevel(); got != "debug" {
+		t.Errorf("logLevel = %q, want debug", got)
 	}
-	logLevel = "info"
+	setLogLevel("info")
 }
 
 func TestLoggingSetLevel_EmptyLevel(t *testing.T) {
-	logLevel = "info"
+	setLogLevel("info")
 	s := NewServer()
 	params, _ := json.Marshal(map[string]string{"level": ""})
 	s.HandleRequest(&Request{JSONRPC: "2.0", ID: 3, Method: "logging/setLevel", Params: params})
-	if logLevel != "info" {
-		t.Errorf("empty level changed logLevel to %q", logLevel)
+	if got := getLogLevel(); got != "info" {
+		t.Errorf("empty level changed logLevel to %q", got)
 	}
 }
 

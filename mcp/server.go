@@ -422,8 +422,23 @@ func (s *Server) SendResourceUpdated(uri string) {
 
 // --- logging/setLevel handler ---
 
-// logLevel stores the current minimum log level.
+// logLevelMu protects logLevel from concurrent read/write.
+var logLevelMu sync.Mutex
+
+// logLevel stores the current minimum log level. Access via getLogLevel/setLogLevel.
 var logLevel = "info"
+
+func getLogLevel() string {
+	logLevelMu.Lock()
+	defer logLevelMu.Unlock()
+	return logLevel
+}
+
+func setLogLevel(level string) {
+	logLevelMu.Lock()
+	logLevel = level
+	logLevelMu.Unlock()
+}
 
 func (s *Server) handleLoggingSetLevel(req *Request) *Response {
 	var params struct {
@@ -433,7 +448,7 @@ func (s *Server) handleLoggingSetLevel(req *Request) *Response {
 		_ = json.Unmarshal(req.Params, &params)
 	}
 	if params.Level != "" {
-		logLevel = params.Level
+		setLogLevel(params.Level)
 		s.SendLog("info", fmt.Sprintf("Log level set to %s", params.Level))
 	}
 	return &Response{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
