@@ -48,7 +48,7 @@ type foursquarePlace struct {
 	Rating   float64 `json:"rating"`
 	Distance int     `json:"distance"`
 	Location struct {
-		Address         string `json:"address"`
+		Address          string `json:"address"`
 		FormattedAddress string `json:"formatted_address"`
 	} `json:"location"`
 	Categories []struct {

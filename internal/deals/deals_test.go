@@ -81,11 +81,11 @@ func TestParseRSS_PriceExtraction(t *testing.T) {
 		price    float64
 		currency string
 	}{
-		{0, 595, "EUR"},  // "from EUR595"
-		{1, 299, "USD"},  // "$299"
-		{2, 89, "USD"},   // "$89"
-		{3, 29, "EUR"},   // "EUR29"
-		{4, 499, "GBP"},  // "GBP499"
+		{0, 595, "EUR"}, // "from EUR595"
+		{1, 299, "USD"}, // "$299"
+		{2, 89, "USD"},  // "$89"
+		{3, 29, "EUR"},  // "EUR29"
+		{4, 499, "GBP"}, // "GBP499"
 	}
 
 	for _, tt := range tests {
@@ -262,8 +262,8 @@ func TestFilterDeals_ByMaxPrice(t *testing.T) {
 func TestFilterDeals_ByMaxPrice_NoPriceDealsIncluded(t *testing.T) {
 	deals := []Deal{
 		{Price: 0, Published: time.Now()},   // no price
-		{Price: 150, Published: time.Now()},  // under max
-		{Price: 250, Published: time.Now()},  // over max
+		{Price: 150, Published: time.Now()}, // under max
+		{Price: 250, Published: time.Now()}, // over max
 	}
 
 	filtered := FilterDeals(deals, DealFilter{MaxPrice: 200})

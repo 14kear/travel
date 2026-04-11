@@ -34,11 +34,11 @@ const attractionsCacheTTL = 6 * time.Hour
 
 // openTripMapResponse element.
 type openTripMapPlace struct {
-	XID      string  `json:"xid"`
-	Name     string  `json:"name"`
-	Kinds    string  `json:"kinds"`
-	Dist     float64 `json:"dist"`
-	Point    struct {
+	XID   string  `json:"xid"`
+	Name  string  `json:"name"`
+	Kinds string  `json:"kinds"`
+	Dist  float64 `json:"dist"`
+	Point struct {
 		Lat float64 `json:"lat"`
 		Lon float64 `json:"lon"`
 	} `json:"point"`

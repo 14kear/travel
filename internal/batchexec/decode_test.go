@@ -177,8 +177,8 @@ func TestExtractFlightData(t *testing.T) {
 	flight3 := []any{"flight3_data"}
 
 	inner := []any{
-		nil, // [0]
-		nil, // [1]
+		nil,                            // [0]
+		nil,                            // [1]
 		[]any{[]any{flight1, flight2}}, // [2]: bucket with 2 flights
 		[]any{[]any{flight3}},          // [3]: bucket with 1 flight
 	}

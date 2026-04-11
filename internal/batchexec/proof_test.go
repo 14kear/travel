@@ -185,9 +185,9 @@ func TestHotelPriceLookup(t *testing.T) {
 	// Known Google hotel ID format: /g/... or ChIJ...
 	// Try a few common Helsinki hotel place IDs
 	hotelIDs := []string{
-		"/g/11b6d4_v_4",                     // Hotel Kamp Helsinki (well-known)
-		"ChIJy7MSZP0LkkYRZw2dDekQP78",       // Another Helsinki hotel
-		"/m/0dr7_h",                          // Hotel Kamp alt ID
+		"/g/11b6d4_v_4",               // Hotel Kamp Helsinki (well-known)
+		"ChIJy7MSZP0LkkYRZw2dDekQP78", // Another Helsinki hotel
+		"/m/0dr7_h",                   // Hotel Kamp alt ID
 	}
 
 	checkIn := [3]int{2026, 6, 15}

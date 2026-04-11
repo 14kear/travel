@@ -19,8 +19,8 @@ import (
 
 // rssChannel represents the top-level RSS channel.
 type rssChannel struct {
-	XMLName xml.Name  `xml:"rss"`
-	Channel rssInner  `xml:"channel"`
+	XMLName xml.Name `xml:"rss"`
+	Channel rssInner `xml:"channel"`
 }
 
 type rssInner struct {

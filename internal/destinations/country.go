@@ -32,9 +32,9 @@ type restCountryResponse struct {
 	Name struct {
 		Common string `json:"common"`
 	} `json:"name"`
-	CCA2      string              `json:"cca2"`
-	Capital   []string            `json:"capital"`
-	Languages map[string]string   `json:"languages"`
+	CCA2       string            `json:"cca2"`
+	Capital    []string          `json:"capital"`
+	Languages  map[string]string `json:"languages"`
 	Currencies map[string]struct {
 		Name   string `json:"name"`
 		Symbol string `json:"symbol"`

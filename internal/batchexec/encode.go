@@ -103,35 +103,35 @@ func BuildFlightFilters(departureAirport, arrivalAirport, date string, adults in
 		[]any{},
 		// outer[1]: settings array
 		[]any{
-			nil,  // [0]
-			nil,  // [1]
-			2,    // [2] trip type: 2 = one way
-			nil,  // [3]
-			[]any{}, // [4]
-			1,    // [5] seat type: 1 = economy
+			nil,                    // [0]
+			nil,                    // [1]
+			2,                      // [2] trip type: 2 = one way
+			nil,                    // [3]
+			[]any{},                // [4]
+			1,                      // [5] seat type: 1 = economy
 			[]any{adults, 0, 0, 0}, // [6] passengers: [adults, children, infants_lap, infants_seat]
-			nil,  // [7] price limit
-			nil,  // [8]
-			nil,  // [9]
-			nil,  // [10] bags filter
-			nil,  // [11]
-			nil,  // [12]
-			[]any{segment}, // [13] flight segments
-			nil,  // [14]
-			nil,  // [15]
-			nil,  // [16]
-			1,    // [17] hardcoded
-			nil,  // [18]
-			nil,  // [19]
-			nil,  // [20]
-			nil,  // [21]
-			nil,  // [22]
-			nil,  // [23]
-			nil,  // [24]
-			nil,  // [25]
-			nil,  // [26]
-			nil,  // [27]
-			0,    // [28] exclude basic economy: 0 = allow
+			nil,                    // [7] price limit
+			nil,                    // [8]
+			nil,                    // [9]
+			nil,                    // [10] bags filter
+			nil,                    // [11]
+			nil,                    // [12]
+			[]any{segment},         // [13] flight segments
+			nil,                    // [14]
+			nil,                    // [15]
+			nil,                    // [16]
+			1,                      // [17] hardcoded
+			nil,                    // [18]
+			nil,                    // [19]
+			nil,                    // [20]
+			nil,                    // [21]
+			nil,                    // [22]
+			nil,                    // [23]
+			nil,                    // [24]
+			nil,                    // [25]
+			nil,                    // [26]
+			nil,                    // [27]
+			0,                      // [28] exclude basic economy: 0 = allow
 		},
 		// outer[2]: sort by (1 = best)
 		1,

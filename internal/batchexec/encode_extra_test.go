@@ -8,9 +8,9 @@ import (
 
 func TestEncodeBatchExecute_VariousRPCIDs(t *testing.T) {
 	tests := []struct {
-		name    string
-		rpcid   string
-		args    string
+		name  string
+		rpcid string
+		args  string
 	}{
 		{"hotel search", "AtySUc", `["Helsinki"]`},
 		{"hotel price", "yY52ce", `[null,[2026,6,15],[2026,6,18]]`},
@@ -53,9 +53,9 @@ func TestEncodeBatchExecute_VariousRPCIDs(t *testing.T) {
 
 func TestEncodeFlightFilters_VariousInputs(t *testing.T) {
 	tests := []struct {
-		name     string
-		filters  any
-		wantErr  bool
+		name    string
+		filters any
+		wantErr bool
 	}{
 		{"simple string", "hello", false},
 		{"nested array", []any{1, "test", nil}, false},

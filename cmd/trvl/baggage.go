@@ -12,8 +12,8 @@ import (
 
 func baggageCmd() *cobra.Command {
 	var (
-		all          bool
-		carryOnOnly  bool
+		all         bool
+		carryOnOnly bool
 	)
 
 	cmd := &cobra.Command{
