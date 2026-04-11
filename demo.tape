@@ -9,134 +9,123 @@ Set Padding 20
 Set TypingSpeed 30ms
 Set CursorBlink false
 
-# ── ACT 1: Natural language budget search ──
+# ── ACT 1: Budget discovery — the magic moment ──
 
-Type "# I have EUR 500 and a free week in June. Surprise me."
+Type "# Surprise me. EUR 500, free week in June."
 Enter
-Sleep 600ms
+Sleep 300ms
 
-Type "trvl discover --from 2026-06-01 --until 2026-06-30 --budget 500"
+Type "trvl discover --budget 500 --from 2026-06-01 --until 2026-06-30"
 Enter
-Sleep 800ms
+Sleep 300ms
 
 Set TypingSpeed 0
-Type "Top 5 value trips from HEL within 500 EUR (2026-06-01 to 2026-06-30)"
+Type "Top 5 value trips from HEL within EUR 500"
 Enter
 Enter
-Type "  #  Destination        Dates                     Nights  Flight   Hotel                           Total    Slack    Notes"
+Type "  #  Destination       Dates                    Flight   Hotel                     Total    Slack"
 Enter
-Type "+----+-------------------+--------------------------+--------+---------+--------------------------------+---------+--------+----------+"
+Type "+----+-----------------+--------------------------+---------+---------------------------+---------+---------+"
 Enter
-Type "  1  Vienna (VIE)       2026-06-09 -> 2026-06-12   3       EUR 127  EUR 138 (Hotel Capri)           EUR 265  EUR 235  nonstop"
+Type "  1  Vienna (VIE)     06-09 -> 06-12  3 nights   EUR 127  Hotel Capri               EUR 265  EUR 235"
 Enter
-Type "  2  Krakow (KRK)       2026-06-16 -> 2026-06-19   3       EUR 89   EUR 102 (Hotel Stary)           EUR 191  EUR 309  nonstop"
+Type "  2  Krakow (KRK)     06-16 -> 06-19  3 nights   EUR 89   Hotel Stary               EUR 191  EUR 309"
 Enter
-Type "  3  Dubrovnik (DBV)    2026-06-23 -> 2026-06-26   3       EUR 167  EUR 84 (Old Town Studios)       EUR 251  EUR 249  1 stop"
+Type "  3  Dubrovnik (DBV)  06-23 -> 06-26  3 nights   EUR 167  Old Town Studios           EUR 251  EUR 249"
 Enter
-Type "  4  Lisbon (LIS)       2026-06-10 -> 2026-06-14   4       EUR 189  EUR 196 (Alma Lusa)             EUR 385  EUR 115  1 stop"
+Type "  4  Lisbon (LIS)     06-10 -> 06-14  4 nights   EUR 189  Alma Lusa Baixa-Chiado     EUR 385  EUR 115"
 Enter
-Type "  5  Milan (MXP)        2026-06-15 -> 2026-06-18   3       EUR 109  EUR 135 (Biocity Hotel)         EUR 244  EUR 256  nonstop"
+Type "  5  Milan (MXP)      06-15 -> 06-18  3 nights   EUR 109  Biocity Hotel              EUR 244  EUR 256"
 Enter
 Set TypingSpeed 30ms
 
-Sleep 4s
+Sleep 3s
 
-# ── ACT 2: Multi-city optimizer ──
+# ── ACT 2: Multi-city — saves EUR 174 ──
 
-Type "# Prague, Krakow, Madrid — what's the cheapest order?"
+Type "# Cheapest order for 3 cities?"
 Enter
-Sleep 600ms
+Sleep 300ms
 
 Type "trvl multi-city HEL --visit PRG,KRK,MAD --dates 2026-07-01,2026-07-21"
 Enter
-Sleep 800ms
+Sleep 300ms
 
 Set TypingSpeed 0
-Type "Multi-city from HEL: optimal order found (6 permutations checked)"
+Type "Optimal route (6 permutations): HEL -> KRK -> PRG -> MAD -> HEL"
 Enter
 Enter
-Type "Route: HEL -> KRK -> PRG -> MAD -> HEL"
+Type "  Helsinki -> Krakow      EUR 89"
 Enter
+Type "  Krakow -> Prague        EUR 34"
 Enter
-Type "  From                To                   Price"
+Type "  Prague -> Madrid        EUR 112"
 Enter
-Type "+---------------------+---------------------+---------+"
+Type "  Madrid -> Helsinki      EUR 148"
 Enter
-Type "  Helsinki (HEL)      Krakow (KRK)         EUR 89"
+Type "  ─────────────────────────────"
 Enter
-Type "  Krakow (KRK)        Prague (PRG)          EUR 34"
-Enter
-Type "  Prague (PRG)         Madrid (MAD)          EUR 112"
-Enter
-Type "  Madrid (MAD)         Helsinki (HEL)        EUR 148"
-Enter
-Type "+---------------------+---------------------+---------+"
-Enter
-Type "  Total                                      EUR 383"
-Enter
-Type "  Savings vs worst                           EUR 174"
-Enter
-Set TypingSpeed 30ms
-
-Sleep 4s
-
-# ── ACT 3: Calendar-aware planning ──
-
-Type "# Barcelona in summer? Skip the 11-13th, I'm busy."
-Enter
-Sleep 600ms
-
-Type "trvl when --to BCN --from 2026-06-01 --until 2026-08-31 --busy 2026-07-11:2026-07-13"
-Enter
-Sleep 800ms
-
-Set TypingSpeed 0
-Type "Travel windows from HEL to BCN (avoiding 2026-07-11 to 2026-07-13)"
-Enter
-Enter
-Type "  #  Departure   Return      Nights  Flight   Hotel    Total    Hotel name"
-Enter
-Type "+----+-----------+-----------+--------+---------+--------+---------+--------------------+"
-Enter
-Type "  1  2026-06-23  2026-06-26  3       EUR 127  EUR 141  EUR 268  Casa Bonay"
-Enter
-Type "  2  2026-07-07  2026-07-10  3       EUR 149  EUR 135  EUR 284  Yurbban Passage"
-Enter
-Type "  3  2026-06-16  2026-06-20  4       EUR 139  EUR 184  EUR 323  Hotel 1898"
-Enter
-Type "  4  2026-08-18  2026-08-22  4       EUR 144  EUR 176  EUR 320  Sir Victor Hotel"
-Enter
-Type "  5  2026-08-04  2026-08-08  4       EUR 158  EUR 192  EUR 350  Hotel Brummell"
-Enter
-Set TypingSpeed 30ms
-
-Sleep 4s
-
-# ── ACT 4: Preference memory ──
-
-Type "# trvl remembers your style."
-Enter
-Sleep 400ms
-
-Type "trvl prefs"
-Enter
-Sleep 400ms
-
-Set TypingSpeed 0
-Type '{"home_airports":["HEL"],"preferred_districts":{"Prague":["Prague 1","Prague 5"]},'
-Enter
-Type ' "exclude_property_types":["hostel","guest house"],"display_currency":"EUR"}'
+Type "  Total: EUR 383  (saves EUR 174 vs worst order)"
 Enter
 Set TypingSpeed 30ms
 
 Sleep 3s
+
+# ── ACT 3: Calendar-aware — skips busy dates ──
+
+Type "# Barcelona, skip July 11-13."
+Enter
+Sleep 300ms
+
+Type "trvl when --to BCN --until 2026-08-31 --busy 2026-07-11:2026-07-13"
+Enter
+Sleep 300ms
+
+Set TypingSpeed 0
+Type "Best windows HEL -> BCN (avoiding Jul 11-13)"
+Enter
+Enter
+Type "  #  Dates                  Nights  Flight   Hotel          Total"
+Enter
+Type "+----+------------------------+--------+---------+----------------+---------+"
+Enter
+Type "  1  Jun 23 -> Jun 26        3       EUR 127  Casa Bonay     EUR 268"
+Enter
+Type "  2  Jul 07 -> Jul 10        3       EUR 149  Yurbban        EUR 284"
+Enter
+Type "  3  Aug 18 -> Aug 22        4       EUR 144  Sir Victor     EUR 320"
+Enter
+Set TypingSpeed 30ms
+
+Sleep 3s
+
+# ── ACT 4: MCP — real data for AI agents ──
+
+Type "# Works as an MCP server. Claude gets real prices."
+Enter
+Sleep 300ms
+
+Type "trvl mcp install --client claude-code"
+Enter
+Sleep 300ms
+
+Set TypingSpeed 0
+Type "Installed trvl MCP server for claude-code"
+Enter
+Type "  34 tools · 5 prompts · 9 resources"
+Enter
+Type "  Restart claude-code to activate."
+Enter
+Set TypingSpeed 30ms
+
+Sleep 2s
 
 # ── CLOSING ──
 
-Sleep 400ms
+Sleep 300ms
 Type "# 34 MCP tools · 33 CLI commands · 18 providers · No API keys"
 Enter
-Sleep 400ms
+Sleep 300ms
 Type "# brew install MikkoParkkola/tap/trvl"
 Enter
-Sleep 3s
+Sleep 2s
