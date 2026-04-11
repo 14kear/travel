@@ -32,6 +32,13 @@ type SearchOptions struct {
 	SortBy     models.SortBy     // Result sort order
 	Airlines   []string          // Restrict to these airline IATA codes
 	Adults     int               // Number of adult passengers (default: 1)
+
+	// Server-side filters passed to Google Flights batchexecute.
+	MaxPrice      int // Max price in whole currency units (0 = no limit)
+	MaxDuration   int // Max total flight duration in minutes (0 = no limit)
+	CarryOnBags   int // Number of carry-on bags (0 = no filter)
+	CheckedBags   int // Number of checked bags (0 = no filter)
+	ExcludeBasic  bool // Exclude basic economy fares
 }
 
 // defaults fills in zero-value fields with sensible defaults.
@@ -179,10 +186,10 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			[]any{},                                      // [4]
 			int(opts.CabinClass),                         // [5] cabin class
 			[]any{opts.Adults, 0, 0, 0},                  // [6] passengers
-			nil,                                          // [7] TODO: price limit — set to maxPrice (int, whole currency units) when SearchOptions gains MaxPrice
+			priceLimit(opts.MaxPrice),                     // [7] max price (nil or int)
 			nil,                                          // [8]
 			nil,                                          // [9]
-			nil,                                          // [10] TODO: bags — likely []any{carryOn, checked} (int counts) when SearchOptions gains Bags
+			bagsFilter(opts.CarryOnBags, opts.CheckedBags), // [10] bags [carryOn, checked]
 			nil,                                          // [11]
 			nil,                                          // [12]
 			segments,                                     // [13] flight segments
@@ -200,7 +207,7 @@ func buildFilters(origin, destination, date string, opts SearchOptions) any {
 			nil,                                          // [25]
 			nil,                                          // [26]
 			nil,                                          // [27]
-			0,                                            // [28] exclude basic economy
+			excludeBasicEconomy(opts.ExcludeBasic),        // [28] exclude basic economy
 		},
 		// outer[2]: sort by
 		sortBy,
@@ -245,8 +252,8 @@ func buildSegment(from, to, date string, opts SearchOptions) any {
 		nil,
 		// [6] date
 		date,
-		// [7] TODO: max duration in minutes (int) when SearchOptions gains MaxDuration
-		nil,
+		// [7] max duration in minutes
+		durationLimit(opts.MaxDuration),
 		// [8] selected flight
 		nil,
 		// [9] layover airports
@@ -262,4 +269,36 @@ func buildSegment(from, to, date string, opts SearchOptions) any {
 		// [14]
 		3,
 	}
+}
+
+// priceLimit returns the max price for the batchexecute filter, or nil if unset.
+func priceLimit(maxPrice int) any {
+	if maxPrice <= 0 {
+		return nil
+	}
+	return maxPrice
+}
+
+// bagsFilter returns the bags array for the batchexecute filter, or nil if unset.
+func bagsFilter(carryOn, checked int) any {
+	if carryOn <= 0 && checked <= 0 {
+		return nil
+	}
+	return []any{carryOn, checked}
+}
+
+// durationLimit returns the max duration in minutes, or nil if unset.
+func durationLimit(maxDuration int) any {
+	if maxDuration <= 0 {
+		return nil
+	}
+	return maxDuration
+}
+
+// excludeBasicEconomy returns the flag for the batchexecute filter.
+func excludeBasicEconomy(exclude bool) int {
+	if exclude {
+		return 1
+	}
+	return 0
 }
