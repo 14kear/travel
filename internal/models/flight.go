@@ -25,12 +25,14 @@ type FlightLeg struct {
 
 // FlightResult represents a single flight option with price and routing.
 type FlightResult struct {
-	Price      float64     `json:"price"`
-	Currency   string      `json:"currency"`
-	Duration   int         `json:"duration"` // total minutes
-	Stops      int         `json:"stops"`
-	Legs       []FlightLeg `json:"legs"`
-	BookingURL string      `json:"booking_url,omitempty"`
+	Price             float64     `json:"price"`
+	Currency          string      `json:"currency"`
+	Duration          int         `json:"duration"` // total minutes
+	Stops             int         `json:"stops"`
+	Legs              []FlightLeg `json:"legs"`
+	BookingURL        string      `json:"booking_url,omitempty"`
+	CarryOnIncluded   *bool       `json:"carry_on_included,omitempty"`   // true if carry-on bag is included in price
+	CheckedBagsIncluded *int      `json:"checked_bags_included,omitempty"` // 0=not included, 1=one bag, 2=two bags
 }
 
 // FlightSearchResult is the top-level response for a flight search.

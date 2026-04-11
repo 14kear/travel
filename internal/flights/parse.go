@@ -90,6 +90,14 @@ func parseOneFlight(entry []any) (models.FlightResult, error) {
 		fr.Currency = currency
 	}
 
+	// Parse bag allowances from entry[4][6] (carry-on + checked bags).
+	// Format: [carry_on_flag, checked_bag_flag]
+	//   carry_on_flag:  0 = included in price
+	//   checked_bag_flag: 0 = not included, 1 = one bag included, 2 = two bags
+	if len(entry) > 4 {
+		parseBagAllowance(entry[4], &fr)
+	}
+
 	return fr, nil
 }
 
@@ -287,6 +295,34 @@ func isKnownCurrency(code string) bool {
 		return true
 	}
 	return false
+}
+
+// parseBagAllowance extracts carry-on and checked bag info from the offer array.
+// The bag data is at offer[6] = [carry_on_flag, checked_bag_flag].
+// carry_on_flag: 0 = included in price (any other value = fee required)
+// checked_bag_flag: 0 = not included, 1 = one bag included, 2 = two bags included
+func parseBagAllowance(offer any, fr *models.FlightResult) {
+	offerArr, ok := offer.([]any)
+	if !ok || len(offerArr) <= 6 {
+		return
+	}
+
+	bagArr, ok := offerArr[6].([]any)
+	if !ok || len(bagArr) < 2 {
+		return
+	}
+
+	// carry_on_flag: 0 means included
+	if carryOn, ok := jsonutil.ToFloat(bagArr[0]); ok {
+		included := carryOn == 0
+		fr.CarryOnIncluded = &included
+	}
+
+	// checked_bag_flag: 0=none, 1=one bag, 2=two bags
+	if checked, ok := jsonutil.ToFloat(bagArr[1]); ok {
+		n := int(checked)
+		fr.CheckedBagsIncluded = &n
+	}
 }
 
 // formatDateTime combines a date array [year, month, day] and a time array
