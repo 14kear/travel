@@ -3,6 +3,7 @@ package hotels
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 	"sort"
@@ -215,11 +216,50 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 		}
 	}
 
-	// Deduplicate across all pages and sort orders using name-normalisation +
-	// geo-proximity. MergeHotelResults preserves all provider price sources and
-	// keeps the lowest price as the primary. This replaces the previous naive
-	// strings.ToLower(name) seen-map approach.
-	hotels := models.MergeHotelResults(rawBatches...)
+	// Run parallel searches against Trivago and Airbnb.
+	// Both are non-fatal: failures log a warning and contribute zero results.
+	auxOpts := HotelSearchOptions{
+		CheckIn:  opts.CheckIn,
+		CheckOut: opts.CheckOut,
+		Guests:   opts.Guests,
+		Currency: opts.Currency,
+	}
+	var trivagoResults []models.HotelResult
+	var airbnbResults []models.HotelResult
+	var auxWg sync.WaitGroup
+
+	auxWg.Add(1)
+	go func() {
+		defer auxWg.Done()
+		res, err := SearchTrivago(ctx, location, auxOpts)
+		if err != nil {
+			slog.Warn("trivago search failed", "error", err)
+			return
+		}
+		trivagoResults = res
+	}()
+
+	// Airbnb (scraping-based, may fail or be rate-limited — non-fatal)
+	auxWg.Add(1)
+	go func() {
+		defer auxWg.Done()
+		res, err := SearchAirbnb(ctx, location, auxOpts)
+		if err != nil {
+			slog.Warn("airbnb search failed", "error", err)
+			return
+		}
+		airbnbResults = res
+	}()
+
+	auxWg.Wait()
+
+	// Deduplicate across all pages, sort orders, Trivago, and Airbnb using
+	// name-normalisation + geo-proximity. MergeHotelResults preserves all
+	// provider price sources and keeps the lowest price as the primary. This
+	// replaces the previous naive strings.ToLower(name) seen-map approach.
+	allBatches := append(rawBatches, trivagoResults)
+	allBatches = append(allBatches, airbnbResults)
+	hotels := models.MergeHotelResults(allBatches...)
 
 	// Resolve city center for distance filter/sort if needed.
 	if opts.MaxDistanceKm > 0 || strings.EqualFold(opts.Sort, "distance") {
