@@ -12,9 +12,9 @@
 
 ![trvl demo](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/demo.gif?v=0.3.2)
 
-> **35 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
+> **36 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
 >
-> Also works as a standalone CLI with 38 commands.
+> Also works as a standalone CLI with 39 commands.
 
 ### What it looks like
 
@@ -117,7 +117,7 @@ claude mcp add trvl --transport stdio -- trvl mcp
 
 ### 3. (Optional) Teach your AI about trvl
 
-Point your AI assistant to the reference docs so it knows all 35 tools:
+Point your AI assistant to the reference docs so it knows all 36 tools:
 
 ```
 https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md
@@ -138,7 +138,7 @@ curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/sk
 
 ### 4. Ask your AI to search
 
-That's it. Your AI assistant now has 35 travel tools available. Just ask naturally:
+That's it. Your AI assistant now has 36 travel tools available. Just ask naturally:
 
 - *"Search flights from JFK to Tokyo on July 1st, business class"*
 - *"Find hotels in Paris for July 1-5, at least 4 stars"*
@@ -240,7 +240,7 @@ That's it. Your AI assistant now has 35 travel tools available. Just ask natural
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all 35 tool responses |
+| **Output schemas** | Full JSON Schema validation for all 36 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels`, `where-should-i-go` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides, price-watch subscriptions |
 | **Tool description orchestration** | `find_trip_window` instructs the LLM to fetch calendar data first, then pass busy intervals in — works on every MCP client. See [docs/MCP-ORCHESTRATION.md](docs/MCP-ORCHESTRATION.md) |
@@ -337,7 +337,7 @@ See [Quick Setup step 3](#3-optional-teach-your-ai-about-trvl) above for AGENTS.
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 38 commands:
+trvl also works as a standalone CLI tool with 39 commands:
 
 All search commands accept `--currency <CODE>` (e.g. `--currency EUR`) to convert displayed prices. trvl detects the actual API currency and converts at the display layer — no hardcoded currencies.
 
@@ -603,8 +603,8 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Binary** | Single static ~15MB for API-first flows. Optional protected-provider fallbacks may use local browser/python tooling. |
 | **Data** | Real-time from Google Flights/Hotels/Explore/Maps + 16 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Stena Line, DFDS) + 5 free destination APIs |
 | **Auth** | No personal API keys required. Two providers (NS, Digitransit/VR) use public keys embedded in the binary. Optional browser/cookie fallbacks are available for protected providers when explicitly enabled. |
-| **MCP** | Full v2025-11-25 — 35 tools, 5 prompts, resources, structured content, progress notifications, resource subscriptions, tool description orchestration |
-| **CLI** | 38 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
+| **MCP** | Full v2025-11-25 — 36 tools, 5 prompts, resources, structured content, progress notifications, resource subscriptions, tool description orchestration |
+| **CLI** | 39 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 18 detectors (throwaway, hidden-city, positioning, ferry, multi-modal, stopover, date-flex, and more) |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |
