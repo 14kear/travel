@@ -3,6 +3,7 @@ package hotels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	trvlnab "github.com/MikkoParkkola/trvl/internal/nab"
 	"golang.org/x/time/rate"
 )
 
@@ -29,6 +31,11 @@ var airbnbLimiter = rate.NewLimiter(rate.Every(time.Second), 1)
 var airbnbClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
+
+var (
+	airbnbDo          = func(req *http.Request) (*http.Response, error) { return airbnbClient.Do(req) }
+	airbnbFetchViaNab = fetchAirbnbViaNab
+)
 
 // airbnbUA is a realistic Chrome User-Agent to avoid bot detection.
 const airbnbUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -60,7 +67,7 @@ func SearchAirbnb(ctx context.Context, location string, opts HotelSearchOptions)
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	resp, err := airbnbClient.Do(req)
+	resp, err := airbnbDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("airbnb request: %w", err)
 	}
@@ -70,6 +77,14 @@ func SearchAirbnb(ctx context.Context, location string, opts HotelSearchOptions)
 		return nil, fmt.Errorf("airbnb rate limited (429)")
 	}
 	if resp.StatusCode == 403 {
+		body, err := airbnbFetchViaNab(ctx, searchURL)
+		if err == nil {
+			slog.Debug("airbnb 403 — retrying with nab fetch")
+			return parseAirbnbHTML(string(body), opts)
+		}
+		if !errors.Is(err, trvlnab.ErrNotAvailable) {
+			slog.Debug("airbnb nab fallback failed", "error", err)
+		}
 		return nil, fmt.Errorf("airbnb blocked (403)")
 	}
 	if resp.StatusCode != 200 {
@@ -82,6 +97,14 @@ func SearchAirbnb(ctx context.Context, location string, opts HotelSearchOptions)
 	}
 
 	return parseAirbnbHTML(string(body), opts)
+}
+
+func fetchAirbnbViaNab(ctx context.Context, searchURL string) ([]byte, error) {
+	client, err := trvlnab.New()
+	if err != nil {
+		return nil, err
+	}
+	return client.FetchHTML(ctx, searchURL, "")
 }
 
 // buildAirbnbURL constructs the Airbnb search URL for the given location and options.
@@ -380,18 +403,18 @@ func mapAirbnbListing(item any, nights int) (models.HotelResult, bool) {
 	bookingURL := fmt.Sprintf("https://www.airbnb.com/rooms/%s", id)
 
 	result := models.HotelResult{
-		Name:         name,
-		HotelID:      "airbnb_" + id,
-		Rating:       rating,
-		ReviewCount:  reviewCount,
-		Stars:        0, // Airbnb does not have star ratings
-		Price:        price,
-		Currency:     currency,
-		Address:      address,
-		Lat:          lat,
-		Lon:          lon,
-		Amenities:    amenities,
-		BookingURL:   bookingURL,
+		Name:        name,
+		HotelID:     "airbnb_" + id,
+		Rating:      rating,
+		ReviewCount: reviewCount,
+		Stars:       0, // Airbnb does not have star ratings
+		Price:       price,
+		Currency:    currency,
+		Address:     address,
+		Lat:         lat,
+		Lon:         lon,
+		Amenities:   amenities,
+		BookingURL:  bookingURL,
 		Sources: []models.PriceSource{{
 			Provider:   "airbnb",
 			Price:      price,

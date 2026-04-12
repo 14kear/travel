@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	trvlnab "github.com/MikkoParkkola/trvl/internal/nab"
+	"os/exec"
 )
 
 var (
@@ -39,7 +41,7 @@ func BrowserCookies(domain string) string {
 // extractViaNab uses the nab CLI to export cookies for the given browser and domain.
 // nab handles keychain access and AES decryption transparently.
 func extractViaNab(browser, domain string) string {
-	nabPath, err := exec.LookPath("nab")
+	nabPath, err := trvlnab.LookupPath()
 	if err != nil {
 		return ""
 	}

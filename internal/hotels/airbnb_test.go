@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -539,6 +541,46 @@ func TestSearchAirbnb_MissingDates(t *testing.T) {
 	_, err := SearchAirbnb(context.Background(), "London", HotelSearchOptions{})
 	if err == nil {
 		t.Error("expected error when dates are missing")
+	}
+}
+
+func TestSearchAirbnb_UsesNabFallbackOn403(t *testing.T) {
+	origDo := airbnbDo
+	origFetchViaNab := airbnbFetchViaNab
+	t.Cleanup(func() {
+		airbnbDo = origDo
+		airbnbFetchViaNab = origFetchViaNab
+	})
+
+	airbnbDo = func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader("forbidden")),
+		}, nil
+	}
+	airbnbFetchViaNab = func(context.Context, string) ([]byte, error) {
+		return []byte(buildAirbnbFixtureHTML(t, []any{
+			map[string]any{
+				"listing": map[string]any{
+					"id":   "42",
+					"name": "Fallback Listing",
+				},
+			},
+		})), nil
+	}
+
+	results, err := SearchAirbnb(context.Background(), "London", HotelSearchOptions{
+		CheckIn:  "2024-09-01",
+		CheckOut: "2024-09-02",
+	})
+	if err != nil {
+		t.Fatalf("SearchAirbnb returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Name != "Fallback Listing" {
+		t.Fatalf("name = %q, want %q", results[0].Name, "Fallback Listing")
 	}
 }
 
