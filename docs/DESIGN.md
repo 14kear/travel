@@ -1,6 +1,6 @@
 # trvl — Design Document
 
-**Status**: DRAFT
+**Status**: IMPLEMENTED (initial design — project has evolved significantly since)
 **Author**: Mikko Parkkola
 **Date**: 2026-04-02
 **Version**: 1.0

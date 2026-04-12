@@ -45,3 +45,4 @@ Thumbs.db
 .internal/
 __pycache__/
 docs/distribution/
+docs/plans/
