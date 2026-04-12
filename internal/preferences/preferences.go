@@ -4,6 +4,8 @@
 package preferences
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -170,12 +172,20 @@ func SaveTo(path string, p *Preferences) error {
 	}
 
 	// Atomic write: write to temp file, rename.
+	// Use a cryptographically random suffix and O_CREATE|O_EXCL at mode 0600
+	// so the file is never readable by other users even momentarily (avoids
+	// the TOCTOU window between CreateTemp and Chmod).
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	rndBytes := make([]byte, 8)
+	if _, err := rand.Read(rndBytes); err != nil {
+		return fmt.Errorf("generate temp name: %w", err)
+	}
+	tmpPath := filepath.Join(dir, filepath.Base(path)+".tmp-"+hex.EncodeToString(rndBytes))
+	//nolint:gosec // mode 0600 is intentional — preferences file must be owner-only
+	tmp, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
-	tmpPath := tmp.Name()
 	cleanup := true
 	defer func() {
 		if cleanup {
@@ -183,10 +193,6 @@ func SaveTo(path string, p *Preferences) error {
 		}
 	}()
 
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
 	if _, err := tmp.Write(b); err != nil {
 		_ = tmp.Close()
 		return err

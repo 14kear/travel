@@ -28,6 +28,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -250,8 +251,17 @@ func SearchFerryhopper(ctx context.Context, from, to, date, currency string) ([]
 		return nil, nil
 	}
 
+	// 512 KB is ample for any realistic ferry schedule; guards against a
+	// malicious/compromised mcp.ferryhopper.com inflating the text payload
+	// beyond the outer 1 MB HTTP body cap via nested JSON encoding.
+	const maxContentText = 512 * 1024
+	contentText := rpcResult.Result.Content[0].Text
+	if len(contentText) > maxContentText {
+		return nil, fmt.Errorf("ferryhopper: content text too large (%d bytes)", len(contentText))
+	}
+
 	var tripResult ferryhopperTripResult
-	if err := json.Unmarshal([]byte(rpcResult.Result.Content[0].Text), &tripResult); err != nil {
+	if err := json.Unmarshal([]byte(contentText), &tripResult); err != nil {
 		return nil, fmt.Errorf("ferryhopper: decode trip result: %w", err)
 	}
 
@@ -297,7 +307,7 @@ func SearchFerryhopper(ctx context.Context, from, to, date, currency string) ([]
 				Time:    arrTime,
 			},
 			Transfers:  len(itin.Segments) - 1,
-			BookingURL: itin.DeepLink,
+			BookingURL: ferryhopperSanitizeURL(itin.DeepLink),
 		}
 
 		routes = append(routes, route)
@@ -305,4 +315,21 @@ func SearchFerryhopper(ctx context.Context, from, to, date, currency string) ([]
 
 	slog.Debug("ferryhopper results", "routes", len(routes))
 	return routes, nil
+}
+
+// ferryhopperSanitizeURL returns rawURL if it has an http or https scheme,
+// or "" otherwise. Prevents a malicious MCP response from injecting
+// javascript:, data:, or other non-HTTP URLs into booking deep links.
+func ferryhopperSanitizeURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return ""
+	}
+	return rawURL
 }

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -306,6 +308,19 @@ func setupPromptSecret(scanner *bufio.Scanner, w *os.File, label, current string
 
 // --- API keys persistence ---
 
+// secureTempPath returns a unique file path in dir using a cryptographically
+// random suffix. Unlike os.CreateTemp it does not create the file, so the
+// caller can open it with an explicit mode (0600) using O_CREATE|O_EXCL,
+// which eliminates the TOCTOU window that exists when using CreateTemp
+// followed by Chmod.
+func secureTempPath(dir, prefix string) (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate temp name: %w", err)
+	}
+	return filepath.Join(dir, prefix+hex.EncodeToString(b)), nil
+}
+
 // keysPath returns the path to ~/.trvl/keys.json.
 func keysPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -351,12 +366,20 @@ func saveKeysTo(path string, keys APIKeys) error {
 	}
 
 	// Atomic write with secure permissions.
+	// os.CreateTemp inherits the process umask, which may allow group/world
+	// reads before Chmod runs (TOCTOU). Instead, generate a unique name and
+	// open with O_CREATE|O_EXCL at mode 0600 so the file is never readable
+	// by other users, even momentarily.
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	tmpPath, err := secureTempPath(dir, filepath.Base(path)+".tmp-")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
-	tmpPath := tmp.Name()
+	//nolint:gosec // mode 0600 is intentional — keys file must be owner-only
+	tmp, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
 	cleanup := true
 	defer func() {
 		if cleanup {
@@ -364,10 +387,6 @@ func saveKeysTo(path string, keys APIKeys) error {
 		}
 	}()
 
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
 	if _, err := tmp.Write(b); err != nil {
 		_ = tmp.Close()
 		return err

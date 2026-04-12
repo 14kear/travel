@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -235,11 +236,20 @@ func extractTrivagoContent(rpc trivagoRPCResponse) (json.RawMessage, error) {
 
 	// Result may already be the data we want, or it may be wrapped in a
 	// tool-result envelope with a content[].text field.
+	// 512 KB is ample for any reasonable hotel list; guards against a
+	// malicious/compromised mcp.trivago.com sending a multi-MB text payload
+	// that the 1 MB HTTP body cap would not catch (the text sits inside the
+	// already-limited body, but we want defense in depth).
+	const maxContentText = 512 * 1024
+
 	var toolResult trivagoToolResult
 	if err := json.Unmarshal(rpc.Result, &toolResult); err == nil && len(toolResult.Content) > 0 {
 		// Prefer the first text content block.
 		for _, c := range toolResult.Content {
 			if c.Type == "text" && c.Text != "" {
+				if len(c.Text) > maxContentText {
+					return nil, fmt.Errorf("trivago: content text too large (%d bytes)", len(c.Text))
+				}
 				return json.RawMessage(c.Text), nil
 			}
 		}
@@ -369,6 +379,24 @@ func parseTrivagoAccommodations(raw json.RawMessage, currency string) ([]models.
 	return nil, nil
 }
 
+// sanitizeBookingURL returns rawURL if it has an http or https scheme, or ""
+// if it is empty, has an unexpected scheme (e.g. javascript:, data:), or is
+// not a valid URL. This prevents a malicious MCP response from injecting
+// non-HTTP URLs into booking links that a client might follow.
+func sanitizeBookingURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return ""
+	}
+	return rawURL
+}
+
 // mapTrivagoAccommodations converts trivago API accommodation records to the
 // canonical HotelResult model, selecting the cheapest booking link price.
 func mapTrivagoAccommodations(accoms []trivagoAccommodation, defaultCurrency string) []models.HotelResult {
@@ -392,7 +420,7 @@ func mapTrivagoAccommodations(accoms []trivagoAccommodation, defaultCurrency str
 			if price == 0 || link.Price < price {
 				price = link.Price
 				cur = link.Currency
-				bookingURL = link.URL
+				bookingURL = sanitizeBookingURL(link.URL)
 			}
 		}
 
