@@ -2,10 +2,13 @@ package ground
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/testutil"
 )
 
@@ -184,5 +187,53 @@ func TestSearchSNCF_UnknownStation(t *testing.T) {
 	_, err := SearchSNCF(ctx, "Nonexistent", "Lyon", "2026-04-10", "EUR", false)
 	if err == nil {
 		t.Error("expected error for unknown station")
+	}
+}
+
+func TestSearchSNCFCalendar_UsesNabFallbackOn403(t *testing.T) {
+	origDo := sncfDo
+	origFetchViaNab := sncfFetchViaNab
+	origBrowserCookies := sncfBrowserCookies
+	t.Cleanup(func() {
+		sncfDo = origDo
+		sncfFetchViaNab = origFetchViaNab
+		sncfBrowserCookies = origBrowserCookies
+	})
+
+	sncfDo = func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader("blocked")),
+			Header:     make(http.Header),
+		}, nil
+	}
+	sncfBrowserCookies = func(string) string { return "" }
+	sncfFetchViaNab = func(context.Context, string, SNCFStation, SNCFStation, string, string) ([]models.GroundRoute, error) {
+		return []models.GroundRoute{
+			{
+				Provider:  "sncf",
+				Type:      "train",
+				Price:     29.0,
+				Currency:  "EUR",
+				Departure: models.GroundStop{City: "Paris"},
+				Arrival:   models.GroundStop{City: "Lyon"},
+			},
+		}, nil
+	}
+
+	fromStation, _ := LookupSNCFStation("Paris")
+	toStation, _ := LookupSNCFStation("Lyon")
+	routes, err := searchSNCFCalendar(context.Background(), fromStation, toStation, "2026-04-10", "EUR", true)
+	if err != nil {
+		t.Fatalf("searchSNCFCalendar returned error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].Provider != "sncf" {
+		t.Fatalf("provider = %q, want %q", routes[0].Provider, "sncf")
+	}
+	if routes[0].Departure.City != "Paris" || routes[0].Arrival.City != "Lyon" {
+		t.Fatalf("unexpected route cities: %+v", routes[0])
 	}
 }

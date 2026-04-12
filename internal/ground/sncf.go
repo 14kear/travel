@@ -3,6 +3,7 @@ package ground
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	trvlnab "github.com/MikkoParkkola/trvl/internal/nab"
 	"golang.org/x/time/rate"
 )
 
@@ -31,6 +33,17 @@ var sncfLimiter = rate.NewLimiter(rate.Every(6*time.Second), 1)
 // sncfClient is a dedicated HTTP client for SNCF API calls.
 // Uses Chrome TLS fingerprint via utls to bypass Cloudflare bot detection.
 var sncfClient = batchexec.ChromeHTTPClient()
+
+var (
+	sncfDo             = func(req *http.Request) (*http.Response, error) { return sncfClient.Do(req) }
+	sncfFetchViaNab    = fetchSNCFViaNab
+	sncfBrowserCookies = cookies.BrowserCookies
+)
+
+type sncfHeader struct {
+	name  string
+	value string
+}
 
 // SNCFStation holds metadata for an SNCF station.
 type SNCFStation struct {
@@ -77,6 +90,25 @@ var sncfStations = map[string]SNCFStation{
 func LookupSNCFStation(city string) (SNCFStation, bool) {
 	s, ok := sncfStations[strings.ToLower(strings.TrimSpace(city))]
 	return s, ok
+}
+
+func sncfRequestHeaders(cookieHeader string) []sncfHeader {
+	headers := []sncfHeader{
+		{name: "Accept", value: "application/json"},
+		{name: "User-Agent", value: "trvl/1.0 (travel agent; github.com/MikkoParkkola/trvl)"},
+		{name: "Origin", value: "https://www.sncf-connect.com"},
+		{name: "Referer", value: "https://www.sncf-connect.com/"},
+	}
+	if cookieHeader != "" {
+		headers = append(headers, sncfHeader{name: "Cookie", value: cookieHeader})
+	}
+	return headers
+}
+
+func applySNCFHeaders(req *http.Request, cookieHeader string) {
+	for _, header := range sncfRequestHeaders(cookieHeader) {
+		req.Header.Set(header.name, header.value)
+	}
 }
 
 // HasSNCFRoute returns true if both cities have SNCF stations AND at least one is French.
@@ -498,13 +530,7 @@ func searchSNCFCalendar(ctx context.Context, fromStation, toStation SNCFStation,
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", "trvl/1.0 (travel agent; github.com/MikkoParkkola/trvl)")
-		req.Header.Set("Origin", "https://www.sncf-connect.com")
-		req.Header.Set("Referer", "https://www.sncf-connect.com/")
-		if cookieHeader != "" {
-			req.Header.Set("Cookie", cookieHeader)
-		}
+		applySNCFHeaders(req, cookieHeader)
 		return req, nil
 	}
 
@@ -513,7 +539,7 @@ func searchSNCFCalendar(ctx context.Context, fromStation, toStation SNCFStation,
 		return nil, err
 	}
 
-	resp, err := sncfClient.Do(req)
+	resp, err := sncfDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("sncf calendar api: %w", err)
 	}
@@ -524,18 +550,24 @@ func searchSNCFCalendar(ctx context.Context, fromStation, toStation SNCFStation,
 		resp.Body.Close()
 
 		if allowBrowserCookies {
-			cookieHeader := cookies.BrowserCookies("sncf-connect.com")
+			cookieHeader := sncfBrowserCookies("sncf-connect.com")
 			if cookieHeader != "" {
 				slog.Debug("retrying sncf calendar api with browser cookies")
 				req2, err2 := newSNCFRequest(cookieHeader)
 				if err2 == nil {
-					if resp2, err2 := sncfClient.Do(req2); err2 == nil {
+					if resp2, err2 := sncfDo(req2); err2 == nil {
 						defer resp2.Body.Close()
 						if resp2.StatusCode == http.StatusOK {
 							return parseSNCFResponse(resp2.Body, fromStation, toStation, date, currency)
 						}
 					}
 				}
+			}
+
+			if nRoutes, nErr := sncfFetchViaNab(ctx, apiURL, fromStation, toStation, date, currency); nErr == nil && len(nRoutes) > 0 {
+				return nRoutes, nil
+			} else if nErr != nil && !errors.Is(nErr, trvlnab.ErrNotAvailable) {
+				slog.Debug("sncf nab fallback failed", "err", nErr)
 			}
 
 			isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
@@ -553,6 +585,29 @@ func searchSNCFCalendar(ctx context.Context, fromStation, toStation SNCFStation,
 	}
 
 	return parseSNCFResponse(resp.Body, fromStation, toStation, date, currency)
+}
+
+func fetchSNCFViaNab(
+	ctx context.Context,
+	apiURL string,
+	fromStation, toStation SNCFStation,
+	date, currency string,
+) ([]models.GroundRoute, error) {
+	client, err := trvlnab.New()
+	if err != nil {
+		return nil, err
+	}
+
+	var headers []string
+	for _, header := range sncfRequestHeaders("") {
+		headers = append(headers, fmt.Sprintf("%s: %s", header.name, header.value))
+	}
+
+	body, err := client.Fetch(ctx, apiURL, trvlnab.FetchOptions{Headers: headers})
+	if err != nil {
+		return nil, err
+	}
+	return parseSNCFResponse(strings.NewReader(string(body)), fromStation, toStation, date, currency)
 }
 
 // parseSNCFResponse decodes the calendar JSON body and returns GroundRoute values
