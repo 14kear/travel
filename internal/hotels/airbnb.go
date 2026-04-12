@@ -8,12 +8,17 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/time/rate"
 )
+
+// airbnbIDRegex validates Airbnb listing IDs. In practice these are numeric
+// strings, but we allow alphanumeric + hyphen/underscore for forward compat.
+var airbnbIDRegex = regexp.MustCompile(`^[0-9A-Za-z_-]{1,32}$`)
 
 // airbnbLimiter enforces a conservative 1 req/s rate limit.
 // Airbnb will block aggressive scrapers. We err on the side of caution.
@@ -368,6 +373,10 @@ func mapAirbnbListing(item any, nights int) (models.HotelResult, bool) {
 		amenities = append(amenities, "superhost")
 	}
 
+	if !airbnbIDRegex.MatchString(id) {
+		slog.Warn("airbnb: invalid listing ID, skipping", "id", id)
+		return models.HotelResult{}, false
+	}
 	bookingURL := fmt.Sprintf("https://www.airbnb.com/rooms/%s", id)
 
 	result := models.HotelResult{
