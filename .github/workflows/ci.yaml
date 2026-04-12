@@ -18,8 +18,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ matrix.go-version }}
       - name: Build
@@ -80,7 +80,7 @@ jobs:
       - name: Coverage badge
         if: runner.os != 'Windows' && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.coverage_wiki.outputs.exists == 'true'
         continue-on-error: true
-        uses: ncruces/go-coverage-report@v0
+        uses: ncruces/go-coverage-report@dfc237255099f2d25066babde51253992175e365 # v0
         with:
           coverage-file: coverage.out
           report: true
@@ -90,10 +90,10 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-      - uses: trufflesecurity/trufflehog@main
+      - uses: trufflesecurity/trufflehog@580628bb9d5455140899afe2cb981ff5640bf399 # main
         with:
           extra_args: --only-verified
 
@@ -105,21 +105,21 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.26.2"
       # Register QEMU user-static interpreters so buildx can emit
       # linux/arm64 images on the amd64 GitHub-hosted runner.
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           version: "~> v2"
           args: release --clean
