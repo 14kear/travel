@@ -73,10 +73,17 @@ git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
 
 ```bash
 trvl mcp install                       # Claude Desktop (default)
-trvl mcp install --client cursor       # Cursor / Windsurf
 trvl mcp install --client claude-code  # Claude Code
-trvl mcp install --dry-run             # Preview first
+trvl mcp install --client cursor       # Cursor
+trvl mcp install --client windsurf     # Windsurf
+trvl mcp install --client codex        # OpenAI Codex CLI
+trvl mcp install --client vscode       # VS Code Copilot
+trvl mcp install --client zed          # Zed
+trvl mcp install --client --list       # show all 10 supported clients
+trvl mcp install --dry-run             # preview without writing
 ```
+
+Also supported: `gemini`, `amazon-q`, `lm-studio`. Restart your client after install.
 
 **Manual** — add to your MCP client config (Claude Desktop, Cursor, Windsurf, etc.):
 
