@@ -29,9 +29,11 @@ import (
 
 const (
 	serverName      = "trvl"
-	serverVersion   = "0.3.12"
 	protocolVersion = "2025-11-25"
 )
+
+// serverVersion is set at link time for release builds.
+var serverVersion = "dev"
 
 // --- Server ---
 

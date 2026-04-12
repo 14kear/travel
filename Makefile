@@ -3,7 +3,7 @@ GO ?= go
 GO_RUN = GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO)
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
+LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION) -X github.com/MikkoParkkola/trvl/mcp.serverVersion=$(VERSION)"
 
 .PHONY: build test test-proof test-coverage test-live-integrations test-live-probes lint clean cross
 
