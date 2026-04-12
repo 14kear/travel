@@ -95,12 +95,50 @@ func TestTrvlBinaryPath(t *testing.T) {
 	}
 }
 
+func setInstallTestHome(t *testing.T) {
+	t.Helper()
+
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("APPDATA", filepath.Join(dir, "AppData", "Roaming"))
+}
+
+func installConfigPath(t *testing.T, client string) string {
+	t.Helper()
+
+	cfgPath, err := clientConfigPath(client)
+	if err != nil {
+		t.Fatalf("clientConfigPath(%q): %v", client, err)
+	}
+	return cfgPath
+}
+
+func readJSONConfig(t *testing.T, path string) map[string]any {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("Unmarshal(%q): %v", path, err)
+	}
+	return cfg
+}
+
 func TestRunInstall_DryRun(t *testing.T) {
-	// Dry-run should not create any files, just print what would happen.
-	// Use claude-code client since its config path is simplest (~/.claude.json).
+	setInstallTestHome(t)
+	cfgPath := installConfigPath(t, "claude-code")
+
 	err := runInstall("claude-code", false, true)
 	if err != nil {
 		t.Fatalf("runInstall dry-run: %v", err)
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatalf("dry-run should not create %s, stat err = %v", cfgPath, err)
 	}
 }
 
@@ -126,8 +164,8 @@ func TestRunInstall_UnknownClient(t *testing.T) {
 }
 
 func TestRunInstall_MergesExistingConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
+	setInstallTestHome(t)
+	cfgPath := installConfigPath(t, "claude-code")
 
 	// Pre-existing config with another MCP server.
 	existing := map[string]any{
@@ -139,79 +177,110 @@ func TestRunInstall_MergesExistingConfig(t *testing.T) {
 		},
 	}
 	data, _ := json.MarshalIndent(existing, "", "  ")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(cfgPath, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Simulate what runInstall does: load, merge, write.
-	raw, _ := os.ReadFile(cfgPath)
-	cfg := map[string]any{}
-	_ = json.Unmarshal(raw, &cfg)
-
-	servers, _ := cfg["mcpServers"].(map[string]any)
-	if servers == nil {
-		servers = map[string]any{}
-	}
-	servers["trvl"] = map[string]any{
-		"command": "/usr/local/bin/trvl",
-		"args":    []string{"mcp"},
-	}
-	cfg["mcpServers"] = servers
-
-	out, _ := json.MarshalIndent(cfg, "", "  ")
-	if err := os.WriteFile(cfgPath, out, 0o644); err != nil {
-		t.Fatal(err)
+	if err := runInstall("claude-code", false, false); err != nil {
+		t.Fatalf("runInstall merge existing config: %v", err)
 	}
 
-	// Read back and verify both entries exist.
-	readData, _ := os.ReadFile(cfgPath)
-	var result map[string]any
-	if err := json.Unmarshal(readData, &result); err != nil {
-		t.Fatalf("merged config is not valid JSON: %v", err)
-	}
+	result := readJSONConfig(t, cfgPath)
 	merged, _ := result["mcpServers"].(map[string]any)
 	if _, ok := merged["other-tool"]; !ok {
 		t.Error("existing 'other-tool' entry was lost during merge")
 	}
-	if _, ok := merged["trvl"]; !ok {
+	trvlEntry, ok := merged["trvl"].(map[string]any)
+	if !ok {
 		t.Error("trvl entry was not added during merge")
+	} else {
+		binary, err := trvlBinaryPath()
+		if err != nil {
+			t.Fatalf("trvlBinaryPath: %v", err)
+		}
+		if got := trvlEntry["command"]; got != binary {
+			t.Errorf("trvl command = %v, want %q", got, binary)
+		}
+		args, _ := trvlEntry["args"].([]any)
+		if len(args) != 1 || args[0] != "mcp" {
+			t.Errorf("trvl args = %v, want [mcp]", trvlEntry["args"])
+		}
+	}
+
+	backup, err := os.ReadFile(cfgPath + ".trvl.bak")
+	if err != nil {
+		t.Fatalf("expected backup file: %v", err)
+	}
+	if string(backup) != string(data) {
+		t.Error("backup file should preserve original config contents")
 	}
 }
 
 func TestRunInstall_CreatesNewFile(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "nested", "config.json")
+	setInstallTestHome(t)
+	cfgPath := installConfigPath(t, "claude-code")
 
-	// Ensure parent directory creation works.
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Start with no file; simulate runInstall logic.
-	cfg := map[string]any{}
-	servers := map[string]any{}
-	servers["trvl"] = map[string]any{
-		"command": "/usr/local/bin/trvl",
-		"args":    []string{"mcp"},
-	}
-	cfg["mcpServers"] = servers
-
-	out, _ := json.MarshalIndent(cfg, "", "  ")
-	if err := os.WriteFile(cfgPath, out, 0o644); err != nil {
-		t.Fatal(err)
+	if err := runInstall("claude-code", false, false); err != nil {
+		t.Fatalf("runInstall create config: %v", err)
 	}
 
-	// Read back.
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatalf("file should exist: %v", err)
-	}
-	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatal(err)
-	}
+	result := readJSONConfig(t, cfgPath)
 	merged, _ := result["mcpServers"].(map[string]any)
 	if _, ok := merged["trvl"]; !ok {
 		t.Error("trvl entry not found in newly created config")
+	}
+}
+
+func TestRunInstall_InvalidJSONWithoutForce(t *testing.T) {
+	setInstallTestHome(t)
+	cfgPath := installConfigPath(t, "claude-code")
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, []byte("{invalid"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runInstall("claude-code", false, false)
+	if err == nil {
+		t.Fatal("runInstall should reject invalid JSON without --force")
+	}
+	if !strings.Contains(err.Error(), "use --force to overwrite") {
+		t.Fatalf("error = %q, want overwrite hint", err.Error())
+	}
+}
+
+func TestRunInstall_ForceOverwritesInvalidJSON(t *testing.T) {
+	setInstallTestHome(t)
+	cfgPath := installConfigPath(t, "claude-code")
+	invalid := []byte("{invalid")
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, invalid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runInstall("claude-code", true, false); err != nil {
+		t.Fatalf("runInstall force overwrite invalid JSON: %v", err)
+	}
+
+	result := readJSONConfig(t, cfgPath)
+	merged, _ := result["mcpServers"].(map[string]any)
+	if _, ok := merged["trvl"]; !ok {
+		t.Fatal("forced install should replace invalid config with trvl entry")
+	}
+
+	backup, err := os.ReadFile(cfgPath + ".trvl.bak")
+	if err != nil {
+		t.Fatalf("expected backup of invalid config: %v", err)
+	}
+	if string(backup) != string(invalid) {
+		t.Fatalf("backup contents = %q, want original invalid config %q", string(backup), string(invalid))
 	}
 }

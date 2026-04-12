@@ -158,14 +158,9 @@ func runInstall(client string, force, dryRun bool) error {
 		return runInstallCodexTOML(cfgPath, binary, force, dryRun)
 	}
 
-	// Load existing config (or start with a fresh one).
-	cfg := map[string]any{}
-	if data, err := os.ReadFile(cfgPath); err == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return fmt.Errorf("parse existing config %s: %w (fix the file or use --force to overwrite)", cfgPath, err)
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read config %s: %w", cfgPath, err)
+	cfg, existingData, err := loadJSONConfig(cfgPath, force)
+	if err != nil {
+		return err
 	}
 
 	key := mcpConfigKey(client)
@@ -209,11 +204,9 @@ func runInstall(client string, force, dryRun bool) error {
 	}
 
 	// Backup existing file if present.
-	if _, err := os.Stat(cfgPath); err == nil {
+	if len(existingData) > 0 {
 		backup := cfgPath + ".trvl.bak"
-		if data, err := os.ReadFile(cfgPath); err == nil {
-			_ = os.WriteFile(backup, data, 0o644)
-		}
+		_ = os.WriteFile(backup, existingData, 0o644)
 	}
 
 	if err := os.WriteFile(cfgPath, out, 0o644); err != nil {
@@ -227,6 +220,28 @@ func runInstall(client string, force, dryRun bool) error {
 	fmt.Println("Restart your AI client to pick up the change.")
 	fmt.Println("Then ask: \"Use trvl to find flights from AMS to BCN next month.\"")
 	return nil
+}
+
+func loadJSONConfig(cfgPath string, force bool) (map[string]any, []byte, error) {
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]any{}, nil, nil
+		}
+		return nil, nil, fmt.Errorf("read config %s: %w", cfgPath, err)
+	}
+	if len(data) == 0 {
+		return map[string]any{}, data, nil
+	}
+
+	cfg := map[string]any{}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		if force {
+			return map[string]any{}, data, nil
+		}
+		return nil, data, fmt.Errorf("parse existing config %s: %w (fix the file or use --force to overwrite)", cfgPath, err)
+	}
+	return cfg, data, nil
 }
 
 // runInstallCodexTOML writes trvl config in OpenAI Codex's TOML format.
