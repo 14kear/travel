@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,6 +36,31 @@ func TestBrowserScrapeRoutes_Python3NotFound(t *testing.T) {
 	_, err := BrowserScrapeRoutes(ctx, "trainline", "London", "Paris", "2026-04-10", "EUR")
 	if err == nil {
 		t.Error("expected error when python3 unavailable")
+	}
+}
+
+func TestIsExecNotFound(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "plain exec not found", err: &exec.Error{Name: "python3", Err: exec.ErrNotFound}, want: true},
+		{name: "wrapped exec not found", err: fmt.Errorf("wrapped: %w", &exec.Error{Name: "python3", Err: exec.ErrNotFound}), want: true},
+		{name: "other error", err: errors.New("boom"), want: false},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isExecNotFound(tc.err); got != tc.want {
+				t.Fatalf("isExecNotFound(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 

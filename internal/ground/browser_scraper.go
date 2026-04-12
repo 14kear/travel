@@ -176,5 +176,5 @@ func isExecNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
-	return err.Error() == "exec: \"python3\": executable file not found in $PATH"
+	return errors.Is(err, exec.ErrNotFound)
 }

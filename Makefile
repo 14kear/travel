@@ -8,6 +8,7 @@ LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION) -X github.com/MikkoParkkol
 .PHONY: build test test-proof test-coverage test-live-integrations test-live-probes lint clean cross
 
 build:
+	@mkdir -p bin
 	$(GO_RUN) build $(LDFLAGS) -o bin/trvl ./cmd/trvl
 
 test:
@@ -46,6 +47,7 @@ clean:
 	rm -rf dist/
 
 cross:
+	@mkdir -p dist
 	GOOS=linux  GOARCH=amd64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-linux-amd64  ./cmd/trvl
 	GOOS=linux  GOARCH=arm64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-linux-arm64  ./cmd/trvl
 	GOOS=darwin GOARCH=amd64 $(GO_RUN) build $(LDFLAGS) -o dist/trvl-darwin-amd64 ./cmd/trvl
