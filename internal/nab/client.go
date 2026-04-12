@@ -21,6 +21,13 @@ type Client struct {
 	path string
 }
 
+type FetchOptions struct {
+	Browser string
+	Method  string
+	Body    string
+	Headers []string
+}
+
 type fetchResponse struct {
 	Status   int    `json:"status"`
 	Markdown string `json:"markdown"`
@@ -49,25 +56,38 @@ func (c *Client) Available() bool {
 // FetchHTML returns the HTML payload from `nab fetch --format json --raw-html`.
 // nab emits that payload in the "markdown" field even when the content is raw HTML.
 func (c *Client) FetchHTML(ctx context.Context, rawURL, browser string) ([]byte, error) {
+	return c.Fetch(ctx, rawURL, FetchOptions{Browser: browser})
+}
+
+func (c *Client) Fetch(ctx context.Context, rawURL string, opts FetchOptions) ([]byte, error) {
 	if !c.Available() {
 		return nil, ErrNotAvailable
 	}
-	if browser == "" {
-		browser = "auto"
+	if opts.Browser == "" {
+		opts.Browser = "auto"
 	}
 
-	cmd := commandContext(
-		ctx,
-		c.path,
+	args := []string{
 		"fetch",
 		rawURL,
 		"--format",
 		"json",
 		"--raw-html",
 		"--cookies",
-		browser,
+		opts.Browser,
 		"--no-save",
-	)
+	}
+	if opts.Method != "" && !strings.EqualFold(opts.Method, "GET") {
+		args = append(args, "-X", opts.Method)
+	}
+	if opts.Body != "" {
+		args = append(args, "-d", opts.Body)
+	}
+	for _, header := range opts.Headers {
+		args = append(args, "--add-header", header)
+	}
+
+	cmd := commandContext(ctx, c.path, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError

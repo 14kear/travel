@@ -1,8 +1,11 @@
 package ground
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -263,6 +266,52 @@ func TestPopulateTrainlineCities(t *testing.T) {
 	}
 	if testRoutes[2].Arrival.City != "Set" {
 		t.Errorf("[2].Arrival.City = %q, want Set (unchanged)", testRoutes[2].Arrival.City)
+	}
+}
+
+func TestSearchTrainline_UsesNabFallbackOn403(t *testing.T) {
+	origDo := trainlineDo
+	origFetchViaNab := trainlineFetchViaNab
+	origBrowserCookies := trainlineBrowserCookies
+	t.Cleanup(func() {
+		trainlineDo = origDo
+		trainlineFetchViaNab = origFetchViaNab
+		trainlineBrowserCookies = origBrowserCookies
+	})
+
+	trainlineDo = func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader("blocked")),
+			Header:     make(http.Header),
+		}, nil
+	}
+	trainlineBrowserCookies = func(string) string { return "" }
+	trainlineFetchViaNab = func(context.Context, []byte, string, string, string, string) ([]models.GroundRoute, error) {
+		return []models.GroundRoute{
+			{
+				Provider:  "trainline",
+				Type:      "train",
+				Price:     29.0,
+				Currency:  "EUR",
+				Departure: models.GroundStop{City: "Paris"},
+				Arrival:   models.GroundStop{City: "Amsterdam"},
+			},
+		}, nil
+	}
+
+	routes, err := SearchTrainline(context.Background(), "Paris", "Amsterdam", "2026-06-15", "EUR", true)
+	if err != nil {
+		t.Fatalf("SearchTrainline returned error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].Provider != "trainline" {
+		t.Fatalf("provider = %q, want %q", routes[0].Provider, "trainline")
+	}
+	if routes[0].Departure.City != "Paris" || routes[0].Arrival.City != "Amsterdam" {
+		t.Fatalf("unexpected route cities: %+v", routes[0])
 	}
 }
 

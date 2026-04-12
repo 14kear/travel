@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	trvlnab "github.com/MikkoParkkola/trvl/internal/nab"
 	"golang.org/x/time/rate"
 )
 
@@ -26,6 +28,17 @@ var trainlineLimiter = rate.NewLimiter(rate.Every(12*time.Second), 1)
 
 // trainlineClient uses Chrome TLS fingerprint to bypass Datadome bot detection.
 var trainlineClient = batchexec.ChromeHTTPClient()
+
+var (
+	trainlineDo             = func(req *http.Request) (*http.Response, error) { return trainlineClient.Do(req) }
+	trainlineFetchViaNab    = fetchTrainlineViaNab
+	trainlineBrowserCookies = cookies.BrowserCookies
+)
+
+type trainlineHeader struct {
+	name  string
+	value string
+}
 
 // trainlineStations maps city names to Trainline station IDs.
 // Station IDs from: https://github.com/trainline-eu/stations
@@ -69,6 +82,34 @@ var trainlineStations = map[string]string{
 // trainlineURN converts a raw station ID to the Trainline URN format.
 func trainlineURN(id string) string {
 	return "urn:trainline:generic:loc:" + id
+}
+
+func trainlineRequestHeaders(cookieHeader string) []trainlineHeader {
+	headers := []trainlineHeader{
+		{name: "Content-Type", value: "application/json"},
+		{name: "Accept", value: "application/json"},
+		{name: "Accept-Language", value: "en-GB,en;q=0.9"},
+		{name: "Origin", value: "https://www.thetrainline.com"},
+		{name: "Referer", value: "https://www.thetrainline.com/"},
+		{name: "User-Agent", value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"},
+		{name: "sec-ch-ua", value: `"Chromium";v="133", "Not(A:Brand";v="99"`},
+		{name: "sec-ch-ua-mobile", value: "?0"},
+		{name: "sec-ch-ua-platform", value: `"macOS"`},
+		{name: "sec-fetch-dest", value: "empty"},
+		{name: "sec-fetch-mode", value: "cors"},
+		{name: "sec-fetch-site", value: "same-origin"},
+		{name: "x-version", value: "4.46.32109"},
+	}
+	if cookieHeader != "" {
+		headers = append(headers, trainlineHeader{name: "Cookie", value: cookieHeader})
+	}
+	return headers
+}
+
+func applyTrainlineHeaders(req *http.Request, cookieHeader string) {
+	for _, header := range trainlineRequestHeaders(cookieHeader) {
+		req.Header.Set(header.name, header.value)
+	}
 }
 
 // LookupTrainlineStation resolves a city name to a Trainline station ID.
@@ -323,23 +364,7 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
-		req.Header.Set("Origin", "https://www.thetrainline.com")
-		req.Header.Set("Referer", "https://www.thetrainline.com/")
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
-		// Client Hints that Datadome explicitly requests via accept-ch.
-		req.Header.Set("sec-ch-ua", `"Chromium";v="133", "Not(A:Brand";v="99"`)
-		req.Header.Set("sec-ch-ua-mobile", "?0")
-		req.Header.Set("sec-ch-ua-platform", `"macOS"`)
-		req.Header.Set("sec-fetch-dest", "empty")
-		req.Header.Set("sec-fetch-mode", "cors")
-		req.Header.Set("sec-fetch-site", "same-origin")
-		req.Header.Set("x-version", "4.46.32109")
-		if cookieHeader != "" {
-			req.Header.Set("Cookie", cookieHeader)
-		}
+		applyTrainlineHeaders(req, cookieHeader)
 		return req, nil
 	}
 
@@ -350,7 +375,7 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 		return nil, err
 	}
 
-	resp, err := trainlineClient.Do(req)
+	resp, err := trainlineDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("trainline search: %w", err)
 	}
@@ -372,7 +397,7 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 			if err2 != nil {
 				return nil, fmt.Errorf("trainline retry build: %w", err2)
 			}
-			resp2, err2 := trainlineClient.Do(req2)
+			resp2, err2 := trainlineDo(req2)
 			if err2 != nil {
 				return nil, fmt.Errorf("trainline retry: %w", err2)
 			}
@@ -386,14 +411,14 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 
 		// Try 2: use a real browser session cookie extracted from Brave/Chrome.
 		// Requires the user to have visited thetrainline.com in their browser.
-		cookieHeader := cookies.BrowserCookies("thetrainline.com")
+		cookieHeader := trainlineBrowserCookies("thetrainline.com")
 		if cookieHeader != "" {
 			slog.Debug("retrying trainline with browser cookies")
 			req3, err3 := newTrainlineRequest(cookieHeader)
 			if err3 != nil {
 				return nil, fmt.Errorf("trainline retry build: %w", err3)
 			}
-			resp3, err3 := trainlineClient.Do(req3)
+			resp3, err3 := trainlineDo(req3)
 			if err3 != nil {
 				return nil, fmt.Errorf("trainline retry: %w", err3)
 			}
@@ -401,6 +426,12 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 			if resp3.StatusCode == http.StatusOK {
 				return readAndParseTrainlineResponse(resp3.Body, from, to, date, currency)
 			}
+		}
+
+		if nRoutes, nErr := trainlineFetchViaNab(ctx, body, from, to, date, currency); nErr == nil && len(nRoutes) > 0 {
+			return nRoutes, nil
+		} else if nErr != nil && !errors.Is(nErr, trvlnab.ErrNotAvailable) {
+			slog.Debug("trainline nab fallback failed", "err", nErr)
 		}
 
 		if cRoutes, cErr := trainlineViaCurl(ctx, fromID, toID, date, currency); cErr == nil && len(cRoutes) > 0 {
@@ -434,6 +465,32 @@ func SearchTrainline(ctx context.Context, from, to, date, currency string, allow
 	}
 
 	return readAndParseTrainlineResponse(resp.Body, from, to, date, currency)
+}
+
+func fetchTrainlineViaNab(
+	ctx context.Context,
+	requestBody []byte,
+	from, to, date, currency string,
+) ([]models.GroundRoute, error) {
+	client, err := trvlnab.New()
+	if err != nil {
+		return nil, err
+	}
+
+	var headers []string
+	for _, header := range trainlineRequestHeaders("") {
+		headers = append(headers, fmt.Sprintf("%s: %s", header.name, header.value))
+	}
+
+	body, err := client.Fetch(ctx, trainlineSearchURL, trvlnab.FetchOptions{
+		Method:  "POST",
+		Body:    string(requestBody),
+		Headers: headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return readAndParseTrainlineResponse(bytes.NewReader(body), from, to, date, currency)
 }
 
 func populateTrainlineCities(routes []models.GroundRoute, from, to string) {
