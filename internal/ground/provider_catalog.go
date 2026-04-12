@@ -18,6 +18,7 @@ var marketedProviderNames = []string{
 	"finnlines",
 	"stenaline",
 	"dfds",
+	"ferryhopper",
 }
 
 // MarketedProviderNames returns the user-facing ground-provider catalog used by

@@ -298,6 +298,18 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 		}()
 	}
 
+	// Ferryhopper — Greek ferry aggregator (Aegean, Ionian, Adriatic seas).
+	// Uses the public Ferryhopper MCP endpoint; no API key required.
+	// Accepts free-form location names so it is always attempted.
+	if useProvider("ferryhopper") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			routes, err := SearchFerryhopper(ctx, from, to, date, opts.Currency)
+			results <- providerResult{routes: routes, err: err, name: "ferryhopper"}
+		}()
+	}
+
 	// Transitous — coordinate-based, always available as a fallback.
 	// Requires geocoding city names to coordinates; skipped if geocoding fails.
 	if useProvider("transitous") {
@@ -463,6 +475,7 @@ var scheduleOnlyProviders = map[string]bool{
 	"distribusion": true, "transitous": true, "db": true, "ns": true,
 	"oebb": true, "vr": true, "tallink": true, "stenaline": true,
 	"dfds": true, "vikingline": true, "eckeroline": true, "finnlines": true,
+	"ferryhopper": true,
 }
 
 func shouldKeepGroundRoute(route models.GroundRoute) bool {

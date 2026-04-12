@@ -24,7 +24,7 @@ func searchGroundTool() ToolDef {
 				"currency":                {Type: "string", Description: "Price currency (default: EUR)"},
 				"type":                    {Type: "string", Description: "Filter: bus, train, ferry, or empty for all"},
 				"max_price":               {Type: "number", Description: "Maximum price filter (0 = no limit)"},
-				"provider":                {Type: "string", Description: "Restrict to provider: flixbus, regiojet, trainline, sncf, transitous, db, oebb, ns, vr, tallink, dfds, vikingline, eckeroline"},
+				"provider":                {Type: "string", Description: "Restrict to provider: flixbus, regiojet, trainline, sncf, transitous, db, oebb, ns, vr, tallink, dfds, vikingline, eckeroline, ferryhopper"},
 				"allow_browser_fallbacks": {Type: "boolean", Description: "Allow browser/curl/cookie-assisted provider fallbacks (default: false)"},
 			},
 			Required: []string{"from", "to", "date"},
