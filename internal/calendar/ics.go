@@ -8,7 +8,7 @@
 package calendar
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -186,7 +186,7 @@ func capitalizeFirst(s string) string {
 // Includes trip ID, leg index, and a hash of the leg content so the UID
 // is reproducible across runs (calendars use UID for deduplication).
 func makeUID(t *trips.Trip, idx int, leg trips.TripLeg) string {
-	h := sha1.New()
+	h := sha256.New()
 	fmt.Fprintf(h, "%s|%d|%s|%s|%s|%s|%s",
 		t.ID, idx, leg.Type, leg.From, leg.To, leg.StartTime, leg.EndTime)
 	return fmt.Sprintf("trvl-%s-%d-%s@trvl.local",
