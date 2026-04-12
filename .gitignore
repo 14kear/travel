@@ -41,9 +41,8 @@ Thumbs.db
 /Jul
 /Aug
 
-# Internal planning (not for public repo)
+# Internal (not for public repo)
 .internal/
 __pycache__/
 docs/distribution/
 docs/plans/
-.internal/
