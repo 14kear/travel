@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/cookies"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	trvlnab "github.com/MikkoParkkola/trvl/internal/nab"
 	"golang.org/x/time/rate"
 )
 
@@ -26,6 +28,17 @@ var eurostarLimiter = rate.NewLimiter(rate.Every(20*time.Second), 1)
 // eurostarClient is a dedicated HTTP client for Eurostar API calls.
 // Uses Chrome TLS fingerprint via utls to bypass Datadome bot detection.
 var eurostarClient = batchexec.ChromeHTTPClient()
+
+var (
+	eurostarDo             = func(req *http.Request) (*http.Response, error) { return eurostarClient.Do(req) }
+	eurostarFetchViaNab    = fetchEurostarViaNab
+	eurostarBrowserCookies = cookies.BrowserCookies
+)
+
+type eurostarHeader struct {
+	name  string
+	value string
+}
 
 // EurostarStation holds metadata for a Eurostar station.
 type EurostarStation struct {
@@ -66,6 +79,29 @@ func LookupEurostarStation(city string) (EurostarStation, bool) {
 	return s, ok
 }
 
+func eurostarRequestHeaders(cookieHeader string) []eurostarHeader {
+	headers := []eurostarHeader{
+		{name: "Content-Type", value: "application/json"},
+		{name: "Accept", value: "*/*"},
+		{name: "Accept-Language", value: "en-GB,en;q=0.9"},
+		{name: "Origin", value: "https://www.eurostar.com"},
+		{name: "Referer", value: "https://www.eurostar.com/"},
+		{name: "User-Agent", value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"},
+		{name: "x-platform", value: "web"},
+		{name: "x-market-code", value: "uk"},
+	}
+	if cookieHeader != "" {
+		headers = append(headers, eurostarHeader{name: "Cookie", value: cookieHeader})
+	}
+	return headers
+}
+
+func applyEurostarHeaders(req *http.Request, cookieHeader string) {
+	for _, header := range eurostarRequestHeaders(cookieHeader) {
+		req.Header.Set(header.name, header.value)
+	}
+}
+
 // HasEurostarRoute returns true if both cities have Eurostar stations.
 func HasEurostarRoute(from, to string) bool {
 	_, fromOK := LookupEurostarStation(from)
@@ -85,7 +121,7 @@ type eurostarTimetableResponse struct {
 	Data struct {
 		TimetableServices []struct {
 			Model struct {
-				TrainNumber              string `json:"trainNumber"`
+				TrainNumber                string `json:"trainNumber"`
 				ScheduledDepartureDateTime string `json:"scheduledDepartureDateTime"`
 			} `json:"model"`
 			Origin struct {
@@ -277,17 +313,7 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "*/*")
-		req.Header.Set("Accept-Language", "en-GB,en;q=0.9")
-		req.Header.Set("Origin", "https://www.eurostar.com")
-		req.Header.Set("Referer", "https://www.eurostar.com/")
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-		req.Header.Set("x-platform", "web")
-		req.Header.Set("x-market-code", "uk")
-		if cookieHeader != "" {
-			req.Header.Set("Cookie", cookieHeader)
-		}
+		applyEurostarHeaders(req, cookieHeader)
 		return req, nil
 	}
 
@@ -299,7 +325,7 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		return nil, err
 	}
 
-	resp, err := eurostarClient.Do(req)
+	resp, err := eurostarDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("eurostar search: %w", err)
 	}
@@ -310,14 +336,14 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 		_ = firstBody // consumed for logging; body closed by defer
 
 		// Attempt retry with browser cookies.
-		cookieHeader := cookies.BrowserCookies("eurostar.com")
+		cookieHeader := eurostarBrowserCookies("eurostar.com")
 		if cookieHeader != "" {
 			slog.Debug("retrying eurostar with browser cookies")
 			req2, err2 := newEurostarRequest(cookieHeader)
 			if err2 != nil {
 				return nil, fmt.Errorf("eurostar retry build: %w", err2)
 			}
-			resp2, err2 := eurostarClient.Do(req2)
+			resp2, err2 := eurostarDo(req2)
 			if err2 != nil {
 				return nil, fmt.Errorf("eurostar retry: %w", err2)
 			}
@@ -327,24 +353,17 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 				if err3 != nil {
 					return nil, fmt.Errorf("eurostar read (cookie retry): %w", err3)
 				}
-				preview2 := body2
-				if len(preview2) > 500 {
-					preview2 = preview2[:500]
-				}
-				slog.Debug("eurostar response (cookie retry)", "status", resp2.StatusCode, "body_len", len(body2), "body_preview", string(preview2))
-				var gqlResp eurostarGQLResponse
-				if err3 = json.Unmarshal(body2, &gqlResp); err3 != nil {
-					return nil, fmt.Errorf("eurostar decode: %w", err3)
-				}
-				if len(gqlResp.Errors) > 0 {
-					return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
-				}
-				timetable2, _ := searchEurostarTimetable(ctx, fromStation, toStation, startDate)
-				return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly, timetable2)
+				return parseEurostarSearchResponse(ctx, body2, fromStation, toStation, startDate, currency, snapOnly)
 			}
 			// Cookie retry did not yield 200; log and fall through to 403 error.
 			retryBody, _ := io.ReadAll(io.LimitReader(resp2.Body, 512))
 			slog.Debug("eurostar cookie retry non-200", "status", resp2.StatusCode, "body", string(retryBody))
+		}
+
+		if nRoutes, nErr := eurostarFetchViaNab(ctx, body, fromStation, toStation, startDate, currency, snapOnly); nErr == nil && len(nRoutes) > 0 {
+			return nRoutes, nil
+		} else if nErr != nil && !errors.Is(nErr, trvlnab.ErrNotAvailable) {
+			slog.Debug("eurostar nab fallback failed", "err", nErr)
 		}
 
 		isCaptcha, captchaURL := cookies.IsCaptchaResponse(http.StatusForbidden, firstBody)
@@ -363,23 +382,60 @@ func SearchEurostar(ctx context.Context, from, to, startDate, endDate, currency 
 	if err != nil {
 		return nil, fmt.Errorf("eurostar read body: %w", err)
 	}
+	return parseEurostarSearchResponse(ctx, rawBody, fromStation, toStation, startDate, currency, snapOnly)
+}
+
+func parseEurostarSearchResponse(
+	ctx context.Context,
+	rawBody []byte,
+	fromStation, toStation EurostarStation,
+	startDate, currency string,
+	snapOnly bool,
+) ([]models.GroundRoute, error) {
 	preview := rawBody
 	if len(preview) > 500 {
 		preview = preview[:500]
 	}
-	slog.Debug("eurostar response", "status", resp.StatusCode, "body_len", len(rawBody), "body_preview", string(preview))
+	slog.Debug("eurostar response", "body_len", len(rawBody), "body_preview", string(preview))
 
 	var gqlResp eurostarGQLResponse
 	if err := json.Unmarshal(rawBody, &gqlResp); err != nil {
 		return nil, fmt.Errorf("eurostar decode: %w", err)
 	}
-
 	if len(gqlResp.Errors) > 0 {
 		return nil, fmt.Errorf("eurostar graphql: %s", gqlResp.Errors[0].Message)
 	}
 
 	timetable, _ := searchEurostarTimetable(ctx, fromStation, toStation, startDate)
 	return buildEurostarRoutes(gqlResp, fromStation, toStation, currency, snapOnly, timetable)
+}
+
+func fetchEurostarViaNab(
+	ctx context.Context,
+	requestBody []byte,
+	fromStation, toStation EurostarStation,
+	startDate, currency string,
+	snapOnly bool,
+) ([]models.GroundRoute, error) {
+	client, err := trvlnab.New()
+	if err != nil {
+		return nil, err
+	}
+
+	var headers []string
+	for _, header := range eurostarRequestHeaders("") {
+		headers = append(headers, fmt.Sprintf("%s: %s", header.name, header.value))
+	}
+
+	body, err := client.Fetch(ctx, eurostarGateway, trvlnab.FetchOptions{
+		Method:  "POST",
+		Body:    string(requestBody),
+		Headers: headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseEurostarSearchResponse(ctx, body, fromStation, toStation, startDate, currency, snapOnly)
 }
 
 // eurostarRouteDuration returns the typical journey duration in minutes for a

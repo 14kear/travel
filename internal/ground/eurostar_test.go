@@ -1,10 +1,15 @@
 package ground
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
 func TestLookupEurostarStation(t *testing.T) {
@@ -200,6 +205,52 @@ func TestEurostarNotSearchedForNonEurostarCities(t *testing.T) {
 	// We verify by checking HasEurostarRoute returns false.
 	if HasEurostarRoute("Prague", "Vienna") {
 		t.Error("Prague-Vienna should not have a Eurostar route")
+	}
+}
+
+func TestSearchEurostar_UsesNabFallbackOn403(t *testing.T) {
+	origDo := eurostarDo
+	origFetchViaNab := eurostarFetchViaNab
+	origBrowserCookies := eurostarBrowserCookies
+	t.Cleanup(func() {
+		eurostarDo = origDo
+		eurostarFetchViaNab = origFetchViaNab
+		eurostarBrowserCookies = origBrowserCookies
+	})
+
+	eurostarDo = func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Body:       io.NopCloser(strings.NewReader("blocked")),
+			Header:     make(http.Header),
+		}, nil
+	}
+	eurostarBrowserCookies = func(string) string { return "" }
+	eurostarFetchViaNab = func(context.Context, []byte, EurostarStation, EurostarStation, string, string, bool) ([]models.GroundRoute, error) {
+		return []models.GroundRoute{
+			{
+				Provider:  "eurostar",
+				Type:      "train",
+				Price:     49.0,
+				Currency:  "GBP",
+				Departure: models.GroundStop{City: "London"},
+				Arrival:   models.GroundStop{City: "Paris"},
+			},
+		}, nil
+	}
+
+	routes, err := SearchEurostar(context.Background(), "London", "Paris", "2026-04-10", "2026-04-30", "GBP", false)
+	if err != nil {
+		t.Fatalf("SearchEurostar returned error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].Provider != "eurostar" {
+		t.Fatalf("provider = %q, want %q", routes[0].Provider, "eurostar")
+	}
+	if routes[0].Departure.City != "London" || routes[0].Arrival.City != "Paris" {
+		t.Fatalf("unexpected route cities: %+v", routes[0])
 	}
 }
 
