@@ -46,9 +46,7 @@ func MergeHotelResults(sources ...[]HotelResult) []HotelResult {
 				}
 
 				// Merge: add this provider's price as a source.
-				for _, src := range buildSources(h) {
-					existing.Sources = append(existing.Sources, src)
-				}
+				existing.Sources = append(existing.Sources, buildSources(h)...)
 
 				// Update primary price to the lowest.
 				if h.Price > 0 && (existing.Price == 0 || h.Price < existing.Price) {

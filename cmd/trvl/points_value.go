@@ -83,7 +83,7 @@ func printRecommendation(r *points.Recommendation) {
 	headers := []string{"Metric", "Value"}
 	rows := [][]string{
 		{"Cash price", fmt.Sprintf("$%.2f", r.CashPrice)},
-		{"Points required", fmt.Sprintf("%s", formatPoints(r.PointsRequired))},
+		{"Points required", formatPoints(r.PointsRequired)},
 		{"Effective CPP", fmt.Sprintf("%.2f¢/pt", r.CPP)},
 		{"Floor CPP", fmt.Sprintf("%.2f¢/pt", r.FloorCPP)},
 		{"Ceiling CPP (sweet spot)", fmt.Sprintf("%.2f¢/pt", r.CeilingCPP)},
