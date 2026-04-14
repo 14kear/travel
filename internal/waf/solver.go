@@ -139,7 +139,10 @@ type challengeInfo struct {
 }
 
 var (
-	scriptURLRe = regexp.MustCompile(`https?://[a-zA-Z0-9.-]+\.awswaf\.com/[^"'<>\s]+\.js`)
+	// Match challenge.js from either *.awswaf.com or custom host paths like
+	// w.booking.com/__challenge_*/challenge.js. The common discriminator is
+	// the filename "challenge.js" referenced from a <script> tag.
+	scriptURLRe = regexp.MustCompile(`https?://[a-zA-Z0-9.-]+/[^"'<>\s]*challenge\.js`)
 	gokuPropsRe = regexp.MustCompile(`(?s)window\.gokuProps\s*=\s*(\{.*?\})\s*;`)
 )
 

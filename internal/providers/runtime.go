@@ -18,6 +18,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"github.com/MikkoParkkola/trvl/internal/waf"
 	"golang.org/x/time/rate"
 )
 
@@ -308,11 +309,17 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 	// client selected in getOrCreateClient; it runs implicitly on every
 	// request when cfg.TLS.Fingerprint == "chrome".)
 	if needsBrowserCookieFallback(resp.StatusCode, extracted, pc.config.Auth.Extractions) {
+		// Tier 3a: read cookies from user's browser (kooky).
 		if tryBrowserCookieRetry(ctx, pc) {
 			pc.authExpiry = time.Now().Add(authCacheDuration)
 			return nil
 		}
-		// Tier 4: last-resort escape hatch.
+		// Tier 3b: run WAF challenge.js in sobek JS engine (pure Go).
+		if tryWAFSolve(ctx, pc, resp.StatusCode, body) {
+			pc.authExpiry = time.Now().Add(authCacheDuration)
+			return nil
+		}
+		// Tier 4: last-resort escape hatch — open in browser.
 		if pc.config.Auth.BrowserEscapeHatch && isInteractive(ctx) {
 			if tryBrowserEscapeHatch(ctx, pc) {
 				pc.authExpiry = time.Now().Add(authCacheDuration)
@@ -332,6 +339,43 @@ func tryBrowserCookieRetry(ctx context.Context, pc *providerClient) bool {
 	if !applyBrowserCookies(pc.client, pc.config.Auth.PreflightURL) {
 		return false
 	}
+	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	if err2 != nil || resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
+		return false
+	}
+	for k := range pc.authValues {
+		delete(pc.authValues, k)
+	}
+	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
+	return true
+}
+
+// tryWAFSolve is Tier 3b: if the preflight response looks like an AWS WAF
+// challenge page (HTTP 202 with *.awswaf.com script refs), run challenge.js
+// in the sobek JS engine to obtain an aws-waf-token cookie, then retry
+// preflight. Returns true on success.
+func tryWAFSolve(ctx context.Context, pc *providerClient, statusCode int, pageBody []byte) bool {
+	// Only attempt on HTTP 202 (AWS WAF challenge) or 403 (some WAF variants).
+	if statusCode != http.StatusAccepted && statusCode != http.StatusForbidden {
+		return false
+	}
+
+	pageURL := pc.config.Auth.PreflightURL
+	cookie, err := waf.SolveAWSWAF(ctx, pc.client, pageURL, string(pageBody), nil)
+	if err != nil {
+		slog.Debug("waf solver did not produce a token", "provider", pc.config.ID, "error", err.Error())
+		return false
+	}
+
+	// Install the token cookie into the client jar.
+	u, err := url.Parse(pageURL)
+	if err != nil {
+		return false
+	}
+	pc.client.Jar.SetCookies(u, []*http.Cookie{cookie})
+	slog.Info("waf solver obtained aws-waf-token via JS engine", "provider", pc.config.ID)
+
+	// Retry preflight with the fresh token.
 	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
 	if err2 != nil || resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
 		return false
@@ -725,6 +769,32 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 				}
 			}
 
+			// Tier 3b: WAF JS solver (sobek).
+			if tier == "" && (resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusForbidden) {
+				cookie, wafErr := waf.SolveAWSWAF(ctx, pc.client, cfg.Auth.PreflightURL, string(body), nil)
+				if wafErr == nil && cookie != nil {
+					u, _ := url.Parse(cfg.Auth.PreflightURL)
+					pc.client.Jar.SetCookies(u, []*http.Cookie{cookie})
+					resp2, body2, err2 := doPreflightRequest(ctx, pc.client, cfg.Auth)
+					if err2 == nil && resp2.StatusCode >= 200 && resp2.StatusCode < 300 {
+						resp, body = resp2, body2
+						result.HTTPStatus = resp.StatusCode
+						snippet = string(body)
+						if len(snippet) > 500 {
+							snippet = snippet[:500]
+						}
+						result.BodySnippet = snippet
+						for k := range pc.authValues {
+							delete(pc.authValues, k)
+						}
+						matched = applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+						tier = "waf-solver"
+					}
+				} else if wafErr != nil {
+					slog.Debug("waf solver did not produce a token in test", "error", wafErr.Error())
+				}
+			}
+
 			// Tier 4: only if the provider opted in and the caller marked
 			// the context interactive. Non-interactive callers (this test
 			// harness by default) never spawn a browser.
@@ -762,6 +832,8 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 				switch tier {
 				case "browser-cookies":
 					suffix = " [via browser cookies]"
+				case "waf-solver":
+					suffix = " [via WAF JS solver]"
 				case "browser-escape-hatch":
 					suffix = " [via browser escape hatch]"
 				}

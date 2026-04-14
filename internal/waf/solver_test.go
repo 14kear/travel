@@ -202,7 +202,7 @@ func TestSolver_ChallengeScriptFetchError(t *testing.T) {
 	// the regex still runs on the untouched body. So we include BOTH the
 	// awswaf.com marker and expect a real fetch failure from httptest.
 	body = `<script>window.gokuProps={};</script>` +
-		`<script src="https://broken.awswaf.com/nope.js"></script>`
+		`<script src="https://broken.awswaf.com/challenge.js"></script>`
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_, err := SolveAWSWAF(ctx, &http.Client{Timeout: 1 * time.Second}, "https://example.com/", body, nil)
