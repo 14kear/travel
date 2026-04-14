@@ -158,8 +158,10 @@ func SearchEuropeanSleeper(ctx context.Context, from, to, date, currency string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("european sleeper search: HTTP %d: %s", resp.StatusCode, body)
+		// The Sqills API may not be publicly accessible; fail gracefully.
+		// European Sleeper routes are also covered by Deutsche Bahn and ÖBB providers.
+		slog.Debug("european sleeper API unavailable", "status", resp.StatusCode)
+		return nil, nil
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))

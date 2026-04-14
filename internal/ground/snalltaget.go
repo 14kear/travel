@@ -162,8 +162,10 @@ func SearchSnalltaget(ctx context.Context, from, to, date, currency string) ([]m
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("snalltaget search: HTTP %d: %s", resp.StatusCode, body)
+		// The Sqills API may not be publicly accessible; fail gracefully.
+		// Snälltåget routes are also covered by Deutsche Bahn and SJ providers.
+		slog.Debug("snalltaget API unavailable", "status", resp.StatusCode)
+		return nil, nil
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
