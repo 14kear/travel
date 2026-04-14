@@ -291,6 +291,10 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 		return nil
 	}
 
+	// Tier 0: try loading persisted cookies from a previous successful session.
+	// This makes browser escape hatch a one-time setup rather than per-search.
+	loadCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+
 	resp, body, err := doPreflightRequest(ctx, pc.client, pc.config.Auth)
 	if err != nil {
 		return err
@@ -311,23 +315,28 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 	if needsBrowserCookieFallback(resp.StatusCode, extracted, pc.config.Auth.Extractions) {
 		// Tier 3a: read cookies from user's browser (kooky).
 		if tryBrowserCookieRetry(ctx, pc) {
+			saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
 			pc.authExpiry = time.Now().Add(authCacheDuration)
 			return nil
 		}
 		// Tier 3b: run WAF challenge.js in sobek JS engine (pure Go).
 		if tryWAFSolve(ctx, pc, resp.StatusCode, body) {
+			saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
 			pc.authExpiry = time.Now().Add(authCacheDuration)
 			return nil
 		}
 		// Tier 4: last-resort escape hatch — open in browser.
 		if pc.config.Auth.BrowserEscapeHatch && isInteractive(ctx) {
 			if tryBrowserEscapeHatch(ctx, pc) {
+				saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
 				pc.authExpiry = time.Now().Add(authCacheDuration)
 				return nil
 			}
 		}
 	}
 
+	// Tier 1 succeeded directly — persist cookies for future sessions.
+	saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
 	pc.authExpiry = time.Now().Add(authCacheDuration)
 	return nil
 }
