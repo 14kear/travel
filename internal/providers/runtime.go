@@ -76,11 +76,13 @@ func (rt *Runtime) getOrCreateClient(cfg *ProviderConfig) *providerClient {
 	if cfg.TLS.Fingerprint == "chrome" {
 		httpClient = batchexec.ChromeHTTPClient()
 	} else {
-		jar, _ := cookiejar.New(nil)
 		httpClient = &http.Client{
 			Timeout: 30 * time.Second,
-			Jar:     jar,
 		}
+	}
+	if httpClient.Jar == nil {
+		jar, _ := cookiejar.New(nil)
+		httpClient.Jar = jar
 	}
 
 	rps := cfg.RateLimit.RequestsPerSecond
@@ -288,11 +290,40 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 		return nil
 	}
 
-	// Substitute environment variables in preflight body (e.g. ${env.BOOKING_API_KEY}).
-	preflightBody := pc.config.Auth.PreflightBody
-	preflightBody = substituteEnvVars(preflightBody)
+	resp, body, err := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	if err != nil {
+		return err
+	}
 
-	method := pc.config.Auth.PreflightMethod
+	extracted := applyExtractions(pc.config.Auth.Extractions, resp, body, pc.authValues)
+
+	// Fallback: if preflight was blocked by a JS challenge (202/403) or no
+	// extractions matched, try reading cookies from the user's browser and
+	// retrying the preflight. The browser has already passed any JS challenge.
+	if needsBrowserCookieFallback(resp.StatusCode, extracted, pc.config.Auth.Extractions) {
+		if applied := applyBrowserCookies(pc.client, pc.config.Auth.PreflightURL); applied {
+			resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+			if err2 == nil && resp2.StatusCode >= 200 && resp2.StatusCode < 300 {
+				// Clear previously extracted values so we don't mix stale ones.
+				for k := range pc.authValues {
+					delete(pc.authValues, k)
+				}
+				applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
+			}
+		}
+	}
+
+	pc.authExpiry = time.Now().Add(authCacheDuration)
+	return nil
+}
+
+// doPreflightRequest issues the preflight request described by auth using
+// the given client and returns the response plus body bytes. The caller does
+// not need to close the body — it is consumed before returning.
+func doPreflightRequest(ctx context.Context, client *http.Client, auth *AuthConfig) (*http.Response, []byte, error) {
+	preflightBody := substituteEnvVars(auth.PreflightBody)
+
+	method := auth.PreflightMethod
 	if method == "" {
 		method = "GET"
 	}
@@ -302,26 +333,33 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 		bodyReader = strings.NewReader(preflightBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, pc.config.Auth.PreflightURL, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, auth.PreflightURL, bodyReader)
 	if err != nil {
-		return fmt.Errorf("preflight request: %w", err)
+		return nil, nil, fmt.Errorf("preflight request: %w", err)
 	}
-	for k, v := range pc.config.Auth.PreflightHeaders {
+	for k, v := range auth.PreflightHeaders {
 		req.Header.Set(k, substituteEnvVars(v))
 	}
 
-	resp, err := pc.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("preflight http: %w", err)
+		return nil, nil, fmt.Errorf("preflight http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return fmt.Errorf("preflight read: %w", err)
+		return resp, nil, fmt.Errorf("preflight read: %w", err)
 	}
+	return resp, body, nil
+}
 
-	for name, extraction := range pc.config.Auth.Extractions {
+// applyExtractions runs each configured regex extraction against the response
+// body or a named header, writing matches into authValues. Returns the number
+// of extractions that matched.
+func applyExtractions(extractions map[string]Extraction, resp *http.Response, body []byte, authValues map[string]string) int {
+	matched := 0
+	for name, extraction := range extractions {
 		source := string(body)
 		if extraction.Header != "" {
 			source = resp.Header.Get(extraction.Header)
@@ -331,18 +369,49 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 			slog.Warn("preflight regex compile failed", "name", name, "pattern", extraction.Pattern, "error", err.Error())
 			continue
 		}
-		matches := re.FindStringSubmatch(source)
-		if len(matches) >= 2 {
+		m := re.FindStringSubmatch(source)
+		if len(m) >= 2 {
 			varName := extraction.Variable
 			if varName == "" {
 				varName = name
 			}
-			pc.authValues[varName] = matches[1]
+			authValues[varName] = m[1]
+			matched++
 		}
 	}
+	return matched
+}
 
-	pc.authExpiry = time.Now().Add(authCacheDuration)
-	return nil
+// needsBrowserCookieFallback reports whether the preflight outcome suggests a
+// bot-detection block that browser cookies might bypass.
+func needsBrowserCookieFallback(status, extracted int, extractions map[string]Extraction) bool {
+	if status == http.StatusAccepted || status == http.StatusForbidden {
+		return true
+	}
+	if len(extractions) > 0 && extracted == 0 {
+		return true
+	}
+	return false
+}
+
+// applyBrowserCookies reads cookies from the user's browsers for the given
+// URL and seeds them into the client's cookie jar. Returns true if any
+// cookies were applied.
+func applyBrowserCookies(client *http.Client, targetURL string) bool {
+	if client == nil || client.Jar == nil {
+		return false
+	}
+	cookies := browserCookiesForURL(targetURL)
+	if len(cookies) == 0 {
+		return false
+	}
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return false
+	}
+	client.Jar.SetCookies(u, cookies)
+	slog.Debug("applied browser cookies to preflight client", "url", targetURL, "count", len(cookies))
+	return true
 }
 
 // substituteVars replaces all ${var} placeholders in s with values from vars.
@@ -499,13 +568,18 @@ type TestResult struct {
 func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat, lon float64, checkin, checkout, currency string, guests int) *TestResult {
 	result := &TestResult{Step: "init"}
 
-	// Create a fresh client for testing.
+	// Create a fresh client for testing. Always attach a cookie jar so the
+	// browser-cookie fallback can seed session cookies when preflight hits
+	// a JS bot-detection challenge.
 	var httpClient *http.Client
 	if cfg.TLS.Fingerprint == "chrome" {
 		httpClient = batchexec.ChromeHTTPClient()
 	} else {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	if httpClient.Jar == nil {
 		jar, _ := cookiejar.New(nil)
-		httpClient = &http.Client{Timeout: 30 * time.Second, Jar: jar}
+		httpClient.Jar = jar
 	}
 
 	rps := cfg.RateLimit.RequestsPerSecond
@@ -529,81 +603,77 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 			return result
 		}
 
-		preflightBody := substituteEnvVars(cfg.Auth.PreflightBody)
-		method := cfg.Auth.PreflightMethod
-		if method == "" {
-			method = "GET"
-		}
-
-		var bodyReader io.Reader
-		if preflightBody != "" {
-			bodyReader = strings.NewReader(preflightBody)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, method, cfg.Auth.PreflightURL, bodyReader)
+		resp, body, err := doPreflightRequest(ctx, pc.client, cfg.Auth)
 		if err != nil {
-			result.Error = fmt.Sprintf("preflight: create request: %v", err)
+			result.Error = fmt.Sprintf("preflight: %v", err)
 			return result
 		}
-		for k, v := range cfg.Auth.PreflightHeaders {
-			req.Header.Set(k, substituteEnvVars(v))
-		}
-
-		resp, err := pc.client.Do(req)
-		if err != nil {
-			result.Error = fmt.Sprintf("preflight: http: %v", err)
-			return result
-		}
-		defer resp.Body.Close()
-
 		result.HTTPStatus = resp.StatusCode
 
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-		if err != nil {
-			result.Error = fmt.Sprintf("preflight: read body: %v", err)
-			return result
-		}
-
-		// Capture body snippet.
 		snippet := string(body)
 		if len(snippet) > 500 {
 			snippet = snippet[:500]
 		}
 		result.BodySnippet = snippet
 
-		// Run extractions.
+		// Run extractions (attempt 1).
 		result.Step = "auth_extraction"
+		matched := applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+		usedBrowserCookies := false
+
+		// Fallback: JS bot-detection challenge or no extraction hits. Read
+		// cookies from the user's browser and retry the preflight.
+		if needsBrowserCookieFallback(resp.StatusCode, matched, cfg.Auth.Extractions) {
+			if applied := applyBrowserCookies(pc.client, cfg.Auth.PreflightURL); applied {
+				usedBrowserCookies = true
+				resp2, body2, err2 := doPreflightRequest(ctx, pc.client, cfg.Auth)
+				if err2 == nil && resp2.StatusCode >= 200 && resp2.StatusCode < 300 {
+					resp, body = resp2, body2
+					result.HTTPStatus = resp.StatusCode
+					snippet = string(body)
+					if len(snippet) > 500 {
+						snippet = snippet[:500]
+					}
+					result.BodySnippet = snippet
+					for k := range pc.authValues {
+						delete(pc.authValues, k)
+					}
+					matched = applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+				}
+			}
+		}
+
+		// Build the diagnostic report.
 		result.ExtractionResults = make(map[string]string)
 		for name, extraction := range cfg.Auth.Extractions {
-			source := string(body)
-			if extraction.Header != "" {
-				source = resp.Header.Get(extraction.Header)
+			varName := extraction.Variable
+			if varName == "" {
+				varName = name
 			}
-			re, err := regexp.Compile(extraction.Pattern)
-			if err != nil {
-				result.ExtractionResults[name] = fmt.Sprintf("regex error: %v", err)
-				continue
-			}
-			matches := re.FindStringSubmatch(source)
-			if len(matches) >= 2 {
-				varName := extraction.Variable
-				if varName == "" {
-					varName = name
+			if v, ok := pc.authValues[varName]; ok {
+				suffix := ""
+				if usedBrowserCookies {
+					suffix = " [via browser cookies]"
 				}
-				pc.authValues[varName] = matches[1]
-				result.ExtractionResults[name] = "ok (extracted " + strconv.Itoa(len(matches[1])) + " chars)"
+				result.ExtractionResults[name] = "ok (extracted " + strconv.Itoa(len(v)) + " chars)" + suffix
 			} else {
-				result.ExtractionResults[name] = "no match"
+				// Detect regex compile errors vs. plain no-match.
+				if _, err := regexp.Compile(extraction.Pattern); err != nil {
+					result.ExtractionResults[name] = fmt.Sprintf("regex error: %v", err)
+				} else {
+					result.ExtractionResults[name] = "no match"
+				}
 			}
 		}
 
 		// Check if any extraction failed.
 		for name, v := range result.ExtractionResults {
-			if v != "ok" && !strings.HasPrefix(v, "ok ") {
+			if !strings.HasPrefix(v, "ok") {
 				result.Error = fmt.Sprintf("auth_extraction: %s: %s", name, v)
 				return result
 			}
 		}
+		_ = matched
 
 		pc.authExpiry = time.Now().Add(authCacheDuration)
 	}
