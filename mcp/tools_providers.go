@@ -100,6 +100,20 @@ func handleConfigureProvider(ctx context.Context, args map[string]any, elicit El
 		return nil, nil, fmt.Errorf("configure_provider: %w", err)
 	}
 
+	// Apply sensible defaults before validation.
+	if config.RateLimit.RequestsPerSecond == 0 {
+		config.RateLimit.RequestsPerSecond = 0.5
+	}
+	if config.Method == "" {
+		config.Method = "POST"
+	}
+	if config.TLS.Fingerprint == "" {
+		config.TLS.Fingerprint = "chrome"
+	}
+	if config.Cookies.Source == "" {
+		config.Cookies.Source = "preflight"
+	}
+
 	if err := config.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("configure_provider: %w", err)
 	}
@@ -162,6 +176,14 @@ func handleConfigureProvider(ctx context.Context, args map[string]any, elicit El
 
 	result, err := elicit(consentMsg, consentSchema)
 	if err != nil {
+		// Distinguish timeout from other errors for actionable messaging.
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+			return textContent(
+				"Provider setup timed out waiting for user response.\n\n" +
+					"Please try again — the consent prompt requires a response within the client's timeout window.",
+			), nil, nil
+		}
 		return nil, nil, fmt.Errorf("configure_provider: elicitation failed: %w", err)
 	}
 
@@ -543,12 +565,41 @@ func handleTestProvider(ctx context.Context, args map[string]any, _ ElicitFunc, 
 
 	result := providers.TestProvider(ctx, cfg, location, lat, lon, checkin, checkout, "EUR", 2)
 
-	// Build summary text.
+	// Build summary text with actionable diagnostics.
 	var summary string
 	if result.Success {
-		summary = fmt.Sprintf("Provider %q test passed: %d results found at step %q.", id, result.ResultsCount, result.Step)
+		if result.ResultsCount == 0 {
+			summary = fmt.Sprintf(
+				"Provider %q test completed (HTTP %d) but returned 0 results.\n\n"+
+					"**Likely cause:** The results_path %q may not match the response JSON structure.\n"+
+					"Check the body_snippet in the structured output and verify the dot-notation path points to the results array.",
+				id, result.HTTPStatus, cfg.ResponseMapping.ResultsPath)
+		} else {
+			summary = fmt.Sprintf("Provider %q test passed: %d results found at step %q.", id, result.ResultsCount, result.Step)
+		}
 	} else {
 		summary = fmt.Sprintf("Provider %q test failed at step %q: %s", id, result.Step, result.Error)
+
+		// Add actionable hints based on failure patterns.
+		switch {
+		case result.HTTPStatus == 202 || result.HTTPStatus == 403:
+			summary += "\n\n**Hint:** HTTP " + fmt.Sprint(result.HTTPStatus) +
+				" typically means bot detection (WAF/Cloudflare challenge). " +
+				"Try enabling `browser_escape_hatch: true` in the auth config, " +
+				"or set `tls_fingerprint: \"chrome\"` if not already set."
+		case result.HTTPStatus == 401 || result.HTTPStatus == 407:
+			summary += "\n\n**Hint:** Authentication failed. " +
+				"Check that the auth extraction patterns match the current page source, " +
+				"and that any API key headers are correctly named."
+		case result.HTTPStatus == 429:
+			summary += "\n\n**Hint:** Rate limited. Lower `rate_limit_rps` and retry after a few minutes."
+		case result.Step == "auth_extraction":
+			summary += "\n\n**Hint:** The regex pattern did not match the preflight response body. " +
+				"Check the body_snippet in the structured output and adjust the extraction pattern."
+		case result.Step == "response_parse" && strings.Contains(result.Error, "did not resolve to an array"):
+			summary += "\n\n**Hint:** The results_path does not point to a JSON array in the response. " +
+				"Inspect the body_snippet and try a different dot-notation path (e.g. \"data.results\" or \"searchResults.results\")."
+		}
 	}
 
 	content, err := buildAnnotatedContentBlocks(summary, result)
@@ -626,12 +677,12 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Hostels and budget accommodation worldwide.",
 		AuthPattern: "rest_apikey",
-		AuthHint:    "REST API with key from page source",
+		AuthHint:    "REST API with key from page source. Uses numeric city_id (e.g. Paris=59, London=64, Barcelona=33). Find city IDs by searching hostelworld.com/hostels/$city and checking the API calls.",
 		Reference:   "search GitHub for hostelworld api",
 		TosURL:      "https://www.hostelworld.com/securityprivacy/terms-and-conditions",
 		TLS:         "standard",
 		RateLimit:   "1 req/s",
-		ConfigSkeleton: skeletonRESTAPIKey(),
+		ConfigSkeleton: skeletonHostelworld(),
 	},
 	{
 		ID:          "tripadvisor",
@@ -771,6 +822,34 @@ func skeletonRESTAPIKey() map[string]any {
 		},
 		"query_params": map[string]any{
 			"FILL_location_param": "${location}",
+			"FILL_checkin_param":  "${checkin}",
+			"FILL_checkout_param": "${checkout}",
+			"FILL_guests_param":   "${guests}",
+			"FILL_currency_param": "${currency}",
+		},
+		"response_mapping": skeletonResponseMapping(),
+	}
+}
+
+func skeletonHostelworld() map[string]any {
+	return map[string]any{
+		"auth": map[string]any{
+			"type":          "preflight",
+			"preflight_url": "FILL: Hostelworld search page URL (e.g. https://www.hostelworld.com/hostels/paris)",
+			"extractions": map[string]any{
+				"api_key": map[string]any{
+					"pattern":  "FILL: regex to extract API key from page source",
+					"variable": "api_key",
+				},
+			},
+		},
+		"endpoint": "FILL: REST API endpoint (e.g. https://api.hostelworld.com/v2/properties/)",
+		"method":   "GET",
+		"headers": map[string]any{
+			"FILL_key_header": "${api_key}",
+		},
+		"query_params": map[string]any{
+			"FILL_city_id_param":  "FILL: numeric city_id (Paris=59, London=64, Barcelona=33, Berlin=4, Rome=88)",
 			"FILL_checkin_param":  "${checkin}",
 			"FILL_checkout_param": "${checkout}",
 			"FILL_guests_param":   "${guests}",

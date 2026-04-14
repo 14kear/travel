@@ -154,8 +154,27 @@ func (c *ProviderConfig) Validate() error {
 	if c.Endpoint == "" {
 		return fmt.Errorf("provider config: endpoint is required")
 	}
+
+	// Validate endpoint is a parseable URL with scheme and host.
+	u, err := url.Parse(c.Endpoint)
+	if err != nil {
+		return fmt.Errorf("provider config: endpoint is not a valid URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("provider config: endpoint must include scheme and host (e.g. https://api.example.com/path)")
+	}
+
 	if c.ResponseMapping.ResultsPath == "" {
 		return fmt.Errorf("provider config: response_mapping.results_path is required")
 	}
+
+	// Validate rate limit bounds.
+	if c.RateLimit.RequestsPerSecond < 0 {
+		return fmt.Errorf("provider config: rate_limit.requests_per_second must be non-negative, got %v", c.RateLimit.RequestsPerSecond)
+	}
+	if c.RateLimit.RequestsPerSecond > 100 {
+		return fmt.Errorf("provider config: rate_limit.requests_per_second must be <= 100, got %v (higher rates risk IP bans)", c.RateLimit.RequestsPerSecond)
+	}
+
 	return nil
 }
