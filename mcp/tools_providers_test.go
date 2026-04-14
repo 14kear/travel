@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/MikkoParkkola/trvl/internal/providers"
@@ -263,7 +264,35 @@ func TestHandleListProviders_WithProviders(t *testing.T) {
 		t.Errorf("expected provider name in summary, got: %s", content[0].Text)
 	}
 	if structured == nil {
-		t.Error("expected structured output")
+		t.Fatal("expected structured output")
+	}
+	// Regression guard: MCP OutputSchema for list_providers declares
+	// `{type: "object", properties: {providers: {type: "array", ...}}}`.
+	// If the handler ever returns the array directly (or nil), strict MCP
+	// clients reject it with "expected record, received array". Verify by
+	// JSON round-trip — which is exactly what MCP clients do.
+	data, err := json.Marshal(structured)
+	if err != nil {
+		t.Fatalf("marshal structured: %v", err)
+	}
+	var parsed struct {
+		Providers []struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Category string `json:"category"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("structured output must be a JSON object with 'providers' array, got %s: %v", string(data), err)
+	}
+	if len(parsed.Providers) != 1 {
+		t.Fatalf("expected 1 provider in structured output, got %d (payload: %s)", len(parsed.Providers), string(data))
+	}
+	if parsed.Providers[0].ID != "test-list" {
+		t.Errorf("structured.providers[0].id = %q, want %q", parsed.Providers[0].ID, "test-list")
+	}
+	if parsed.Providers[0].Name != "Test List Provider" {
+		t.Errorf("structured.providers[0].name = %q, want %q", parsed.Providers[0].Name, "Test List Provider")
 	}
 }
 
