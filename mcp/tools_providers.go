@@ -215,13 +215,27 @@ func handleConfigureProvider(ctx context.Context, args map[string]any, elicit El
 
 // parseProviderConfig extracts a ProviderConfig from MCP tool arguments.
 func parseProviderConfig(args map[string]any) (*providers.ProviderConfig, error) {
+	// body_template type guard: some LLMs send a JSON object instead of a
+	// JSON string for body_template. Auto-stringify it rather than rejecting.
+	bodyTemplate := argString(args, "body_template")
+	if bodyTemplate == "" {
+		if v, ok := args["body_template"]; ok && v != nil {
+			if _, isMap := v.(map[string]any); isMap {
+				b, err := json.Marshal(v)
+				if err == nil {
+					bodyTemplate = string(b)
+				}
+			}
+		}
+	}
+
 	config := &providers.ProviderConfig{
 		ID:           argString(args, "id"),
 		Name:         argString(args, "name"),
 		Category:     argString(args, "category"),
 		Endpoint:     argString(args, "endpoint"),
 		Method:       argString(args, "method"),
-		BodyTemplate: argString(args, "body_template"),
+		BodyTemplate: bodyTemplate,
 		ResponseMapping: providers.ResponseMapping{
 			ResultsPath: argString(args, "results_path"),
 		},
@@ -569,11 +583,19 @@ func handleTestProvider(ctx context.Context, args map[string]any, _ ElicitFunc, 
 	var summary string
 	if result.Success {
 		if result.ResultsCount == 0 {
+			bodyHint := ""
+			if result.BodySnippet != "" {
+				snippet := result.BodySnippet
+				if len(snippet) > 500 {
+					snippet = snippet[:500]
+				}
+				bodyHint = fmt.Sprintf("\n\nFirst 500 chars of response:\n```\n%s\n```\nInspect the JSON structure and update results_path to the correct dot-notation path.", snippet)
+			}
 			summary = fmt.Sprintf(
 				"Provider %q test completed (HTTP %d) but returned 0 results.\n\n"+
-					"**Likely cause:** The results_path %q may not match the response JSON structure.\n"+
-					"Check the body_snippet in the structured output and verify the dot-notation path points to the results array.",
-				id, result.HTTPStatus, cfg.ResponseMapping.ResultsPath)
+					"**Hint:** HTTP 200 but 0 results. Your results_path %q may be wrong."+
+					" Check the actual JSON structure in the response.%s",
+				id, result.HTTPStatus, cfg.ResponseMapping.ResultsPath, bodyHint)
 		} else {
 			summary = fmt.Sprintf("Provider %q test passed: %d results found at step %q.", id, result.ResultsCount, result.Step)
 		}
@@ -583,19 +605,36 @@ func handleTestProvider(ctx context.Context, args map[string]any, _ ElicitFunc, 
 		// Add actionable hints based on failure patterns.
 		switch {
 		case result.HTTPStatus == 202 || result.HTTPStatus == 403:
-			summary += "\n\n**Hint:** HTTP " + fmt.Sprint(result.HTTPStatus) +
-				" typically means bot detection (WAF/Cloudflare challenge). " +
-				"Try enabling `browser_escape_hatch: true` in the auth config, " +
-				"or set `tls_fingerprint: \"chrome\"` if not already set."
+			summary += fmt.Sprintf("\n\n**Hint:** Server returned HTTP %d (likely bot detection / WAF challenge). "+
+				"Set tls_fingerprint=\"chrome\" and auth.browser_escape_hatch=true in your config. "+
+				"If already set, the service may require real browser cookies — try cookies_source=\"browser\".",
+				result.HTTPStatus)
 		case result.HTTPStatus == 401 || result.HTTPStatus == 407:
-			summary += "\n\n**Hint:** Authentication failed. " +
-				"Check that the auth extraction patterns match the current page source, " +
-				"and that any API key headers are correctly named."
+			summary += "\n\n**Hint:** Authentication failed (HTTP " + fmt.Sprint(result.HTTPStatus) + "). " +
+				"Check your auth.preflight_url and extraction patterns. " +
+				"The API key or token regex may not match the current page source. " +
+				"Re-read the reference project to verify the auth endpoint and header names."
 		case result.HTTPStatus == 429:
 			summary += "\n\n**Hint:** Rate limited. Lower `rate_limit_rps` and retry after a few minutes."
 		case result.Step == "auth_extraction":
-			summary += "\n\n**Hint:** The regex pattern did not match the preflight response body. " +
-				"Check the body_snippet in the structured output and adjust the extraction pattern."
+			patternHint := ""
+			if cfg.Auth != nil {
+				for name, ext := range cfg.Auth.Extractions {
+					patternHint += fmt.Sprintf("\n  - Extraction %q: pattern=%q", name, ext.Pattern)
+				}
+			}
+			bodyHint := ""
+			if result.BodySnippet != "" {
+				snippet := result.BodySnippet
+				if len(snippet) > 300 {
+					snippet = snippet[:300]
+				}
+				bodyHint = fmt.Sprintf("\n\nFirst 300 chars of preflight body:\n```\n%s\n```", snippet)
+			}
+			summary += fmt.Sprintf("\n\n**Hint:** The regex pattern did not match the preflight response body.%s%s\n\n"+
+				"Adjust your regex to match the actual content. "+
+				"Re-read the reference project source to find the correct extraction pattern.",
+				patternHint, bodyHint)
 		case result.Step == "response_parse" && strings.Contains(result.Error, "did not resolve to an array"):
 			summary += "\n\n**Hint:** The results_path does not point to a JSON array in the response. " +
 				"Inspect the body_snippet and try a different dot-notation path (e.g. \"data.results\" or \"searchResults.results\")."
@@ -638,7 +677,13 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Hotels and apartments worldwide.",
 		AuthPattern: "graphql_csrf",
-		AuthHint:    "GraphQL with session token",
+		AuthHint: "GraphQL with session CSRF token.\n" +
+			"Reference: github.com/opentabs-dev/opentabs\n" +
+			"  - See src/api.ts for the GraphQL endpoint URL and query structure\n" +
+			"  - See src/types.ts for response field names and result schema\n" +
+			"  - Auth: CSRF token from search results page, regex for session token in HTML\n" +
+			"  - Note: WAF-protected (HTTP 202 common), enable browser_escape_hatch: true\n" +
+			"  - Note: GraphQL with persisted queries (sha256Hash in extensions)",
 		Reference:   "github.com/opentabs-dev/opentabs",
 		TosURL:      "https://www.booking.com/content/terms.html",
 		TLS:         "chrome",
@@ -651,7 +696,12 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Vacation rentals, apartments, and unique stays.",
 		AuthPattern: "graphql_apikey",
-		AuthHint:    "GraphQL with page-embedded key",
+		AuthHint: "GraphQL with page-embedded API key.\n" +
+			"Reference: github.com/johnbalvin/gobnb\n" +
+			"  - See api/search.go for the search endpoint URL and request structure\n" +
+			"  - See api/types.go for response field names (ListingResult schema)\n" +
+			"  - Auth: API key extracted from HTML meta tag on airbnb.com homepage\n" +
+			"  - Note: GraphQL-style POST with JSON body containing search variables",
 		Reference:   "github.com/johnbalvin/gobnb",
 		TosURL:      "https://www.airbnb.com/terms",
 		TLS:         "chrome",
@@ -664,7 +714,11 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Vacation rentals (Expedia Group).",
 		AuthPattern: "graphql_headers",
-		AuthHint:    "GraphQL with browser-like headers",
+		AuthHint: "GraphQL with browser-like headers.\n" +
+			"Reference: search GitHub for 'vrbo graphql' or 'vrbo api'\n" +
+			"  - Look for the GraphQL endpoint in network requests or OSS client code\n" +
+			"  - Auth: browser-like headers required, no explicit token\n" +
+			"  - Note: Expedia Group backend, similar patterns to Hotels.com",
 		Reference:   "search GitHub for vrbo graphql",
 		TosURL:      "https://www.vrbo.com/legal/terms-and-conditions",
 		TLS:         "chrome",
@@ -677,7 +731,13 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Hostels and budget accommodation worldwide.",
 		AuthPattern: "rest_apikey",
-		AuthHint:    "REST API with key from page source. Uses numeric city_id (e.g. Paris=59, London=64, Barcelona=33). Find city IDs by searching hostelworld.com/hostels/$city and checking the API calls.",
+		AuthHint: "REST API with API key from page source.\n" +
+			"Reference: search GitHub for 'hostelworld api' or 'hostelworld-api'\n" +
+			"  - Look for src/client.ts or similar for the API base URL and endpoints\n" +
+			"  - Auth: APIGEE API key extracted from homepage HTML via regex\n" +
+			"  - City IDs: numeric (e.g. Paris=59, London=64, Barcelona=33, Berlin=4, Rome=88)\n" +
+			"  - Find city IDs by visiting hostelworld.com/hostels/$city and inspecting API calls\n" +
+			"  - Note: REST API, results typically in .properties[] array",
 		Reference:   "search GitHub for hostelworld api",
 		TosURL:      "https://www.hostelworld.com/securityprivacy/terms-and-conditions",
 		TLS:         "standard",
@@ -690,7 +750,11 @@ var availableProviders = []providerSuggestion{
 		Category:    "reviews",
 		Description: "Hotel and restaurant reviews and ratings.",
 		AuthPattern: "graphql_queryid",
-		AuthHint:    "GraphQL with query IDs",
+		AuthHint: "GraphQL with pre-registered query IDs.\n" +
+			"Reference: search GitHub for 'tripadvisor graphql'\n" +
+			"  - Look for the GraphQL endpoint and query hash/ID in OSS client code\n" +
+			"  - Auth: session-based, may need cookies from an initial page visit\n" +
+			"  - Note: uses numeric location IDs for cities",
 		Reference:   "search GitHub for tripadvisor graphql",
 		TosURL:      "https://www.tripadvisor.com/pages/terms.html",
 		TLS:         "standard",
@@ -703,7 +767,11 @@ var availableProviders = []providerSuggestion{
 		Category:    "ground",
 		Description: "Ridesharing across Europe.",
 		AuthPattern: "rest_apikey",
-		AuthHint:    "REST API requiring developer API key (register at dev.blablacar.com)",
+		AuthHint: "REST API requiring developer API key.\n" +
+			"Reference: search GitHub for 'blablacar api'\n" +
+			"  - Register at dev.blablacar.com for an API key\n" +
+			"  - Look for endpoint URL and query params in OSS client code\n" +
+			"  - Note: public REST API with straightforward JSON responses",
 		Reference:   "search GitHub for blablacar api",
 		TosURL:      "https://www.blablacar.com/about-us/terms-and-conditions",
 		TLS:         "standard",
@@ -716,7 +784,11 @@ var availableProviders = []providerSuggestion{
 		Category:    "restaurants",
 		Description: "Restaurant availability and reservations.",
 		AuthPattern: "graphql_csrf",
-		AuthHint:    "GraphQL with session token",
+		AuthHint: "GraphQL with session token.\n" +
+			"Reference: search GitHub for 'opentable api'\n" +
+			"  - Look for the GraphQL or REST endpoint in OSS client code\n" +
+			"  - Auth: CSRF/session token extracted from page source\n" +
+			"  - Note: restaurant search uses lat/lon or location name",
 		Reference:   "search GitHub for opentable api",
 		TosURL:      "https://www.opentable.com/legal/terms-and-conditions",
 		TLS:         "chrome",
@@ -966,9 +1038,12 @@ func handleSuggestProviders(_ context.Context, args map[string]any, _ ElicitFunc
 		lines = append(lines, fmt.Sprintf("- %s (%s) [%s] — %s", s.Name, s.Category, status, s.Description))
 	}
 
-	summary := fmt.Sprintf("%d provider(s) available:\n%s\n\nTo enable a provider, use configure_provider. "+
-		"Consult the reference project for each provider to find the current API endpoint, "+
-		"authentication details, query structure, and response field paths.",
+	summary := fmt.Sprintf("%d provider(s) available:\n%s\n\nTo enable a provider: "+
+		"(1) read the reference project source listed in auth_hint to find the real endpoint, auth, and response schema, "+
+		"(2) generate a config using verified info, "+
+		"(3) call configure_provider (requires user consent), "+
+		"(4) call test_provider and iterate on failures up to 3 times. "+
+		"Do NOT guess endpoints — fetch the reference project first.",
 		len(suggestions), strings.Join(lines, "\n"))
 
 	content, err := buildAnnotatedContentBlocks(summary, suggestions)

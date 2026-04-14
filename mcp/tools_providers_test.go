@@ -554,6 +554,62 @@ func TestSuggestProviders_SkeletonHasResponseMapping(t *testing.T) {
 	}
 }
 
+func TestParseProviderConfig_BodyTemplateObjectAutoStringify(t *testing.T) {
+	// Simulate the Qwen3.5 failure mode: body_template sent as a JSON object
+	// instead of a string. The type guard should auto-stringify it.
+	args := map[string]any{
+		"id":       "test-body",
+		"name":     "Test Body",
+		"category": "hotels",
+		"endpoint": "https://api.example.com/search",
+		"body_template": map[string]any{
+			"query":     "search",
+			"variables": map[string]any{"checkin": "${checkin}"},
+		},
+		"results_path": "$.results",
+		"field_mapping": map[string]any{
+			"name": "$.hotel_name",
+		},
+	}
+
+	config, err := parseProviderConfig(args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.BodyTemplate == "" {
+		t.Fatal("body_template should be auto-stringified from object, got empty string")
+	}
+	// Should be valid JSON.
+	if config.BodyTemplate[0] != '{' {
+		t.Errorf("body_template should start with '{', got %q", config.BodyTemplate[:1])
+	}
+	// Should contain the expected keys.
+	if !containsString(config.BodyTemplate, "query") {
+		t.Errorf("body_template should contain 'query', got %s", config.BodyTemplate)
+	}
+}
+
+func TestParseProviderConfig_BodyTemplateStringPassthrough(t *testing.T) {
+	// Normal case: body_template as a string should pass through unchanged.
+	args := map[string]any{
+		"id":            "test-str",
+		"name":          "Test Str",
+		"category":      "hotels",
+		"endpoint":      "https://api.example.com/search",
+		"body_template": `{"query":"search"}`,
+		"results_path":  "$.results",
+		"field_mapping":  map[string]any{"name": "$.n"},
+	}
+
+	config, err := parseProviderConfig(args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.BodyTemplate != `{"query":"search"}` {
+		t.Errorf("body_template = %q, want original string", config.BodyTemplate)
+	}
+}
+
 // containsString checks if s contains sub.
 func containsString(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsSubstring(s, sub))

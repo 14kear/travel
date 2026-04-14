@@ -478,31 +478,54 @@ trvl searches Google Hotels and Google Flights by default. For broader
 coverage, I can enable additional providers for hotels, transport, and
 restaurants. Each provider is set up individually and requires my consent.
 
-Follow these steps:
+## Provider Setup (Multi-Step, Verified)
 
-1. **Show available providers**: Call suggest_providers to get the full
-   catalog of available providers. Show them to me grouped by category:
-   - Hotels & Accommodation
-   - Ground Transport
-   - Restaurants & Reviews
+### Step 1: Discover
+Call suggest_providers to see the catalog. Show providers grouped by category:
+- Hotels & Accommodation
+- Ground Transport
+- Restaurants & Reviews
 
-   For each, show: name, description, and whether it's already configured.
+For each, show: name, description, and whether it's already configured.
+Ask me which providers I want to enable.
 
-2. **Ask which to enable**: Ask me which providers I want to add.
-   I might say "all hotel providers" or name specific ones.
+### Step 2: Research (CRITICAL — do NOT skip)
+The catalog entry includes a reference project URL. You MUST:
+- Fetch the reference project's README
+- Read the source file(s) listed in the hint to find:
+  a. The exact API endpoint URL
+  b. The authentication method (API key extraction, preflight, OAuth)
+  c. The response JSON schema (field names and paths)
+- If you cannot fetch the reference project, tell the user:
+  "I need to read [reference URL] to configure this provider correctly.
+   Can you paste the relevant source code?"
 
-3. **Configure each**: For each selected provider:
-   a. Generate a provider configuration based on the provider's auth pattern
-      and your knowledge of its API (consult the reference project listed
-      in the catalog for current endpoint details).
-   b. Call configure_provider — I will be asked directly for consent.
-   c. Call test_provider to verify it works.
-   d. If the test fails, read the error diagnostics and fix the
-      configuration. Retry up to 3 times automatically.
-   e. Tell me the result: working (with result count) or failed (with reason).
+Do NOT guess or hallucinate API endpoints. The reference project has the
+real endpoints, auth patterns, and response schemas — read it.
 
-4. **Summary**: After all selected providers are configured, show a
-   summary of what's enabled and working.
+### Step 3: Generate Config
+Using VERIFIED information from Step 2 (not guesses), generate a ProviderConfig.
+- Every endpoint URL must come from the reference project source
+- Every regex pattern must match a real page element you have seen
+- body_template MUST be a JSON string, never a nested object
+- rate_limit defaults to 0.5 req/s if not specified
+Call configure_provider — I will be asked directly for consent.
+
+### Step 4: Test
+Call test_provider with the generated config.
+
+### Step 5: Iterate (if test fails)
+Read the error message and hint carefully. Common fixes:
+- "no match" on extraction: your regex is wrong, check the actual page source
+- "HTTP 403/202": add browser_escape_hatch: true and Chrome TLS fingerprint
+- "0 results": results_path is wrong, check the actual response structure
+- "HTTP 401": auth extraction pattern failed, re-read the reference project
+Retry up to 3 times, adjusting based on the specific error each time.
+
+### Step 6: Save & Summary
+Once test_provider passes, confirm success to me with the result count.
+After all selected providers are done, show a summary of what is enabled
+and working.
 
 IMPORTANT NOTES:
 - Some providers access services that restrict automated access in their
