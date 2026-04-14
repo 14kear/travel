@@ -1,6 +1,6 @@
 # trvl
 
-Travel MCP server + CLI. 36 MCP tools, 36 CLI commands. Go 1.26, no frameworks.
+Travel MCP server + CLI. 41 MCP tools, 41 CLI commands. Go 1.26, no frameworks.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ cmd/trvl/          CLI commands (cobra-style, one file per command)
 internal/          Domain packages (one per data source)
   flights/         Google Flights scraping + protobuf encoding
   hotels/          Google Hotels scraping
-  ground/          Buses, trains, ferries (16 providers)
+  ground/          Buses, trains, ferries (20 providers)
   destinations/    City intelligence (weather, safety, holidays)
   deals/           RSS deal feeds
   hacks/           Travel hack detectors (18 parallel)

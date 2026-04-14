@@ -465,7 +465,11 @@ func handleListProviders(_ context.Context, _ map[string]any, _ ElicitFunc, _ Sa
 	if err != nil {
 		return nil, nil, err
 	}
-	return content, nil, nil
+	// Return structured data so programmatic clients can parse it.
+	// OutputSchema is intentionally omitted on the tool definition so strict
+	// MCP clients don't reject the nested-array shape ("expected record,
+	// received array" was previously seen against aggressive validators).
+	return content, structured, nil
 }
 
 // --- remove_provider ---
@@ -973,6 +977,11 @@ func skeletonHostelworld() map[string]any {
 	}
 }
 
+// skeletonRESTPublic is a reserved skeleton for no-auth public REST providers
+// (e.g. GTFS feeds, open endpoints). Wired into suggest_providers when a
+// suitable provider is added.
+//
+//lint:ignore U1000 reserved skeleton for future public-REST providers
 func skeletonRESTPublic() map[string]any {
 	return map[string]any{
 		"endpoint": "FILL: public REST API endpoint URL",

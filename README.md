@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm%20NC%201.0-blue)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/MikkoParkkola/trvl.svg)](https://pkg.go.dev/github.com/MikkoParkkola/trvl)
 [![MCP](https://img.shields.io/badge/MCP-2025--11--25-blue)](https://modelcontextprotocol.io)
-[![Providers](https://img.shields.io/badge/providers-19-brightgreen)](https://github.com/MikkoParkkola/trvl#providers)
+[![Providers](https://img.shields.io/badge/providers-21-brightgreen)](https://github.com/MikkoParkkola/trvl#providers)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/MikkoParkkola/trvl)](https://go.dev/)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP-0078d4?logo=visualstudiocode)](https://insiders.vscode.dev/redirect/mcp/install?name=trvl&config=%7B%22command%22%3A%22trvl%22%2C%22args%22%3A%5B%22mcp%22%5D%7D)
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_MCP-black?logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=trvl&config=%7B%22command%22%3A%22trvl%22%2C%22args%22%3A%5B%22mcp%22%5D%7D)
@@ -173,7 +173,7 @@ That's it. Your AI assistant now has 41 travel tools available. Just ask natural
 | **nearby_places** | Find points of interest near a location | Restaurants, attractions near hotel |
 | **travel_guide** | Wikivoyage travel guide for a city | Neighbourhoods, getting around, safety |
 | **local_events** | Find events during your trip dates | Concerts, festivals, exhibitions |
-| **search_ground** | Search buses, trains and ferries (16 providers, API-first with optional browser fallbacks) | Prague -> Vienna, May 3rd, trains only |
+| **search_ground** | Search buses, trains and ferries (20 providers, API-first with optional browser fallbacks) | Prague -> Vienna, May 3rd, trains only |
 | **search_airport_transfers** | Search airport-to-hotel or airport-to-city ground transport, plus taxi estimates | CDG -> Hotel Lutetia Paris, after 14:30 |
 | **search_restaurants** | Find restaurants near a location (Google Maps) | Barcelona, italian cuisine |
 | **search_deals** | Travel deals from 4 RSS feeds (error fares, flash sales) | Deals from HEL under EUR 400 |
@@ -281,7 +281,7 @@ That's it. Your AI assistant now has 41 travel tools available. Just ask natural
 
 ## Ground Transport Providers
 
-trvl searches 18 ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes 19 transport providers overall:
+trvl searches 20 ground transport providers in parallel, covering most of Europe. Airport transfers add taxi estimates on top of that, so trvl exposes 21 transport providers overall:
 
 | Provider | Protocol | Coverage | Starting price | Auth |
 |----------|----------|----------|----------------|------|
@@ -310,7 +310,7 @@ Two providers (NS, Digitransit/VR) use public API keys that are embedded in the 
 | Feature | trvl | fli | Google Flights | Skyscanner | Kiwi |
 |---------|------|-----|---------------|------------|------|
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bus/train/ferry search | ✅ (18 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) | ❌ | ❌ | ❌ | ❌ |
+| Bus/train/ferry search | ✅ (20 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, European Sleeper, Snälltåget, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) | ❌ | ❌ | ❌ | ❌ |
 | Price tracking | ✅ (watches with alerts) | ❌ | ❌ | ❌ | ❌ |
 | Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -451,12 +451,12 @@ trvl multi-city HEL --visit BCN,ROM,PAR --dates 2026-07-01,2026-07-21
 
 ### Buses & Trains
 
-Searches 18 providers in parallel: FlixBus (buses, pan-European), RegioJet (buses+trains, CZ/SK/AT/HU/DE/PL), Eurostar/Snap (trains, London↔Paris/Brussels/Amsterdam/Cologne), Deutsche Bahn (trains, all European rail), ÖBB (shop/HAFAS API), NS (Dutch railways), VR (Finnish railways, via Digitransit API), SNCF (trains, French TGV/TER), Trainline (aggregated rail across major European operators), Transitous.org (transit routing, pan-European), Renfe (Spanish AVE high-speed API), Tallink (Baltic Sea ferries, live API), Viking Line (Baltic Sea ferries), Eckerö Line (Helsinki↔Tallinn, live Magento API), Finnlines (Helsinki↔Travemünde, Naantali↔Kapellskär, GraphQL API), Stena Line (North Sea + Baltic ferries), DFDS (North Sea + Baltic ferries, live availability API), and Ferryhopper (33 countries, 190+ ferry operators, via MCP). Airport transfers also add taxi fare estimates for door-to-door comparisons.
+Searches 20 providers in parallel: FlixBus (buses, pan-European), RegioJet (buses+trains, CZ/SK/AT/HU/DE/PL), Eurostar/Snap (trains, London↔Paris/Brussels/Amsterdam/Cologne), Deutsche Bahn (trains, all European rail), ÖBB (shop/HAFAS API), NS (Dutch railways), VR (Finnish railways, via Digitransit API), SNCF (trains, French TGV/TER), Trainline (aggregated rail across major European operators), Transitous.org (transit routing, pan-European), Renfe (Spanish AVE high-speed API), European Sleeper (night trains Brussels↔Berlin↔Prague + Amsterdam/Rotterdam/Antwerp/Dresden), Snälltåget (Swedish night trains Stockholm↔Malmö/Åre/Berlin, Sqills S3 API), Tallink (Baltic Sea ferries, live API), Viking Line (Baltic Sea ferries), Eckerö Line (Helsinki↔Tallinn, live Magento API), Finnlines (Helsinki↔Travemünde, Naantali↔Kapellskär, GraphQL API), Stena Line (North Sea + Baltic ferries), DFDS (North Sea + Baltic ferries, live availability API), and Ferryhopper (33 countries, 190+ ferry operators, via MCP). Airport transfers also add taxi fare estimates for door-to-door comparisons.
 
 API routes are the default path. If you want trvl to try browser/curl/cookie-assisted fallbacks for protected providers such as SNCF or Trainline, pass `--allow-browser-fallbacks` (or set `TRVL_ALLOW_BROWSER_FALLBACKS=true`).
 
 ```bash
-trvl ground Prague Vienna 2026-07-01                  # All 16 providers
+trvl ground Prague Vienna 2026-07-01                  # All 20 providers
 trvl ground London Paris 2026-07-01                   # Eurostar + FlixBus + DB
 trvl bus Prague Krakow 2026-07-01                     # Same command, bus alias
 trvl train Prague Vienna 2026-07-01 --type train      # Trains only
@@ -476,7 +476,7 @@ trvl airport-transfer CDG "Hotel Lutetia Paris" 2026-07-01 --provider taxi
 
 ### Multi-Modal Routing
 
-Combines flights, trains, buses and ferries into optimal itineraries across all 16 providers. `--avoid` filters only the avoided mode, and `--depart-after` / `--arrive-by` are applied against the assembled itinerary times.
+Combines flights, trains, buses and ferries into optimal itineraries across all 20 providers. `--avoid` filters only the avoided mode, and `--depart-after` / `--arrive-by` are applied against the assembled itinerary times.
 
 ```bash
 trvl route Helsinki Dubrovnik --arrive-by 2026-04-10     # Pareto-optimal itineraries
