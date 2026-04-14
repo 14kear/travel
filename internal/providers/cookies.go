@@ -77,13 +77,18 @@ func defaultOpenURL(goos, browserPreference, targetURL string) error {
 // currentOpenURL is the active openerFunc. Tests may swap it out.
 var currentOpenURL openerFunc = defaultOpenURL
 
-// openURLInBrowser launches the user's browser pointed at targetURL so they
+// OpenURLInBrowser launches the user's browser pointed at targetURL so they
 // can clear any WAF/JS challenge inline. On macOS it honours
 // browserPreference (defaults to "Google Chrome"); on Linux and Windows the
 // preference is ignored and the OS default is used.
 //
 // Callers MUST gate this on an explicit opt-in because it produces a visible
 // side effect for the end user.
+func OpenURLInBrowser(targetURL, browserPreference string) error {
+	return openURLInBrowser(targetURL, browserPreference)
+}
+
+// openURLInBrowser is the internal implementation of OpenURLInBrowser.
 func openURLInBrowser(targetURL, browserPreference string) error {
 	if strings.TrimSpace(targetURL) == "" {
 		return fmt.Errorf("openURLInBrowser: empty URL")

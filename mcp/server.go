@@ -356,8 +356,12 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 
 	// Create a context with a generous ceiling; individual handlers may derive
 	// shorter deadlines for sub-operations.
+	// MCP is always user-facing, so mark context as interactive. This allows
+	// provider runtime to fire the Tier 4 browser escape hatch automatically
+	// when a WAF challenge blocks a search request.
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
+	ctx = providers.WithInteractive(ctx)
 
 	content, structured, err := handler(ctx, params.Arguments, elicit, sampling, progress)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 	"time"
@@ -208,8 +209,21 @@ func handleConfigureProvider(ctx context.Context, args map[string]any, elicit El
 		return nil, nil, fmt.Errorf("configure_provider: save: %w", err)
 	}
 
-	summary := fmt.Sprintf("Provider %q enabled for %s search (domain: %s, rate limit: %.1f rps).",
-		config.Name, config.Category, domain, config.RateLimit.RequestsPerSecond)
+	// Proactive cookie warming: if the provider uses browser_escape_hatch,
+	// open the preflight URL in the user's browser now so that cookies are
+	// warm before the first search. This is a one-time setup action.
+	warmingNote := ""
+	if config.Auth != nil && config.Auth.BrowserEscapeHatch && config.Auth.PreflightURL != "" {
+		if err := providers.OpenURLInBrowser(config.Auth.PreflightURL, ""); err != nil {
+			log.Printf("cookie warming: failed to open browser for %s: %v", config.Name, err)
+		} else {
+			warmingNote = fmt.Sprintf("\n\nOpened %s in browser to warm cookies for %s. Future searches will use these cookies automatically.",
+				config.Auth.PreflightURL, config.Name)
+		}
+	}
+
+	summary := fmt.Sprintf("Provider %q enabled for %s search (domain: %s, rate limit: %.1f rps).%s",
+		config.Name, config.Category, domain, config.RateLimit.RequestsPerSecond, warmingNote)
 	return textContent(summary), config, nil
 }
 
@@ -688,7 +702,7 @@ var availableProviders = []providerSuggestion{
 		TosURL:      "https://www.booking.com/content/terms.html",
 		TLS:         "chrome",
 		RateLimit:   "0.5 req/s",
-		ConfigSkeleton: skeletonGraphQLCSRF(),
+		ConfigSkeleton: skeletonBookingCSRF(),
 	},
 	{
 		ID:          "airbnb",
@@ -833,6 +847,33 @@ func skeletonGraphQLCSRF() map[string]any {
 			"Content-Type":    "application/json",
 			"FILL_csrf_header": "${csrf_token}",
 		},
+		"body_template":    "FILL: GraphQL query JSON with ${checkin}, ${checkout}, ${location} or ${ne_lat}/${sw_lat} variables",
+		"response_mapping": skeletonResponseMapping(),
+	}
+}
+
+// skeletonBookingCSRF returns the Booking.com-specific skeleton with
+// browser_escape_hatch defaulted on, since Booking.com is WAF-protected.
+func skeletonBookingCSRF() map[string]any {
+	return map[string]any{
+		"auth": map[string]any{
+			"type":                "preflight",
+			"preflight_url":      "FILL: URL of a search results page on the target service",
+			"browser_escape_hatch": true, // WAF-protected, needs browser delegation
+			"extractions": map[string]any{
+				"csrf_token": map[string]any{
+					"pattern":  "FILL: regex with capture group to extract CSRF/session token from HTML",
+					"variable": "csrf_token",
+				},
+			},
+		},
+		"endpoint": "FILL: GraphQL endpoint URL",
+		"method":   "POST",
+		"headers": map[string]any{
+			"Content-Type":     "application/json",
+			"FILL_csrf_header": "${csrf_token}",
+		},
+		"tls_fingerprint":  "chrome",
 		"body_template":    "FILL: GraphQL query JSON with ${checkin}, ${checkout}, ${location} or ${ne_lat}/${sw_lat} variables",
 		"response_mapping": skeletonResponseMapping(),
 	}
