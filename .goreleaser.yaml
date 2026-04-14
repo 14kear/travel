@@ -74,7 +74,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: https://github.com/MikkoParkkola/trvl
-    description: "Google Flights + Hotels from your terminal — MCP server, 32 tools, no API keys"
+    description: "Google Flights + Hotels from your terminal — MCP server, 41 tools, no API keys"
     license: "PolyForm-Noncommercial-1.0.0"
     install: |
       bin.install "trvl"
