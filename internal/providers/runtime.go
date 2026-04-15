@@ -225,6 +225,12 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		"${location}": location,
 	}
 
+	// Resolve provider-specific city ID when the config provides a lookup
+	// table (e.g. Hostelworld requires numeric city IDs in the URL path).
+	if id := resolveCityID(cfg.CityLookup, location); id != "" {
+		vars["${city_id}"] = id
+	}
+
 	// Add auth-extracted variables.
 	pc.authMu.RLock()
 	for k, v := range pc.authValues {
@@ -623,8 +629,16 @@ func substituteVars(s string, vars map[string]string) string {
 }
 
 // jsonPath walks a parsed JSON value using dot-notation.
-// Supports nested objects and array indexing is not needed —
-// arrays at the results level are returned as-is.
+// Supports nested objects and traversal through arrays by iterating
+// elements until it finds a non-empty match.
+//
+// When a path segment is applied to an array (e.g. Airbnb's
+// explore_tabs.sections.listings where sections is an array of
+// objects), the function iterates the array and returns the first
+// element whose value for that segment is non-empty. Empty arrays
+// and nil values are skipped so that metadata/ad sections (e.g.
+// Airbnb "inserts" sections with listings:[]) don't shadow the real
+// results in the next section.
 func jsonPath(data any, path string) any {
 	if path == "" {
 		return data
@@ -636,22 +650,94 @@ func jsonPath(data any, path string) any {
 		case map[string]any:
 			current = v[part]
 		case []any:
-			// If path segment applied to array, try each element
-			// and return the first match. For results_path this
-			// should not happen (arrays are the end).
+			// Iterate the array and prefer the first element with a
+			// non-empty value for this path segment. Falls back to
+			// the first element with any value (including empty).
+			// Unlike the prior implementation, this keeps traversing
+			// the remaining path segments with the chosen value —
+			// necessary for paths where arrays appear mid-path
+			// (e.g. Airbnb's explore_tabs.sections.listings).
+			var firstAny any
+			foundAny := false
+			var chosen any
+			chose := false
 			for _, elem := range v {
-				if m, ok := elem.(map[string]any); ok {
-					if val, exists := m[part]; exists {
-						return val
-					}
+				m, ok := elem.(map[string]any)
+				if !ok {
+					continue
+				}
+				val, exists := m[part]
+				if !exists {
+					continue
+				}
+				if !foundAny {
+					firstAny = val
+					foundAny = true
+				}
+				if !isEmptyValue(val) {
+					chosen = val
+					chose = true
+					break
 				}
 			}
-			return nil
+			if chose {
+				current = chosen
+			} else if foundAny {
+				current = firstAny
+			} else {
+				return nil
+			}
 		default:
 			return nil
 		}
 	}
 	return current
+}
+
+// isEmptyValue reports whether v is nil, an empty slice, map, or string.
+// Used by jsonPath to skip metadata/placeholder entries when traversing
+// arrays of heterogeneous objects.
+func isEmptyValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch x := v.(type) {
+	case []any:
+		return len(x) == 0
+	case map[string]any:
+		return len(x) == 0
+	case string:
+		return x == ""
+	}
+	return false
+}
+
+// resolveCityID finds the best-matching provider-specific city ID for a
+// location string. Matches are case-insensitive and support partial matching
+// (e.g. "Prague" → "praha"). Returns the empty string when no mapping exists
+// or when the location is blank.
+func resolveCityID(lookup map[string]string, location string) string {
+	if len(lookup) == 0 {
+		return ""
+	}
+	loc := strings.ToLower(strings.TrimSpace(location))
+	if loc == "" {
+		return ""
+	}
+	if id, ok := lookup[loc]; ok {
+		return id
+	}
+	// Partial match: location contains a key, or key contains location.
+	for city, id := range lookup {
+		c := strings.ToLower(city)
+		if c == "" {
+			continue
+		}
+		if strings.Contains(loc, c) || strings.Contains(c, loc) {
+			return id
+		}
+	}
+	return ""
 }
 
 // mapHotelResult maps a raw JSON object to a HotelResult using field mappings.

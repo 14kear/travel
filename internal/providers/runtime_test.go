@@ -774,3 +774,88 @@ func TestToInt(t *testing.T) {
 	}
 }
 
+
+func TestResolveCityID(t *testing.T) {
+	lookup := map[string]string{
+		"prague":    "19",
+		"helsinki":  "45",
+		"amsterdam": "3",
+	}
+	tests := []struct{ input, want string }{
+		{"Prague", "19"},
+		{"prague", "19"},
+		{"PRAGUE", "19"},
+		{"Helsinki", "45"},
+		{"  Amsterdam  ", "3"},
+		{"Prague 1", "19"}, // partial: "prague 1" contains "prague"
+		{"Unknown", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := resolveCityID(lookup, tt.input); got != tt.want {
+				t.Errorf("resolveCityID(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+	// Empty lookup returns "".
+	if got := resolveCityID(nil, "Prague"); got != "" {
+		t.Errorf("nil lookup: got %q, want empty", got)
+	}
+}
+
+func TestJSONPathSkipsEmptyArrays(t *testing.T) {
+	// Simulates Airbnb v2 API where explore_tabs.sections has an "inserts"
+	// section with empty listings before the real "listings" section.
+	data := map[string]any{
+		"explore_tabs": []any{
+			map[string]any{
+				"sections": []any{
+					map[string]any{
+						"result_type": "inserts",
+						"listings":    []any{},
+					},
+					map[string]any{
+						"result_type": "listings",
+						"listings": []any{
+							map[string]any{"name": "Real listing"},
+						},
+					},
+				},
+			},
+		},
+	}
+	got := jsonPath(data, "explore_tabs.sections.listings")
+	arr, ok := got.([]any)
+	if !ok {
+		t.Fatalf("expected []any, got %T", got)
+	}
+	if len(arr) != 1 {
+		t.Fatalf("expected 1 listing, got %d (skipping empty arrays failed)", len(arr))
+	}
+}
+
+func TestIsEmptyValue(t *testing.T) {
+	cases := []struct {
+		name string
+		v    any
+		want bool
+	}{
+		{"nil", nil, true},
+		{"empty slice", []any{}, true},
+		{"empty map", map[string]any{}, true},
+		{"empty string", "", true},
+		{"non-empty slice", []any{1}, false},
+		{"non-empty map", map[string]any{"a": 1}, false},
+		{"non-empty string", "x", false},
+		{"zero int", 0, false},
+		{"false bool", false, false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isEmptyValue(tt.v); got != tt.want {
+				t.Errorf("isEmptyValue(%v) = %v, want %v", tt.v, got, tt.want)
+			}
+		})
+	}
+}

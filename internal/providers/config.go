@@ -30,6 +30,13 @@ type ProviderConfig struct {
 	LastError       string            `json:"last_error,omitempty"`
 	ErrorCount      int               `json:"error_count,omitempty"`
 	Version         int               `json:"version"`
+
+	// CityLookup maps normalized city names to provider-specific identifiers
+	// (e.g. Hostelworld city IDs). Used when the endpoint template contains
+	// ${city_id} and requires a lookup step rather than direct text
+	// substitution of the ${location} variable. Example:
+	//   {"prague": "19", "amsterdam": "3", "helsinki": "45"}
+	CityLookup map[string]string `json:"city_lookup,omitempty"`
 }
 
 // AuthConfig describes how to authenticate with the provider.
