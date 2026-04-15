@@ -260,10 +260,15 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("results_path %q did not resolve to an array", cfg.ResponseMapping.ResultsPath)
 	}
 
-	// Map each element to HotelResult.
+	// Map each element to HotelResult and tag with provider source.
 	hotels := make([]models.HotelResult, 0, len(arr))
 	for _, item := range arr {
 		h := mapHotelResult(item, cfg.ResponseMapping.Fields)
+		h.Sources = []models.PriceSource{{
+			Provider: cfg.ID,
+			Price:    h.Price,
+			Currency: h.Currency,
+		}}
 		hotels = append(hotels, h)
 	}
 
