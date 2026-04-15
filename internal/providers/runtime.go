@@ -1,3 +1,14 @@
+// Package providers accesses third-party provider APIs on behalf of the
+// local user for personal, noncommercial travel search. It is licensed
+// under PolyForm Noncommercial 1.0.0 (see LICENSE at repo root).
+// Commercial use, redistribution of scraped data, or operation as a
+// service is prohibited by this license.
+//
+// Rate limits are intentionally conservative (0.5 req/s default per
+// provider) to make request patterns behaviorally indistinguishable
+// from manual human browsing. Cookie persistence is capped at 24h.
+// Per-provider browser escape hatches require explicit opt-in via
+// AuthConfig.BrowserEscapeHatch AND WithInteractive context.
 package providers
 
 import (
@@ -269,6 +280,14 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	for k, v := range cfg.Headers {
 		req.Header.Set(k, substituteEnvVars(substituteVars(v, vars)))
 	}
+
+	// Transparency header: identify the tool to the operator without
+	// concealing its nature. Providers who object can block on this
+	// header; providers who don't are implicitly tolerating personal-use
+	// access. Note: this does not remove any User-Agent header the
+	// config sets (some providers require a browser UA to avoid WAF
+	// blocks), it adds alongside.
+	req.Header.Set("X-Personal-Use", "trvl personal noncommercial https://github.com/MikkoParkkola/trvl")
 
 	// Send request.
 	resp, err := pc.client.Do(req)
