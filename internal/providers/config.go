@@ -60,10 +60,21 @@ type AuthConfig struct {
 }
 
 // Extraction describes a regex extraction from a preflight response.
+//
+// By default the pattern is matched against the body of the main preflight
+// request (or against the named response Header). When URL is set, the
+// preflight client issues a separate GET to that URL (reusing cookies already
+// in the jar and substituting ${var} placeholders from previously-matched
+// extractions) and runs the pattern against that response instead. This
+// enables two-stage preflights such as "fetch HTML for CSRF, then fetch the
+// JS bundle referenced by the HTML for a persisted-query sha256Hash" —
+// mirroring exactly what the provider's own web app does.
 type Extraction struct {
-	Pattern  string `json:"pattern"`  // regex with capture group
-	Variable string `json:"variable"` // variable name for substitution
-	Header   string `json:"header"`   // response header to extract from (empty = body)
+	Pattern  string `json:"pattern"`           // regex with capture group
+	Variable string `json:"variable"`          // variable name for substitution
+	Header   string `json:"header"`            // response header to extract from (empty = body)
+	URL      string `json:"url,omitempty"`     // fetch this URL first; supports ${var} from prior extractions
+	Default  string `json:"default,omitempty"` // value to use when pattern does not match (e.g. last-known persisted-query hash)
 }
 
 // ResponseMapping describes how to extract results from the JSON response.

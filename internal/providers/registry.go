@@ -11,9 +11,10 @@ import (
 
 // Registry stores and manages provider configurations on disk.
 type Registry struct {
-	dir     string
-	configs map[string]*ProviderConfig
-	mu      sync.RWMutex
+	dir      string
+	configs  map[string]*ProviderConfig
+	loadedAt map[string]time.Time // file mtime seen on last load; used by ReloadIfChanged
+	mu       sync.RWMutex
 }
 
 // NewRegistry creates a Registry backed by ~/.trvl/providers/.
@@ -36,8 +37,9 @@ func NewRegistryAt(dir string) (*Registry, error) {
 	}
 
 	r := &Registry{
-		dir:     dir,
-		configs: make(map[string]*ProviderConfig),
+		dir:      dir,
+		configs:  make(map[string]*ProviderConfig),
+		loadedAt: make(map[string]time.Time),
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -49,7 +51,8 @@ func NewRegistryAt(dir string) (*Registry, error) {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		path := filepath.Join(dir, entry.Name())
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("providers: read %s: %w", entry.Name(), err)
 		}
@@ -58,6 +61,9 @@ func NewRegistryAt(dir string) (*Registry, error) {
 			return nil, fmt.Errorf("providers: parse %s: %w", entry.Name(), err)
 		}
 		r.configs[cfg.ID] = &cfg
+		if info, err := os.Stat(path); err == nil {
+			r.loadedAt[cfg.ID] = info.ModTime()
+		}
 	}
 
 	return r, nil
@@ -99,6 +105,11 @@ func (r *Registry) saveLocked(config *ProviderConfig) error {
 		return fmt.Errorf("providers: write %s: %w", config.ID, err)
 	}
 	r.configs[config.ID] = config
+	// Record our own write time so ReloadIfChanged does not re-parse the
+	// file we just wrote (avoids a lock-step reload on every MarkSuccess).
+	if info, err := os.Stat(path); err == nil {
+		r.loadedAt[config.ID] = info.ModTime()
+	}
 	return nil
 }
 
@@ -117,6 +128,7 @@ func (r *Registry) Delete(id string) error {
 		return fmt.Errorf("providers: delete %s: %w", id, err)
 	}
 	delete(r.configs, id)
+	delete(r.loadedAt, id)
 	return nil
 }
 
@@ -132,6 +144,74 @@ func (r *Registry) ListByCategory(category string) []*ProviderConfig {
 		}
 	}
 	return out
+}
+
+// Reload re-reads the provider config JSON for the given ID from disk and
+// swaps the in-memory copy. Returns the reloaded config, or an error if the
+// file is missing or malformed. Intended for tools like test_provider that
+// want to pick up manual edits to ~/.trvl/providers/*.json without a full
+// MCP-server restart. Returns the existing in-memory config unchanged if
+// the file has not been modified since the last load.
+func (r *Registry) Reload(id string) (*ProviderConfig, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	path := filepath.Join(r.dir, id+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("providers: reload %s: %w", id, err)
+	}
+	var cfg ProviderConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("providers: parse %s: %w", id, err)
+	}
+	r.configs[cfg.ID] = &cfg
+	if info, err := os.Stat(path); err == nil {
+		r.loadedAt[cfg.ID] = info.ModTime()
+	}
+	return &cfg, nil
+}
+
+// ReloadIfChanged reloads the provider config from disk only when the file's
+// mtime is newer than the last load. Returns the current (possibly reloaded)
+// in-memory config. Safe to call on every request — the common path is a
+// single os.Stat and no JSON parse or write-lock acquisition.
+func (r *Registry) ReloadIfChanged(id string) *ProviderConfig {
+	path := filepath.Join(r.dir, id+".json")
+	info, err := os.Stat(path)
+	if err != nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		return r.configs[id]
+	}
+
+	r.mu.RLock()
+	last := r.loadedAt[id]
+	existing := r.configs[id]
+	r.mu.RUnlock()
+
+	if existing != nil && !info.ModTime().After(last) {
+		return existing
+	}
+
+	// File is newer — take the write lock and reparse.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Re-check under lock: another goroutine may have already reloaded.
+	if last2, ok := r.loadedAt[id]; ok && !info.ModTime().After(last2) {
+		return r.configs[id]
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return r.configs[id]
+	}
+	var cfg ProviderConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return r.configs[id]
+	}
+	r.configs[cfg.ID] = &cfg
+	r.loadedAt[cfg.ID] = info.ModTime()
+	return &cfg
 }
 
 // MarkSuccess records a successful request for the given provider.

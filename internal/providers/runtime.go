@@ -201,6 +201,16 @@ func providerFixHint(err error) string {
 }
 
 func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, location string, lat, lon float64, checkin, checkout, currency string, guests int) ([]models.HotelResult, error) {
+	// Pick up on-disk edits without an MCP restart. If the file mtime has
+	// advanced since we last parsed it, ReloadIfChanged swaps in the fresh
+	// config; we then drop the cached providerClient so its HTTP client,
+	// rate limiter and auth cache are rebuilt from the new config.
+	if fresh := rt.registry.ReloadIfChanged(cfg.ID); fresh != nil && fresh != cfg {
+		rt.mu.Lock()
+		delete(rt.clients, cfg.ID)
+		rt.mu.Unlock()
+		cfg = fresh
+	}
 	pc := rt.getOrCreateClient(cfg)
 
 	// Rate limit.
@@ -311,11 +321,53 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("parse json: %w", err)
 	}
 
+	// If the response carries a top-level "errors" field (GraphQL convention),
+	// surface the first error message before attempting to map results. This
+	// makes stale persistedQuery hashes, CSRF mismatches, and WAF denials
+	// immediately diagnosable instead of hiding behind a generic results_path
+	// failure.
+	if topObj, ok := raw.(map[string]any); ok {
+		if errs, hasErrs := topObj["errors"].([]any); hasErrs && len(errs) > 0 {
+			if firstErr, _ := errs[0].(map[string]any); firstErr != nil {
+				msg, _ := firstErr["message"].(string)
+				code := ""
+				if ext, _ := firstErr["extensions"].(map[string]any); ext != nil {
+					code, _ = ext["code"].(string)
+				}
+				if msg == "" && code == "" {
+					msg = "unknown graphql error"
+				}
+				return nil, fmt.Errorf("graphql error: %s%s", msg, func() string {
+					if code != "" {
+						return " [" + code + "]"
+					}
+					return ""
+				}())
+			}
+		}
+	}
+
 	// Extract results array.
 	resultsRaw := jsonPath(raw, cfg.ResponseMapping.ResultsPath)
 	arr, ok := resultsRaw.([]any)
 	if !ok {
-		return nil, fmt.Errorf("results_path %q did not resolve to an array", cfg.ResponseMapping.ResultsPath)
+		// Include a body snippet + detected top-level keys so the LLM (and
+		// human) can see what actually came back. This is the difference
+		// between "mystery failure" and "ah, persistedQueryNotFound".
+		snippet := string(body)
+		if len(snippet) > 400 {
+			snippet = snippet[:400] + "..."
+		}
+		var topKeys string
+		if topObj, ok := raw.(map[string]any); ok {
+			keys := make([]string, 0, len(topObj))
+			for k := range topObj {
+				keys = append(keys, k)
+			}
+			topKeys = fmt.Sprintf(" (top-level keys: %v)", keys)
+		}
+		return nil, fmt.Errorf("results_path %q did not resolve to an array%s; body: %s",
+			cfg.ResponseMapping.ResultsPath, topKeys, snippet)
 	}
 
 	// Map each element to HotelResult and tag with provider source.
@@ -364,6 +416,9 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 	}
 
 	extracted := applyExtractions(pc.config.Auth.Extractions, resp, body, pc.authValues)
+	// Stage 2: fetch any URL-based extractions (e.g. JS bundle for
+	// persisted-query sha256Hash) using the now-populated cookie jar.
+	extracted += applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
 
 	// Fallback tier cascade:
 	//   Tier 1: preflight request already ran above (extracted ok? done)
@@ -419,6 +474,7 @@ func tryBrowserCookieRetry(ctx context.Context, pc *providerClient) bool {
 		delete(pc.authValues, k)
 	}
 	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
 	return true
 }
 
@@ -456,6 +512,7 @@ func tryWAFSolve(ctx context.Context, pc *providerClient, statusCode int, pageBo
 		delete(pc.authValues, k)
 	}
 	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
 	return true
 }
 
@@ -537,6 +594,7 @@ func tryBrowserEscapeHatch(ctx context.Context, pc *providerClient) bool {
 		delete(pc.authValues, k)
 	}
 	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
 	slog.Info("browser escape hatch: preflight recovered", "provider", pc.config.ID)
 	return true
 }
@@ -580,10 +638,15 @@ func doPreflightRequest(ctx context.Context, client *http.Client, auth *AuthConf
 
 // applyExtractions runs each configured regex extraction against the response
 // body or a named header, writing matches into authValues. Returns the number
-// of extractions that matched.
+// of extractions that matched. Extractions with a non-empty URL are skipped
+// here — they require a second HTTP request and are handled by
+// applyURLExtractions, which the caller should invoke after this one.
 func applyExtractions(extractions map[string]Extraction, resp *http.Response, body []byte, authValues map[string]string) int {
 	matched := 0
 	for name, extraction := range extractions {
+		if extraction.URL != "" {
+			continue // deferred to applyURLExtractions
+		}
 		source := string(body)
 		if extraction.Header != "" {
 			source = resp.Header.Get(extraction.Header)
@@ -601,6 +664,95 @@ func applyExtractions(extractions map[string]Extraction, resp *http.Response, bo
 			}
 			authValues[varName] = m[1]
 			matched++
+		} else if extraction.Default != "" {
+			varName := extraction.Variable
+			if varName == "" {
+				varName = name
+			}
+			authValues[varName] = extraction.Default
+			matched++
+			slog.Debug("extraction no match; using default",
+				"name", name, "pattern", extraction.Pattern)
+		}
+	}
+	return matched
+}
+
+// applyURLExtractions handles the second-stage extractions: those whose URL
+// field is set. Each URL is fetched with the provided HTTP client (reusing
+// its cookie jar — critical, since bundled JS is usually served under the
+// provider's own origin with the same WAF cookies as the HTML page) and the
+// pattern is matched against the response body. ${var} placeholders in the
+// URL are resolved from authValues so a stage-2 URL can be derived from a
+// stage-1 extraction (e.g. "bundle_url" extracted from HTML → fetched as
+// stage 2). Returns the number of new variables matched.
+func applyURLExtractions(ctx context.Context, client *http.Client, extractions map[string]Extraction, authValues map[string]string) int {
+	if client == nil {
+		return 0
+	}
+	// Build substitution map once from already-extracted values.
+	vars := make(map[string]string, len(authValues))
+	for k, v := range authValues {
+		vars["${"+k+"}"] = v
+	}
+
+	matched := 0
+	for name, extraction := range extractions {
+		if extraction.URL == "" {
+			continue
+		}
+		resolvedURL := substituteVars(extraction.URL, vars)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolvedURL, nil)
+		if err != nil {
+			slog.Warn("stage-2 extraction: build request failed",
+				"name", name, "url", resolvedURL, "error", err.Error())
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Warn("stage-2 extraction: fetch failed",
+				"name", name, "url", resolvedURL, "error", err.Error())
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+		resp.Body.Close()
+		if err != nil {
+			slog.Warn("stage-2 extraction: read failed",
+				"name", name, "url", resolvedURL, "error", err.Error())
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			slog.Warn("stage-2 extraction: non-2xx",
+				"name", name, "url", resolvedURL, "status", resp.StatusCode)
+			continue
+		}
+
+		re, err := regexp.Compile(extraction.Pattern)
+		if err != nil {
+			slog.Warn("stage-2 extraction: regex compile failed",
+				"name", name, "pattern", extraction.Pattern, "error", err.Error())
+			continue
+		}
+		m := re.FindStringSubmatch(string(body))
+		varName := extraction.Variable
+		if varName == "" {
+			varName = name
+		}
+		if len(m) >= 2 {
+			authValues[varName] = m[1]
+			// Make the newly-extracted value available to subsequent URL
+			// substitutions in this same pass (enables N-stage chains).
+			vars["${"+varName+"}"] = m[1]
+			matched++
+		} else if extraction.Default != "" {
+			authValues[varName] = extraction.Default
+			vars["${"+varName+"}"] = extraction.Default
+			matched++
+			slog.Warn("stage-2 extraction: no match; using default",
+				"name", name, "url", resolvedURL, "pattern", extraction.Pattern)
+		} else {
+			slog.Warn("stage-2 extraction: no match",
+				"name", name, "url", resolvedURL, "pattern", extraction.Pattern)
 		}
 	}
 	return matched

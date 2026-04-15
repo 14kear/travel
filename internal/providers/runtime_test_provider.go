@@ -94,6 +94,7 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		// Run extractions (attempt 1).
 		result.Step = "auth_extraction"
 		matched := applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+		matched += applyURLExtractions(ctx, pc.client, cfg.Auth.Extractions, pc.authValues)
 		tier := "direct"
 
 		// Fallback cascade: Tier 3 (browser cookies) then Tier 4
@@ -114,6 +115,7 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 						delete(pc.authValues, k)
 					}
 					matched = applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+					matched += applyURLExtractions(ctx, pc.client, cfg.Auth.Extractions, pc.authValues)
 					tier = "browser-cookies"
 				}
 			}
@@ -137,6 +139,7 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 							delete(pc.authValues, k)
 						}
 						matched = applyExtractions(cfg.Auth.Extractions, resp, body, pc.authValues)
+						matched += applyURLExtractions(ctx, pc.client, cfg.Auth.Extractions, pc.authValues)
 						tier = "waf-solver"
 					}
 				} else if wafErr != nil {
@@ -318,10 +321,49 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		return result
 	}
 
+	// Surface GraphQL-style {"errors":[...]} responses before complaining
+	// about results_path — this makes stale persistedQuery hashes and WAF
+	// denials diagnosable at a glance instead of hiding behind a generic
+	// array-resolution failure.
+	if topObj, isMap := raw.(map[string]any); isMap {
+		if errs, hasErrs := topObj["errors"].([]any); hasErrs && len(errs) > 0 {
+			if first, _ := errs[0].(map[string]any); first != nil {
+				msg, _ := first["message"].(string)
+				code := ""
+				if ext, _ := first["extensions"].(map[string]any); ext != nil {
+					code, _ = ext["code"].(string)
+				}
+				detail := msg
+				if code != "" {
+					detail = detail + " [" + code + "]"
+				}
+				if detail == "" {
+					detail = "unknown graphql error"
+				}
+				// Keep a snippet of the full response body so the LLM can
+				// inspect the extensions/data fields beyond the first error.
+				snippet := string(body)
+				if len(snippet) > 500 {
+					snippet = snippet[:500]
+				}
+				result.BodySnippet = snippet
+				result.Error = "response_parse: graphql error: " + detail
+				return result
+			}
+		}
+	}
+
 	resultsRaw := jsonPath(raw, cfg.ResponseMapping.ResultsPath)
 	arr, ok := resultsRaw.([]any)
 	if !ok {
 		result.Error = fmt.Sprintf("response_parse: results_path %q did not resolve to an array", cfg.ResponseMapping.ResultsPath)
+		// Include a snippet of the actual API response so the LLM can see
+		// what came back instead of guessing.
+		snippet := string(body)
+		if len(snippet) > 500 {
+			snippet = snippet[:500]
+		}
+		result.BodySnippet = snippet
 		result.Suggestions = discoverArrayPaths(raw, "")
 		if len(result.Suggestions) > 0 {
 			result.Error += ". See suggestions for detected arrays."

@@ -567,7 +567,13 @@ func handleTestProvider(ctx context.Context, args map[string]any, _ ElicitFunc, 
 		return nil, nil, fmt.Errorf("test_provider: id is required")
 	}
 
-	cfg := reg.Get(id)
+	// Reload from disk so manual edits to ~/.trvl/providers/<id>.json are
+	// picked up without restarting the MCP server. Registry.Reload falls back
+	// to the in-memory copy if the file is missing or malformed.
+	cfg, err := reg.Reload(id)
+	if err != nil {
+		cfg = reg.Get(id)
+	}
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("test_provider: provider %q not found", id)
 	}
