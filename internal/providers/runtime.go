@@ -336,6 +336,18 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("parse json: %w", err)
 	}
 
+	// If the parsed JSON is an Apollo normalized cache (detected by a
+	// top-level ROOT_QUERY key), resolve __ref pointers so that jsonPath
+	// can traverse the data as a plain denormalized tree. This is required
+	// for SSR-extracted providers like Booking.com where nested objects
+	// (reviewScore, location, pricing) are stored as separate cache entries
+	// linked via {"__ref": "BasicPropertyData:12345"}.
+	if cache, ok := raw.(map[string]any); ok {
+		if _, hasRoot := cache["ROOT_QUERY"]; hasRoot {
+			raw = denormalizeApollo(raw, cache, nil)
+		}
+	}
+
 	// If the response carries a top-level "errors" field (GraphQL convention),
 	// surface the first error message before attempting to map results. This
 	// makes stale persistedQuery hashes, CSRF mismatches, and WAF denials

@@ -124,6 +124,53 @@ func jsonPath(data any, path string) any {
 	return current
 }
 
+// denormalizeApollo recursively resolves __ref pointers in an Apollo
+// normalized-cache JSON object. Every object of the form {"__ref": "Key:123"}
+// is replaced by the actual entity stored at cache["Key:123"], with nested
+// refs resolved recursively. This enables jsonPath to traverse SSR-hydrated
+// Apollo data as if it were a plain denormalized JSON tree.
+//
+// The seen map guards against circular references (unlikely in Apollo, but
+// defensive). Returns the resolved value — may be the original if no refs
+// are present, so the operation is safe on non-Apollo JSON.
+func denormalizeApollo(v any, cache map[string]any, seen map[string]bool) any {
+	if seen == nil {
+		seen = make(map[string]bool)
+	}
+	switch obj := v.(type) {
+	case map[string]any:
+		// Check for __ref pointer.
+		if ref, ok := obj["__ref"].(string); ok && len(obj) <= 2 {
+			if seen[ref] {
+				return obj // circular — stop
+			}
+			seen[ref] = true
+			if entity, exists := cache[ref]; exists {
+				return denormalizeApollo(entity, cache, seen)
+			}
+			return obj // dangling ref
+		}
+		// Recursively resolve children.
+		resolved := make(map[string]any, len(obj))
+		for k, child := range obj {
+			if k == "__typename" {
+				resolved[k] = child
+				continue
+			}
+			resolved[k] = denormalizeApollo(child, cache, seen)
+		}
+		return resolved
+	case []any:
+		resolved := make([]any, len(obj))
+		for i, elem := range obj {
+			resolved[i] = denormalizeApollo(elem, cache, seen)
+		}
+		return resolved
+	default:
+		return v
+	}
+}
+
 // isEmptyValue reports whether v is nil, an empty slice, map, or string.
 // Used by jsonPath to skip metadata/placeholder entries when traversing
 // arrays of heterogeneous objects.
@@ -182,7 +229,20 @@ func mapHotelResult(raw any, fields map[string]string) models.HotelResult {
 		case "name":
 			h.Name, _ = val.(string)
 		case "hotel_id":
-			h.HotelID = fmt.Sprintf("%v", val)
+			// Format IDs without scientific notation. JSON numbers deserialize
+			// as float64 in Go; a hotel_id of 1042748 becomes 1.042748e+06
+			// which is useless as an identifier. Detect whole-number floats
+			// and format as integers.
+			switch id := val.(type) {
+			case float64:
+				if id == float64(int64(id)) {
+					h.HotelID = strconv.FormatInt(int64(id), 10)
+				} else {
+					h.HotelID = strconv.FormatFloat(id, 'f', -1, 64)
+				}
+			default:
+				h.HotelID = fmt.Sprintf("%v", val)
+			}
 		case "rating":
 			h.Rating = toFloat64(val)
 		case "review_count":

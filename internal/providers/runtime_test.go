@@ -859,3 +859,71 @@ func TestIsEmptyValue(t *testing.T) {
 		})
 	}
 }
+
+func TestDenormalizeApollo(t *testing.T) {
+	// Simulates a Booking.com SSR Apollo normalized cache where
+	// nested objects like reviewScore and location use __ref pointers.
+	cache := map[string]any{
+		"ROOT_QUERY": map[string]any{
+			"searchQueries": map[string]any{
+				"search({\"input\":{}})": map[string]any{
+					"results": []any{
+						map[string]any{"__ref": "SearchResultProperty:42"},
+					},
+				},
+			},
+		},
+		"SearchResultProperty:42": map[string]any{
+			"__typename":        "SearchResultProperty",
+			"basicPropertyData": map[string]any{"__ref": "BasicPropertyData:42"},
+			"displayName":       map[string]any{"text": "Hotel Amsterdam"},
+		},
+		"BasicPropertyData:42": map[string]any{
+			"__typename":  "BasicPropertyData",
+			"id":          float64(42),
+			"reviewScore": map[string]any{"__ref": "ReviewScore:42"},
+			"location":    map[string]any{"__ref": "Location:42"},
+		},
+		"ReviewScore:42": map[string]any{
+			"score":       float64(8.5),
+			"reviewCount": float64(1234),
+		},
+		"Location:42": map[string]any{
+			"latitude":  52.37,
+			"longitude": 4.89,
+		},
+	}
+
+	resolved := denormalizeApollo(cache, cache, nil)
+	rm, ok := resolved.(map[string]any)
+	if !ok {
+		t.Fatal("denormalized result is not a map")
+	}
+
+	// Navigate: ROOT_QUERY.searchQueries.search*.results[0].basicPropertyData.reviewScore.score
+	root := rm["ROOT_QUERY"].(map[string]any)
+	sq := root["searchQueries"].(map[string]any)
+	// Use the wildcard helper.
+	val := jsonPath(sq, "search*.results")
+	arr, ok := val.([]any)
+	if !ok || len(arr) == 0 {
+		t.Fatal("search*.results did not resolve to a non-empty array")
+	}
+
+	hotel := arr[0].(map[string]any)
+	// displayName.text should be direct.
+	name := jsonPath(hotel, "displayName.text")
+	if name != "Hotel Amsterdam" {
+		t.Errorf("name = %v, want Hotel Amsterdam", name)
+	}
+	// reviewScore.score should be denormalized through __ref.
+	score := jsonPath(hotel, "basicPropertyData.reviewScore.score")
+	if score != float64(8.5) {
+		t.Errorf("score = %v, want 8.5", score)
+	}
+	// location should be denormalized.
+	lat := jsonPath(hotel, "basicPropertyData.location.latitude")
+	if lat != 52.37 {
+		t.Errorf("lat = %v, want 52.37", lat)
+	}
+}

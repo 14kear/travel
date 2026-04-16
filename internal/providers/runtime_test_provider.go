@@ -343,6 +343,14 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		return result
 	}
 
+	// Denormalize Apollo cache if detected (SSR providers like Booking.com).
+	if cache, isMap := raw.(map[string]any); isMap {
+		if _, hasRoot := cache["ROOT_QUERY"]; hasRoot {
+			raw = denormalizeApollo(raw, cache, nil)
+		}
+	}
+
+
 	// Surface GraphQL-style {"errors":[...]} responses before complaining
 	// about results_path — this makes stale persistedQuery hashes and WAF
 	// denials diagnosable at a glance instead of hiding behind a generic
