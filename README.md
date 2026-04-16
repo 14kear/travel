@@ -16,7 +16,7 @@
 
 > **41 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
 >
-> Also works as a standalone CLI with 41 commands.
+> Also works as a standalone CLI with 39 commands.
 
 ### What it looks like
 
@@ -41,22 +41,42 @@
 
 trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights, Google Hotels, Trivago, Airbnb, Ferryhopper, and European ground transport data. It searches, optimizes, and applies travel hacks automatically — no personal API keys required, no monthly fees, API-first by default, with optional browser-assisted fallbacks only for a few protected providers.
 
-## Quick Setup (30 seconds)
+## Setup
 
-### 1. Install
+**Tell your AI assistant** (recommended):
+
+> Read https://github.com/MikkoParkkola/trvl and install trvl as my travel MCP server
+
+Your agent will install the binary, wire itself up, and verify the connection. Works in Claude Code, Cursor, Windsurf, Codex, and any AI with terminal access.
+
+**Or install manually:**
 
 ```bash
-# Homebrew (macOS / Linux)
-brew install MikkoParkkola/tap/trvl
-
-# Or without Homebrew — download the binary directly
-curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+brew install MikkoParkkola/tap/trvl   # install
+trvl mcp install                       # wire to Claude Desktop (default)
 ```
+
+`trvl mcp install` auto-detects your AI client. Specify one with `--client`:
+
+```bash
+trvl mcp install --client claude-code  # Claude Code
+trvl mcp install --client cursor       # Cursor
+trvl mcp install --client windsurf     # Windsurf
+trvl mcp install --client codex        # OpenAI Codex CLI
+trvl mcp install --client vscode       # VS Code Copilot
+trvl mcp install --client zed          # Zed
+trvl mcp install --client --list       # show all 10 supported clients
+```
+
+Also supported: `gemini`, `amazon-q`, `lm-studio`. Restart your client after install.
 
 <details>
 <summary>More install options</summary>
 
 ```bash
+# Direct binary (no Homebrew)
+curl -fsSL https://github.com/MikkoParkkola/trvl/releases/latest/download/trvl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+
 # Go
 go install github.com/MikkoParkkola/trvl/cmd/trvl@latest
 
@@ -65,55 +85,14 @@ docker run --rm ghcr.io/mikkoparkkola/trvl flights HEL NRT 2026-06-15
 
 # Build from source
 git clone https://github.com/MikkoParkkola/trvl.git && cd trvl && make build
-```
 
-</details>
-
-### 2. Connect to your AI assistant
-
-**Automatic** (recommended) — trvl installs itself into your MCP client's config:
-
-```bash
-trvl mcp install                       # Claude Desktop (default)
-trvl mcp install --client claude-code  # Claude Code
-trvl mcp install --client cursor       # Cursor
-trvl mcp install --client windsurf     # Windsurf
-trvl mcp install --client codex        # OpenAI Codex CLI
-trvl mcp install --client vscode       # VS Code Copilot
-trvl mcp install --client zed          # Zed
-trvl mcp install --client --list       # show all 10 supported clients
-trvl mcp install --dry-run             # preview without writing
-```
-
-Also supported: `gemini`, `amazon-q`, `lm-studio`. Restart your client after install.
-
-**Manual** — add to your MCP client config (Claude Desktop, Cursor, Windsurf, etc.):
-
-```json
-{
-  "mcpServers": {
-    "trvl": {
-      "command": "trvl",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-Then restart your MCP client. That's it.
-
-<details>
-<summary>Config file locations and Claude Code CLI</summary>
-
-**Claude Code:**
-```bash
+# Claude Code CLI
 claude mcp add trvl --transport stdio -- trvl mcp
-```
 
-**Claude Desktop** `claude_desktop_config.json`:
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+# Manual JSON (Claude Desktop, Cursor, Windsurf, etc.)
+# Add to your MCP client config:
+# { "mcpServers": { "trvl": { "command": "trvl", "args": ["mcp"] } } }
+```
 
 </details>
 
@@ -342,7 +321,7 @@ See [Quick Setup step 3](#3-optional-teach-your-ai-about-trvl) above for AGENTS.
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 40 commands:
+trvl also works as a standalone CLI tool with 39 commands:
 
 All search commands accept `--currency <CODE>` (e.g. `--currency EUR`) to convert displayed prices. trvl detects the actual API currency and converts at the display layer — no hardcoded currencies.
 
