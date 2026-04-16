@@ -205,13 +205,22 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// advanced since we last parsed it, ReloadIfChanged swaps in the fresh
 	// config; we then drop the cached providerClient so its HTTP client,
 	// rate limiter and auth cache are rebuilt from the new config.
+	var oldJar http.CookieJar
 	if fresh := rt.registry.ReloadIfChanged(cfg.ID); fresh != nil && fresh != cfg {
+		// Preserve the cookie jar so WAF tokens and session cookies survive
+		// config reloads. The jar is installed on the new client below.
 		rt.mu.Lock()
+		if old := rt.clients[cfg.ID]; old != nil && old.client != nil {
+			oldJar = old.client.Jar
+		}
 		delete(rt.clients, cfg.ID)
 		rt.mu.Unlock()
 		cfg = fresh
 	}
 	pc := rt.getOrCreateClient(cfg)
+	if oldJar != nil && pc.client != nil {
+		pc.client.Jar = oldJar
+	}
 
 	// Rate limit.
 	if err := pc.limiter.Wait(ctx); err != nil {
