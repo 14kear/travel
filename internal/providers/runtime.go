@@ -315,6 +315,21 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body[:min(len(body), 200)]))
 	}
 
+	// If the provider embeds its API response inside an HTML body (e.g.
+	// Booking SSR'd Apollo cache), apply the configured regex to pull the
+	// JSON blob out first. Capture group 1 replaces `body` for JSON parsing.
+	if pattern := cfg.ResponseMapping.BodyExtractPattern; pattern != "" {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compile body_extract_pattern: %w", err)
+		}
+		m := re.FindSubmatch(body)
+		if len(m) < 2 {
+			return nil, fmt.Errorf("body_extract_pattern %q did not match response body", pattern)
+		}
+		body = m[1]
+	}
+
 	// Parse JSON.
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {

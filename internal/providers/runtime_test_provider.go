@@ -310,6 +310,28 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 	// Step 3: Parse JSON response.
 	result.Step = "response_parse"
 
+	// If the provider embeds its API response inside an HTML body (SSR'd
+	// Apollo cache etc.), apply the configured regex to pull the JSON blob
+	// out first. Capture group 1 replaces `body` for JSON parsing.
+	if pattern := cfg.ResponseMapping.BodyExtractPattern; pattern != "" {
+		re, reErr := regexp.Compile(pattern)
+		if reErr != nil {
+			result.Error = fmt.Sprintf("response_parse: compile body_extract_pattern: %v", reErr)
+			return result
+		}
+		m := re.FindSubmatch(body)
+		if len(m) < 2 {
+			snippet := string(body)
+			if len(snippet) > 500 {
+				snippet = snippet[:500]
+			}
+			result.BodySnippet = snippet
+			result.Error = fmt.Sprintf("response_parse: body_extract_pattern %q did not match response body", pattern)
+			return result
+		}
+		body = m[1]
+	}
+
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		snippet := string(body)

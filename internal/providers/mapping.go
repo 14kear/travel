@@ -61,6 +61,27 @@ func jsonPath(data any, path string) any {
 	for _, part := range parts {
 		switch v := current.(type) {
 		case map[string]any:
+			// Wildcard segment: "prefix*" matches the first map key whose
+			// name starts with `prefix`. Enables paths like
+			// `searchQueries.search*.results` against Apollo normalized
+			// caches where the real key is `search({"input":...})`.
+			if strings.HasSuffix(part, "*") {
+				prefix := part[:len(part)-1]
+				var matched any
+				found := false
+				for k, val := range v {
+					if strings.HasPrefix(k, prefix) {
+						matched = val
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil
+				}
+				current = matched
+				continue
+			}
 			current = v[part]
 		case []any:
 			// Iterate the array and prefer the first element with a

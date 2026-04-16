@@ -77,10 +77,25 @@ type Extraction struct {
 	Default  string `json:"default,omitempty"` // value to use when pattern does not match (e.g. last-known persisted-query hash)
 }
 
-// ResponseMapping describes how to extract results from the JSON response.
+// ResponseMapping describes how to extract results from the provider response.
+//
+// The default flow parses the HTTP response body as JSON and walks ResultsPath
+// to locate the results array. Two extensions are available:
+//
+//   - BodyExtractPattern: when set, the regex is first applied to the raw
+//     HTTP body and capture group 1 becomes the input for JSON parsing.
+//     This is the hook for server-side-rendered providers that embed their
+//     API response JSON inside an HTML `<script type="application/json">`
+//     block (e.g. Booking.com's Apollo cache blob).
+//
+//   - ResultsPath wildcards: a segment ending in `*` matches the first child
+//     key starting with that prefix. Required for Apollo's normalized cache
+//     where the query key is `search({"input":{...giant-JSON...}})` and
+//     varies per request; the path becomes `.searchQueries.search*.results`.
 type ResponseMapping struct {
-	ResultsPath string            `json:"results_path"` // dot-notation path to results array
-	Fields      map[string]string `json:"fields"`       // model field -> JSON path mapping
+	ResultsPath        string            `json:"results_path"`                    // dot-notation path to results array, supports `prefix*` segment wildcard
+	Fields             map[string]string `json:"fields"`                          // model field -> JSON path mapping
+	BodyExtractPattern string            `json:"body_extract_pattern,omitempty"` // optional regex applied to the HTTP body; capture group 1 becomes the JSON input
 }
 
 // RateLimitConfig controls request pacing.
