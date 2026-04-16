@@ -37,6 +37,14 @@ type ProviderConfig struct {
 	// substitution of the ${location} variable. Example:
 	//   {"prague": "19", "amsterdam": "3", "helsinki": "45"}
 	CityLookup map[string]string `json:"city_lookup,omitempty"`
+
+	// PropertyTypeLookup maps normalized property type names to provider-specific
+	// identifiers (e.g. Booking uses numeric codes, Airbnb uses string IDs).
+	// Used when the endpoint/query template contains ${property_type} and the
+	// provider needs a translation from the canonical names ("hotel", "apartment",
+	// "hostel", "resort", "bnb", "villa") to its own vocabulary. Example:
+	//   {"hotel": "204", "apartment": "201", "hostel": "203"}
+	PropertyTypeLookup map[string]string `json:"property_type_lookup,omitempty"`
 }
 
 // AuthConfig describes how to authenticate with the provider.

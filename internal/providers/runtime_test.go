@@ -394,7 +394,7 @@ func TestSearchHotelsFullFlow(t *testing.T) {
 	}
 
 	rt := NewRuntime(reg)
-	hotels, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856613, 2.352222, "2025-06-01", "2025-06-05", "USD", 2)
+	hotels, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856613, 2.352222, "2025-06-01", "2025-06-05", "USD", 2, nil)
 	if err != nil {
 		t.Fatalf("SearchHotels: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestSearchHotelsNoProviders(t *testing.T) {
 	}
 
 	rt := NewRuntime(reg)
-	hotels, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856613, 2.352222, "2025-06-01", "2025-06-05", "USD", 2)
+	hotels, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856613, 2.352222, "2025-06-01", "2025-06-05", "USD", 2, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestPreflightAuthExtraction(t *testing.T) {
 	}
 
 	rt := NewRuntime(reg)
-	hotels, _, err := rt.SearchHotels(context.Background(), "Test", 0, 0, "2025-06-01", "2025-06-05", "USD", 2)
+	hotels, _, err := rt.SearchHotels(context.Background(), "Test", 0, 0, "2025-06-01", "2025-06-05", "USD", 2, nil)
 	if err != nil {
 		t.Fatalf("SearchHotels: %v", err)
 	}
@@ -804,6 +804,128 @@ func TestResolveCityID(t *testing.T) {
 	}
 }
 
+func TestResolvePropertyType(t *testing.T) {
+	lookup := map[string]string{
+		"hotel":     "204",
+		"apartment": "201",
+		"hostel":    "203",
+	}
+	tests := []struct{ input, want string }{
+		{"hotel", "204"},
+		{"Hotel", "204"},
+		{"APARTMENT", "201"},
+		{"hostel", "203"},
+		{"  Hotel  ", "204"},
+		{"resort", ""},  // not in lookup
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := resolvePropertyType(lookup, tt.input); got != tt.want {
+				t.Errorf("resolvePropertyType(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+	// Nil lookup returns "".
+	if got := resolvePropertyType(nil, "hotel"); got != "" {
+		t.Errorf("nil lookup: got %q, want empty", got)
+	}
+}
+
+func TestSearchHotelsFilterPassthrough(t *testing.T) {
+	// Mock server that captures query params to verify filter vars are substituted.
+	var capturedQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.RawQuery
+		resp := map[string]any{
+			"results": []any{
+				map[string]any{"name": "Filter Hotel", "id": "fh1"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	reg, err := NewRegistryAt(dir)
+	if err != nil {
+		t.Fatalf("NewRegistryAt: %v", err)
+	}
+
+	cfg := &ProviderConfig{
+		ID:       "filter-test",
+		Name:     "Filter Test",
+		Category: "hotels",
+		Endpoint: srv.URL + "/search",
+		Method:   "GET",
+		QueryParams: map[string]string{
+			"min_price":         "${min_price}",
+			"max_price":         "${max_price}",
+			"property_type":     "${property_type}",
+			"sort":              "${sort}",
+			"stars":             "${stars}",
+			"min_rating":        "${min_rating}",
+			"amenities":         "${amenities}",
+			"free_cancellation": "${free_cancellation}",
+		},
+		PropertyTypeLookup: map[string]string{
+			"hotel":     "204",
+			"apartment": "201",
+		},
+		ResponseMapping: ResponseMapping{
+			ResultsPath: "results",
+			Fields: map[string]string{
+				"name":     "name",
+				"hotel_id": "id",
+			},
+		},
+		RateLimit: RateLimitConfig{
+			RequestsPerSecond: 100,
+			Burst:             10,
+		},
+	}
+	if err := reg.Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	rt := NewRuntime(reg)
+	filters := &HotelFilterParams{
+		MinPrice:         50,
+		MaxPrice:         300,
+		PropertyType:     "hotel",
+		Sort:             "price",
+		Stars:            4,
+		MinRating:        4.0,
+		Amenities:        []string{"wifi", "pool"},
+		FreeCancellation: true,
+	}
+	hotels, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856, 2.352, "2025-06-01", "2025-06-05", "EUR", 2, filters)
+	if err != nil {
+		t.Fatalf("SearchHotels: %v", err)
+	}
+	if len(hotels) != 1 {
+		t.Fatalf("got %d hotels, want 1", len(hotels))
+	}
+
+	// Verify filter vars were substituted into query params.
+	checks := map[string]string{
+		"min_price=50":          "min_price",
+		"max_price=300":         "max_price",
+		"property_type=204":     "property_type (resolved via lookup)",
+		"sort=price":            "sort",
+		"stars=4":               "stars",
+		"min_rating=4.0":        "min_rating",
+		"amenities=wifi%2Cpool": "amenities",
+		"free_cancellation=1":   "free_cancellation",
+	}
+	for substr, label := range checks {
+		if !containsSubstring(capturedQuery, substr) {
+			t.Errorf("query missing %s: %s not in %q", label, substr, capturedQuery)
+		}
+	}
+}
+
 func TestJSONPathSkipsEmptyArrays(t *testing.T) {
 	// Simulates Airbnb v2 API where explore_tabs.sections has an "inserts"
 	// section with empty listings before the real "listings" section.
@@ -894,14 +1016,11 @@ func TestDenormalizeApollo(t *testing.T) {
 		},
 	}
 
-	resolved := denormalizeApollo(cache, cache, nil)
-	rm, ok := resolved.(map[string]any)
-	if !ok {
-		t.Fatal("denormalized result is not a map")
-	}
+	// Only denormalize ROOT_QUERY subtree (mirrors runtime.go behavior).
+	cache["ROOT_QUERY"] = denormalizeApollo(cache["ROOT_QUERY"], cache, nil)
 
 	// Navigate: ROOT_QUERY.searchQueries.search*.results[0].basicPropertyData.reviewScore.score
-	root := rm["ROOT_QUERY"].(map[string]any)
+	root := cache["ROOT_QUERY"].(map[string]any)
 	sq := root["searchQueries"].(map[string]any)
 	// Use the wildcard helper.
 	val := jsonPath(sq, "search*.results")

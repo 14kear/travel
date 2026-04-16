@@ -241,6 +241,10 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		vars["${city_id}"] = id
 	}
 
+	// Note: TestProvider does not receive filter params — it uses a fixed
+	// set of test variables. Filter variable substitution is exercised via
+	// the live searchProvider path and its unit tests.
+
 	// Add auth-extracted variables.
 	for k, v := range pc.authValues {
 		vars["${"+k+"}"] = v
@@ -344,9 +348,10 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 	}
 
 	// Denormalize Apollo cache if detected (SSR providers like Booking.com).
+	// Only denormalize ROOT_QUERY subtree to avoid seen-set poisoning.
 	if cache, isMap := raw.(map[string]any); isMap {
-		if _, hasRoot := cache["ROOT_QUERY"]; hasRoot {
-			raw = denormalizeApollo(raw, cache, nil)
+		if rootQuery, hasRoot := cache["ROOT_QUERY"]; hasRoot {
+			cache["ROOT_QUERY"] = denormalizeApollo(rootQuery, cache, nil)
 		}
 	}
 

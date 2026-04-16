@@ -217,6 +217,30 @@ func resolveCityID(lookup map[string]string, location string) string {
 	return ""
 }
 
+// resolvePropertyType maps a normalized property type name (e.g. "apartment",
+// "hostel", "hotel") to a provider-specific identifier using the lookup table.
+// Like resolveCityID, matching is case-insensitive. Returns the empty string
+// when no mapping exists or when the property type is blank.
+func resolvePropertyType(lookup map[string]string, propertyType string) string {
+	if len(lookup) == 0 {
+		return ""
+	}
+	pt := strings.ToLower(strings.TrimSpace(propertyType))
+	if pt == "" {
+		return ""
+	}
+	if id, ok := lookup[pt]; ok {
+		return id
+	}
+	// Case-insensitive scan over keys.
+	for key, id := range lookup {
+		if strings.ToLower(key) == pt {
+			return id
+		}
+	}
+	return ""
+}
+
 // mapHotelResult maps a raw JSON object to a HotelResult using field mappings.
 func mapHotelResult(raw any, fields map[string]string) models.HotelResult {
 	var h models.HotelResult

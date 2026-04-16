@@ -40,6 +40,19 @@ const (
 	maxResponseBytes   = 10 * 1024 * 1024 // 10 MB
 )
 
+// HotelFilterParams carries search filter values that should be passed through
+// to external provider URL templates and query parameters via ${var} substitution.
+type HotelFilterParams struct {
+	MinPrice         float64
+	MaxPrice         float64
+	PropertyType     string   // normalized: "hotel", "apartment", "hostel", etc.
+	Sort             string   // "price", "rating", "distance", "stars"
+	Stars            int      // minimum star rating, 0 = no filter
+	MinRating        float64  // minimum guest rating, 0 = no filter
+	Amenities        []string // required amenities
+	FreeCancellation bool
+}
+
 // Runtime is the generic HTTP execution engine for configured providers.
 type Runtime struct {
 	registry *Registry
@@ -117,8 +130,10 @@ func (rt *Runtime) getOrCreateClient(cfg *ProviderConfig) *providerClient {
 
 // SearchHotels queries all hotel-category providers and returns combined results
 // along with per-provider status entries so the caller can surface failures to
-// the LLM for autonomous diagnosis.
-func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon float64, checkin, checkout, currency string, guests int) ([]models.HotelResult, []models.ProviderStatus, error) {
+// the LLM for autonomous diagnosis. The optional filters parameter passes
+// search filters (price, property type, stars, etc.) through to provider URL
+// templates. A nil filters value is safe and means no filter vars are set.
+func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon float64, checkin, checkout, currency string, guests int, filters *HotelFilterParams) ([]models.HotelResult, []models.ProviderStatus, error) {
 	providers := rt.registry.ListByCategory("hotels")
 	if len(providers) == 0 {
 		return nil, nil, nil
@@ -138,7 +153,7 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 		wg.Add(1)
 		go func(cfg *ProviderConfig) {
 			defer wg.Done()
-			hotels, err := rt.searchProvider(ctx, cfg, location, lat, lon, checkin, checkout, currency, guests)
+			hotels, err := rt.searchProvider(ctx, cfg, location, lat, lon, checkin, checkout, currency, guests, filters)
 			results <- result{hotels: hotels, err: err, id: cfg.ID, name: cfg.Name}
 		}(cfg)
 	}
@@ -200,7 +215,7 @@ func providerFixHint(err error) string {
 	}
 }
 
-func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, location string, lat, lon float64, checkin, checkout, currency string, guests int) ([]models.HotelResult, error) {
+func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, location string, lat, lon float64, checkin, checkout, currency string, guests int, filters *HotelFilterParams) ([]models.HotelResult, error) {
 	// Pick up on-disk edits without an MCP restart. If the file mtime has
 	// advanced since we last parsed it, ReloadIfChanged swaps in the fresh
 	// config; we then drop the cached providerClient so its HTTP client,
@@ -258,6 +273,42 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// table (e.g. Hostelworld requires numeric city IDs in the URL path).
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+	}
+
+	// Add filter variables when provided. These allow provider URL
+	// templates and query params to reference ${min_price}, ${max_price},
+	// ${property_type}, ${sort}, ${stars}, ${min_rating}, ${amenities},
+	// and ${free_cancellation}.
+	if filters != nil {
+		if filters.MinPrice > 0 {
+			vars["${min_price}"] = strconv.FormatFloat(filters.MinPrice, 'f', -1, 64)
+		}
+		if filters.MaxPrice > 0 {
+			vars["${max_price}"] = strconv.FormatFloat(filters.MaxPrice, 'f', -1, 64)
+		}
+		if filters.PropertyType != "" {
+			// Resolve to provider-specific ID if a lookup table exists.
+			if resolved := resolvePropertyType(cfg.PropertyTypeLookup, filters.PropertyType); resolved != "" {
+				vars["${property_type}"] = resolved
+			} else {
+				vars["${property_type}"] = filters.PropertyType
+			}
+		}
+		if filters.Sort != "" {
+			vars["${sort}"] = filters.Sort
+		}
+		if filters.Stars > 0 {
+			vars["${stars}"] = strconv.Itoa(filters.Stars)
+		}
+		if filters.MinRating > 0 {
+			vars["${min_rating}"] = strconv.FormatFloat(filters.MinRating, 'f', 1, 64)
+		}
+		if len(filters.Amenities) > 0 {
+			vars["${amenities}"] = strings.Join(filters.Amenities, ",")
+		}
+		if filters.FreeCancellation {
+			vars["${free_cancellation}"] = "1"
+		}
 	}
 
 	// Add auth-extracted variables.
@@ -352,8 +403,14 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// (reviewScore, location, pricing) are stored as separate cache entries
 	// linked via {"__ref": "BasicPropertyData:12345"}.
 	if cache, ok := raw.(map[string]any); ok {
-		if _, hasRoot := cache["ROOT_QUERY"]; hasRoot {
-			raw = denormalizeApollo(raw, cache, nil)
+		if rootQuery, hasRoot := cache["ROOT_QUERY"]; hasRoot {
+			// Only denormalize the ROOT_QUERY subtree, using the full cache
+			// as the ref-lookup source. Denormalizing the entire top-level
+			// cache would poison the `seen` set (cycle guard) with refs
+			// encountered via different top-level keys, causing legitimate
+			// multi-use refs (e.g. ReviewScore:42 used by both the top-level
+			// entity AND the ROOT_QUERY chain) to appear circular.
+			cache["ROOT_QUERY"] = denormalizeApollo(rootQuery, cache, nil)
 		}
 	}
 

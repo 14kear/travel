@@ -263,8 +263,18 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 				slog.Warn("external providers: geocode failed", "error", err)
 				return
 			}
+			filters := &providers.HotelFilterParams{
+				MinPrice:         opts.MinPrice,
+				MaxPrice:         opts.MaxPrice,
+				PropertyType:     opts.PropertyType,
+				Sort:             opts.Sort,
+				Stars:            opts.Stars,
+				MinRating:        opts.MinRating,
+				Amenities:        opts.Amenities,
+				FreeCancellation: opts.FreeCancellation,
+			}
 			res, statuses, err := externalProviderRuntime.SearchHotels(ctx, location, lat, lon,
-				auxOpts.CheckIn, auxOpts.CheckOut, auxOpts.Currency, auxOpts.Guests)
+				auxOpts.CheckIn, auxOpts.CheckOut, auxOpts.Currency, auxOpts.Guests, filters)
 			if err != nil {
 				slog.Warn("external providers search failed", "error", err)
 				providerStatuses = statuses // keep statuses even on error
