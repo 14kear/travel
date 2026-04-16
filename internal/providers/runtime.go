@@ -344,8 +344,12 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	}
 	pc.authMu.RUnlock()
 
-	// Build endpoint URL.
+	// Build endpoint URL. After substitution, strip any remaining ${...}
+	// placeholders and their preceding &/? separators so optional filter
+	// params that weren't set don't produce malformed URLs (e.g.
+	// "&nflt=${nflt}" → removed entirely when no filters are active).
 	endpoint := substituteVars(cfg.Endpoint, vars)
+	endpoint = stripUnresolvedPlaceholders(endpoint)
 
 	// Build query params.
 	if len(cfg.QueryParams) > 0 {

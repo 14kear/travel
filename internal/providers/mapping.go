@@ -17,6 +17,35 @@ func substituteVars(s string, vars map[string]string) string {
 	return s
 }
 
+// stripUnresolvedPlaceholders removes any remaining ${...} substrings from
+// a URL, along with the &key= or ?key= prefix that leads to them. This
+// handles optional filter parameters that weren't set (e.g. "&nflt=${nflt}"
+// when no filters are active).
+func stripUnresolvedPlaceholders(u string) string {
+	for {
+		idx := strings.Index(u, "${")
+		if idx < 0 {
+			break
+		}
+		end := strings.Index(u[idx:], "}")
+		if end < 0 {
+			break
+		}
+		end += idx + 1 // position after closing }
+		// Walk backwards to remove the &key= or ?key= prefix.
+		start := idx
+		for start > 0 && u[start-1] != '&' && u[start-1] != '?' {
+			start--
+		}
+		// Include the & separator itself (but keep ? since it starts the query).
+		if start > 0 && u[start-1] == '&' {
+			start--
+		}
+		u = u[:start] + u[end:]
+	}
+	return u
+}
+
 // substituteEnvVars replaces ${env.VAR_NAME} placeholders with values from
 // the process environment. This allows provider configs to reference API keys
 // stored in environment variables without hardcoding them.
