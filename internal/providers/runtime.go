@@ -242,6 +242,20 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("rate limit: %w", err)
 	}
 
+	// When cookies.source is "browser", unconditionally seed the client's
+	// cookie jar with the user's real browser cookies BEFORE preflight.
+	// This carries JS-written sensor cookies (Akamai bm_sz, PerimeterX
+	// _pxhd) that bot-detection systems validate server-side. Without
+	// them, providers like Booking.com classify the request as b_bot and
+	// strip review scores from the SSR response.
+	if cfg.Cookies.Source == "browser" {
+		endpointURL := cfg.Endpoint
+		if cfg.Auth != nil && cfg.Auth.PreflightURL != "" {
+			endpointURL = cfg.Auth.PreflightURL
+		}
+		applyBrowserCookies(pc.client, endpointURL)
+	}
+
 	// Preflight auth if needed.
 	if cfg.Auth != nil && cfg.Auth.Type == "preflight" {
 		if err := rt.runPreflight(ctx, pc); err != nil {
