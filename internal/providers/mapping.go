@@ -317,6 +317,28 @@ func extractBlocksPriceSpread(raw any) (maxPrice float64, roomCount int) {
 	return maxPrice, len(seen)
 }
 
+// Hardcoded approximate exchange rates for cross-provider price normalization.
+// This is a personal tool — close enough beats an API dependency.
+var fxRates = map[[2]string]float64{
+	{"USD", "EUR"}: 0.92,
+	{"GBP", "EUR"}: 1.16,
+	{"EUR", "USD"}: 1.09,
+	{"EUR", "GBP"}: 0.86,
+}
+
+// normalizePrice converts price from fromCurrency to toCurrency using
+// hardcoded approximate rates. Returns price unchanged when currencies
+// match, either is empty, or no rate is available.
+func normalizePrice(price float64, fromCurrency, toCurrency string) float64 {
+	if fromCurrency == toCurrency || fromCurrency == "" || toCurrency == "" {
+		return price
+	}
+	if r, ok := fxRates[[2]string{fromCurrency, toCurrency}]; ok {
+		return price * r
+	}
+	return price
+}
+
 func toFloat64(v any) float64 {
 	switch n := v.(type) {
 	case float64:

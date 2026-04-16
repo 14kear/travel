@@ -499,6 +499,18 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			src.RoomCount = roomCt
 		}
 		h.Sources = []models.PriceSource{src}
+
+		// Normalize top-level price to the requested currency so
+		// cross-provider comparison works (e.g. USD Booking vs EUR Google).
+		// Airbnb returns prices in the requested currency but leaves the
+		// currency field empty — treat empty as already-correct.
+		srcCurrency := h.Currency
+		if srcCurrency == "" {
+			srcCurrency = currency // assume price is in the requested currency
+		}
+		h.Price = normalizePrice(h.Price, srcCurrency, currency)
+		h.Currency = currency
+
 		hotels = append(hotels, h)
 	}
 

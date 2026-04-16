@@ -1046,3 +1046,35 @@ func TestDenormalizeApollo(t *testing.T) {
 		t.Errorf("lat = %v, want 52.37", lat)
 	}
 }
+
+func TestNormalizePrice(t *testing.T) {
+	tests := []struct {
+		name  string
+		price float64
+		from  string
+		to    string
+		want  float64
+	}{
+		{"USD to EUR", 100, "USD", "EUR", 92},
+		{"EUR to USD", 100, "EUR", "USD", 109},
+		{"GBP to EUR", 100, "GBP", "EUR", 116},
+		{"EUR to GBP", 100, "EUR", "GBP", 86},
+		{"same currency", 85, "EUR", "EUR", 85},
+		{"empty from (Airbnb)", 75, "", "EUR", 75},
+		{"empty to", 75, "USD", "", 75},
+		{"both empty", 75, "", "", 75},
+		{"unknown pair returns unchanged", 100, "JPY", "EUR", 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizePrice(tt.price, tt.from, tt.to)
+			diff := got - tt.want
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > 0.01 {
+				t.Errorf("normalizePrice(%v, %q, %q) = %v, want %v", tt.price, tt.from, tt.to, got, tt.want)
+			}
+		})
+	}
+}
