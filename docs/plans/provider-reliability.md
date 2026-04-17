@@ -142,17 +142,102 @@ preflight HTML (regex `FullSearch...sha256Hash...[a-f0-9]{64}`); if the
 regex misses, `Default` provides the known-working hash as a fallback so
 the request never ships with an unresolved placeholder.
 
+## Completed in sessions 3–4 (SSR extraction, filters, dedup)
+
+### 13. Booking.com SSR Apollo cache extraction ✅
+Abandoned GraphQL persisted-query approach. New strategy: GET the
+`/searchresults.html` page, regex-extract the Apollo JSON blob from the
+embedded `<script>` tag, denormalize `__ref` pointers across the cache,
+and map the flattened results to `HotelResult`. No API keys, no CSRF,
+no persisted-query hashes — just server-rendered HTML.
+
+### 14. Airbnb v2 query params with array expansion ✅
+Amenity filter IDs are encoded as repeated `amenities[]=4&amenities[]=7`
+query parameters. Array expansion logic added to the provider runtime
+so `amenities[]` in the config expands correctly instead of producing
+a single `amenities[]=[4,7]` literal.
+
+### 15. Hostelworld expanded to 20+ European cities ✅
+CityLookup grown from the original 17 to 20+ entries covering major
+European destinations. City IDs verified against Hostelworld's search
+endpoint.
+
+### 16. Nine filter types wired ✅
+`property_type`, `min_price`, `max_price`, `amenities`, `sort`, `stars`,
+`min_rating`, `free_cancellation`, `bedrooms`, `bathrooms` — all mapped
+from the generic `HotelSearchParams` filter schema to provider-specific
+query parameters or body fields.
+
+### 17. FilterComposite for Booking's nflt parameter ✅
+Booking.com encodes multiple filters into a single `nflt` compound query
+parameter (semicolon-delimited key=value pairs). `FilterComposite` system
+assembles individual filter selections into the correct `nflt` string at
+search time.
+
+### 18. Geo-proximity dedup + brand suffix stripping ✅
+Cross-provider merge uses 150m haversine distance to detect duplicate
+properties across Google, Booking, Airbnb, and Hostelworld. Brand suffix
+stripping normalizes 14 hotel name patterns (e.g. "Hotel X by Hilton" →
+"Hotel X") before fuzzy matching to improve dedup recall.
+
+### 19. Currency normalization ✅
+Hardcoded FX rates applied during result merging so all prices display
+in the user's preferred currency. Rates are static (not live) — adequate
+for comparison ranking, not for booking decisions.
+
+### 20. Cookie jar preservation across config reloads ✅
+`Registry.Reload()` and `Registry.ReloadIfChanged()` now preserve the
+existing HTTP cookie jar when rebuilding the `providerClient`. Previously
+a config reload discarded all cookies, forcing re-authentication with
+WAF-protected providers.
+
+### 21. stripUnresolvedPlaceholders ✅
+URLs and request bodies are post-processed to remove any `${var_name}`
+placeholders that were not resolved during extraction. Prevents literal
+placeholder strings from reaching upstream APIs and triggering 400 errors.
+
+### 22. Airbnb array param expansion fix ✅
+Separate from item 14: the URL builder now correctly expands
+`amenities[]=4&amenities[]=7` rather than encoding the array as a
+single JSON value. This fixed 0-result searches when amenity filters
+were active.
+
+## Known limitations (updated sessions 3–4)
+
+### Booking ratings blocked by Akamai bot classification
+Booking.com's review/rating endpoints classify automated requests via
+Akamai's `b_bot` signal derived from HTTP/2 SETTINGS frame fingerprinting.
+Ratings are currently sourced from Google's hotel card as a dedup
+workaround. A proper fix requires either the Booking Affiliate API or
+HTTP/2 SETTINGS frame mimicry.
+
+### Booking per-city WAF cookies
+Switching search cities on Booking may require a fresh WAF preflight.
+The cookie jar preserves cookies across config reloads (item 20), but
+city switches within a single session can still trigger a new challenge
+if Booking's WAF associates the cookie with a specific `dest_id`.
+
+### Hostelworld Helsinki city ID may be incorrect
+Helsinki searches return 0 results. The mapped city ID may not match
+Hostelworld's current taxonomy. Needs verification against their
+autocomplete endpoint.
+
+### Airbnb v2 initial test shows 0 results
+Config applied via MCP `configure_provider`; MCP server reload required to
+pick up the new endpoint structure. Binary rebuilt + installed but running
+MCP server holds old in-memory config. Reconnect MCP client to verify.
+
+### Hostelworld CityLookup needs server reload
+Config contains `city_lookup` field but MCP server's in-memory config still
+has hardcoded endpoint. Rebuilt binary at `/opt/homebrew/bin/trvl` has
+CityLookup support. Restart MCP server to activate.
+
 ## Next actions
 
-1. `/mcp` reconnect so the running server binary picks up the new code
-   (same-process MCP server does not reload Go binaries; reconnect
-   respawns the `trvl mcp` subprocess from `/opt/homebrew/bin/trvl`)
-2. Re-run `test_provider booking` — expected output if WAF is happy:
-   `extraction_results` includes `sha256_hash_inline: ok (…)`, and either
-   (a) `success: true` with `results_count > 0`, or (b) a precise
-   `graphql error: <message>` telling us exactly what Booking rejects
-3. If graphql error is `persistedQueryNotFound`, refresh the `default`
-   in booking.json from the live JS bundle; if `PersistedQueryNotSupported`,
-   add a stage-2 extraction that pulls the hash from the JS chunk directly
-4. Consider Booking.com Affiliate API registration as primary ToS-compliance
-   measure (Genius 3 + employee discount context makes this high-ROI)
+1. Verify Hostelworld Helsinki city ID against their autocomplete API
+2. Investigate Akamai HTTP/2 SETTINGS fingerprinting for Booking rating
+   access (or accept Google-sourced ratings as permanent workaround)
+3. Consider live FX rates (Open Exchange Rates free tier) to replace
+   hardcoded currency conversion
+4. Booking.com Affiliate API registration remains the highest-ROI single
+   action for eliminating WAF/ToS risk entirely

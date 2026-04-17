@@ -68,6 +68,12 @@ type providerClient struct {
 	authMu     sync.RWMutex
 	authValues map[string]string
 	authExpiry time.Time
+	// lastPreflightURL tracks the fully-resolved preflight URL used for the
+	// current auth cache entry. When the preflight URL contains ${city_id} or
+	// other search-specific vars, switching cities produces a different URL
+	// and the auth cache must be invalidated — WAF cookies obtained for one
+	// dest_id are rejected for a different one.
+	lastPreflightURL string
 }
 
 // NewRuntime creates a Runtime backed by the given registry.
@@ -242,28 +248,11 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("rate limit: %w", err)
 	}
 
-	// When cookies.source is "browser", unconditionally seed the client's
-	// cookie jar with the user's real browser cookies BEFORE preflight.
-	// This carries JS-written sensor cookies (Akamai bm_sz, PerimeterX
-	// _pxhd) that bot-detection systems validate server-side. Without
-	// them, providers like Booking.com classify the request as b_bot and
-	// strip review scores from the SSR response.
-	if cfg.Cookies.Source == "browser" {
-		endpointURL := cfg.Endpoint
-		if cfg.Auth != nil && cfg.Auth.PreflightURL != "" {
-			endpointURL = cfg.Auth.PreflightURL
-		}
-		applyBrowserCookies(pc.client, endpointURL)
-	}
-
-	// Preflight auth if needed.
-	if cfg.Auth != nil && cfg.Auth.Type == "preflight" {
-		if err := rt.runPreflight(ctx, pc); err != nil {
-			return nil, fmt.Errorf("preflight: %w", err)
-		}
-	}
-
-	// Build variable map.
+	// Build variable map early — the preflight URL may contain ${city_id}
+	// or other search-specific placeholders that must be resolved before
+	// the preflight request fires. Without this, Booking's WAF rejects
+	// requests because cookies obtained for one dest_id (e.g. Paris) are
+	// tied to that city and fail when the actual search targets another.
 	neLat := lat + boundingBoxOffset
 	neLon := lon + boundingBoxOffset
 	swLat := lat - boundingBoxOffset
@@ -287,6 +276,29 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// table (e.g. Hostelworld requires numeric city IDs in the URL path).
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+	}
+
+	// When cookies.source is "browser", unconditionally seed the client's
+	// cookie jar with the user's real browser cookies BEFORE preflight.
+	// This carries JS-written sensor cookies (Akamai bm_sz, PerimeterX
+	// _pxhd) that bot-detection systems validate server-side. Without
+	// them, providers like Booking.com classify the request as b_bot and
+	// strip review scores from the SSR response.
+	if cfg.Cookies.Source == "browser" {
+		endpointURL := cfg.Endpoint
+		if cfg.Auth != nil && cfg.Auth.PreflightURL != "" {
+			endpointURL = substituteVars(cfg.Auth.PreflightURL, vars)
+		}
+		applyBrowserCookies(pc.client, endpointURL)
+	}
+
+	// Preflight auth if needed. The preflight URL is resolved with
+	// search-specific vars so that ${city_id} etc. produce a city-specific
+	// WAF session rather than reusing a hardcoded one.
+	if cfg.Auth != nil && cfg.Auth.Type == "preflight" {
+		if err := rt.runPreflight(ctx, pc, vars); err != nil {
+			return nil, fmt.Errorf("preflight: %w", err)
+		}
 	}
 
 	// Add filter variables when provided. These allow provider URL
@@ -595,39 +607,53 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 }
 
 // runPreflight performs a GET to the preflight URL and extracts auth values.
-func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
-	pc.authMu.RLock()
-	if time.Now().Before(pc.authExpiry) {
-		pc.authMu.RUnlock()
+// The vars map allows search-specific placeholders (e.g. ${city_id}) to be
+// resolved in the preflight URL, so WAF cookies are obtained for the actual
+// target city rather than a hardcoded default. When the resolved URL differs
+// from the last preflight (city changed), the auth cache is invalidated.
+func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient, vars map[string]string) error {
+	if pc.config.Auth == nil || pc.config.Auth.PreflightURL == "" {
 		return nil
 	}
+
+	// Resolve search-specific vars in the preflight URL so that ${city_id}
+	// etc. produce a city-specific WAF session.
+	resolvedURL := substituteVars(pc.config.Auth.PreflightURL, vars)
+
+	pc.authMu.RLock()
+	cacheValid := time.Now().Before(pc.authExpiry) && pc.lastPreflightURL == resolvedURL
 	pc.authMu.RUnlock()
+	if cacheValid {
+		return nil
+	}
 
 	pc.authMu.Lock()
 	defer pc.authMu.Unlock()
 
 	// Double-check after lock.
-	if time.Now().Before(pc.authExpiry) {
+	if time.Now().Before(pc.authExpiry) && pc.lastPreflightURL == resolvedURL {
 		return nil
 	}
 
-	if pc.config.Auth == nil || pc.config.Auth.PreflightURL == "" {
-		return nil
-	}
+	// Build a shallow copy of the auth config with the resolved URL so that
+	// doPreflightRequest, cookie helpers, and WAF solver all see the
+	// city-specific URL without mutating the shared config.
+	resolvedAuth := *pc.config.Auth
+	resolvedAuth.PreflightURL = resolvedURL
 
 	// Tier 0: try loading persisted cookies from a previous successful session.
 	// This makes browser escape hatch a one-time setup rather than per-search.
-	loadCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+	loadCachedCookies(pc.client, resolvedURL)
 
-	resp, body, err := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	resp, body, err := doPreflightRequest(ctx, pc.client, &resolvedAuth)
 	if err != nil {
 		return err
 	}
 
-	extracted := applyExtractions(pc.config.Auth.Extractions, resp, body, pc.authValues)
+	extracted := applyExtractions(resolvedAuth.Extractions, resp, body, pc.authValues)
 	// Stage 2: fetch any URL-based extractions (e.g. JS bundle for
 	// persisted-query sha256Hash) using the now-populated cookie jar.
-	extracted += applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
+	extracted += applyURLExtractions(ctx, pc.client, resolvedAuth.Extractions, pc.authValues)
 
 	// Fallback tier cascade:
 	//   Tier 1: preflight request already ran above (extracted ok? done)
@@ -639,23 +665,26 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 	// (Tier 2 — TLS-fingerprinted retry — is covered by the chrome HTTP
 	// client selected in getOrCreateClient; it runs implicitly on every
 	// request when cfg.TLS.Fingerprint == "chrome".)
-	if needsBrowserCookieFallback(resp.StatusCode, extracted, pc.config.Auth.Extractions) {
+	if needsBrowserCookieFallback(resp.StatusCode, extracted, resolvedAuth.Extractions) {
 		// Tier 3a: read cookies from user's browser (kooky).
-		if tryBrowserCookieRetry(ctx, pc) {
-			saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+		if tryBrowserCookieRetry(ctx, pc, &resolvedAuth) {
+			saveCachedCookies(pc.client, resolvedURL)
+			pc.lastPreflightURL = resolvedURL
 			pc.authExpiry = time.Now().Add(authCacheDuration)
 			return nil
 		}
 		// Tier 3b: run WAF challenge.js in sobek JS engine (pure Go).
-		if tryWAFSolve(ctx, pc, resp.StatusCode, body) {
-			saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+		if tryWAFSolve(ctx, pc, &resolvedAuth, resp.StatusCode, body) {
+			saveCachedCookies(pc.client, resolvedURL)
+			pc.lastPreflightURL = resolvedURL
 			pc.authExpiry = time.Now().Add(authCacheDuration)
 			return nil
 		}
 		// Tier 4: last-resort escape hatch — open in browser.
-		if pc.config.Auth.BrowserEscapeHatch && isInteractive(ctx) {
-			if tryBrowserEscapeHatch(ctx, pc) {
-				saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+		if resolvedAuth.BrowserEscapeHatch && isInteractive(ctx) {
+			if tryBrowserEscapeHatch(ctx, pc, &resolvedAuth) {
+				saveCachedCookies(pc.client, resolvedURL)
+				pc.lastPreflightURL = resolvedURL
 				pc.authExpiry = time.Now().Add(authCacheDuration)
 				return nil
 			}
@@ -663,41 +692,44 @@ func (rt *Runtime) runPreflight(ctx context.Context, pc *providerClient) error {
 	}
 
 	// Tier 1 succeeded directly — persist cookies for future sessions.
-	saveCachedCookies(pc.client, pc.config.Auth.PreflightURL)
+	saveCachedCookies(pc.client, resolvedURL)
+	pc.lastPreflightURL = resolvedURL
 	pc.authExpiry = time.Now().Add(authCacheDuration)
 	return nil
 }
 
 // tryBrowserCookieRetry is Tier 3: read cookies from the user's disk-backed
 // browser stores, seed them into the client jar, and retry preflight. Returns
-// true on HTTP 2xx + successful extraction.
-func tryBrowserCookieRetry(ctx context.Context, pc *providerClient) bool {
-	if !applyBrowserCookies(pc.client, pc.config.Auth.PreflightURL) {
+// true on HTTP 2xx + successful extraction. The auth parameter carries the
+// resolved (city-specific) preflight URL.
+func tryBrowserCookieRetry(ctx context.Context, pc *providerClient, auth *AuthConfig) bool {
+	if !applyBrowserCookies(pc.client, auth.PreflightURL) {
 		return false
 	}
-	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, auth)
 	if err2 != nil || resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
 		return false
 	}
 	for k := range pc.authValues {
 		delete(pc.authValues, k)
 	}
-	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
-	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
+	applyExtractions(auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, auth.Extractions, pc.authValues)
 	return true
 }
 
 // tryWAFSolve is Tier 3b: if the preflight response looks like an AWS WAF
 // challenge page (HTTP 202 with *.awswaf.com script refs), run challenge.js
 // in the sobek JS engine to obtain an aws-waf-token cookie, then retry
-// preflight. Returns true on success.
-func tryWAFSolve(ctx context.Context, pc *providerClient, statusCode int, pageBody []byte) bool {
+// preflight. Returns true on success. The auth parameter carries the
+// resolved (city-specific) preflight URL.
+func tryWAFSolve(ctx context.Context, pc *providerClient, auth *AuthConfig, statusCode int, pageBody []byte) bool {
 	// Only attempt on HTTP 202 (AWS WAF challenge) or 403 (some WAF variants).
 	if statusCode != http.StatusAccepted && statusCode != http.StatusForbidden {
 		return false
 	}
 
-	pageURL := pc.config.Auth.PreflightURL
+	pageURL := auth.PreflightURL
 	cookie, err := waf.SolveAWSWAF(ctx, pc.client, pageURL, string(pageBody), nil)
 	if err != nil {
 		slog.Debug("waf solver did not produce a token", "provider", pc.config.ID, "error", err.Error())
@@ -713,15 +745,15 @@ func tryWAFSolve(ctx context.Context, pc *providerClient, statusCode int, pageBo
 	slog.Info("waf solver obtained aws-waf-token via JS engine", "provider", pc.config.ID)
 
 	// Retry preflight with the fresh token.
-	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, auth)
 	if err2 != nil || resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
 		return false
 	}
 	for k := range pc.authValues {
 		delete(pc.authValues, k)
 	}
-	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
-	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
+	applyExtractions(auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, auth.Extractions, pc.authValues)
 	return true
 }
 
@@ -733,9 +765,10 @@ func tryWAFSolve(ctx context.Context, pc *providerClient, statusCode int, pageBo
 //
 // When an ElicitConfirmFunc is present in the context (MCP sessions), the
 // user is prompted before the browser opens — this replaces the old silent
-// 15-second timeout that users never noticed.
-func tryBrowserEscapeHatch(ctx context.Context, pc *providerClient) bool {
-	targetURL := pc.config.Auth.PreflightURL
+// 15-second timeout that users never noticed. The auth parameter carries the
+// resolved (city-specific) preflight URL.
+func tryBrowserEscapeHatch(ctx context.Context, pc *providerClient, auth *AuthConfig) bool {
+	targetURL := auth.PreflightURL
 	browserPref := pc.config.Cookies.Browser
 
 	// If elicitation is available, ask the user to confirm before opening
@@ -793,7 +826,7 @@ func tryBrowserEscapeHatch(ctx context.Context, pc *providerClient) bool {
 	}
 	pc.client.Jar.SetCookies(u, fresh)
 
-	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, pc.config.Auth)
+	resp2, body2, err2 := doPreflightRequest(ctx, pc.client, auth)
 	if err2 != nil || resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
 		slog.Warn("browser escape hatch: preflight retry still failed",
 			"provider", pc.config.ID)
@@ -802,8 +835,8 @@ func tryBrowserEscapeHatch(ctx context.Context, pc *providerClient) bool {
 	for k := range pc.authValues {
 		delete(pc.authValues, k)
 	}
-	applyExtractions(pc.config.Auth.Extractions, resp2, body2, pc.authValues)
-	applyURLExtractions(ctx, pc.client, pc.config.Auth.Extractions, pc.authValues)
+	applyExtractions(auth.Extractions, resp2, body2, pc.authValues)
+	applyURLExtractions(ctx, pc.client, auth.Extractions, pc.authValues)
 	slog.Info("browser escape hatch: preflight recovered", "provider", pc.config.ID)
 	return true
 }

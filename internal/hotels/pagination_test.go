@@ -475,19 +475,22 @@ func fakeHotelPage(name string) []byte {
 	return fakeHotelPageMulti(name)
 }
 
-// nameOffset returns a small deterministic lat/lon offset for a hotel name so
-// that the same name always gets the same coordinates across pages. This is
-// important for MergeHotelResults geo-disambiguation: hotels with the same name
-// must have close-enough coordinates to be merged, even when they appear on
-// different paginated pages.
+// nameOffset returns a deterministic lat/lon offset for a hotel name so that
+// the same name always gets the same coordinates across pages (enabling merge),
+// while different names land >150m apart (preventing false geo-proximity merge).
+//
+// MergeHotelResults has a 150m geo-proximity secondary dedup that catches
+// cross-provider name variants for the same building. Test hotels must be
+// spaced >150m apart so distinct names are not collapsed.
 func nameOffset(name string) float64 {
 	var sum int
 	for _, c := range name {
 		sum += int(c)
 	}
-	// Scale to a sub-meter range (< 0.000001 degrees ≈ 0.1m) so same-named
-	// hotels are always within the 200m merge threshold.
-	return float64(sum%100) * 0.000001
+	// 0.003 degrees ≈ 333m at 60°N latitude. Adjacent name sums (e.g.
+	// "Hotel A" vs "Hotel B") differ by 1 step = 333m, well above the
+	// 150m geo-merge threshold. Same name → same offset → 0m → merges.
+	return float64(sum%100) * 0.003
 }
 
 // fakeHotelPageMulti builds a minimal HTML page with N hotels.

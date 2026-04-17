@@ -161,7 +161,7 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 			// the context interactive. Non-interactive callers (this test
 			// harness by default) never spawn a browser.
 			if tier == "" && cfg.Auth.BrowserEscapeHatch && isInteractive(ctx) {
-				if tryBrowserEscapeHatch(ctx, pc) {
+				if tryBrowserEscapeHatch(ctx, pc, cfg.Auth) {
 					// tryBrowserEscapeHatch already wrote fresh values into
 					// pc.authValues; re-issue preflight once more here only
 					// to capture the body for diagnostics.
