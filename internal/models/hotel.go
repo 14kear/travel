@@ -13,10 +13,20 @@ type PriceSource struct {
 }
 
 // Room represents a single bookable room type at a property.
+// Prices depend on guest count — the search guests parameter determines
+// which rates are shown. Rich room data enables LLM reasoning about
+// room selection ("which room has a balcony?", "cheapest with breakfast?").
 type Room struct {
-	Name     string  `json:"name"`               // e.g. "Standard Double Room", "Superior Suite"
-	Price    float64 `json:"price,omitempty"`     // price for this room type
-	Currency string  `json:"currency,omitempty"`
+	Name              string   `json:"name"`                          // e.g. "Standard Double Room", "Superior Suite"
+	Price             float64  `json:"price,omitempty"`               // price for this room type (for the searched guest count)
+	Currency          string   `json:"currency,omitempty"`
+	SizeM2            float64  `json:"size_m2,omitempty"`             // room size in square meters
+	MaxGuests         int      `json:"max_guests,omitempty"`          // maximum occupancy
+	BedType           string   `json:"bed_type,omitempty"`            // e.g. "1 double bed", "2 single beds"
+	Amenities         []string `json:"amenities,omitempty"`           // room-level amenities (balcony, minibar, bathtub, etc.)
+	FreeCancellation  bool     `json:"free_cancellation,omitempty"`   // free cancellation available
+	BreakfastIncluded bool     `json:"breakfast_included,omitempty"`  // breakfast included in price
+	Description       string   `json:"description,omitempty"`         // room description text
 }
 
 // HotelResult represents a single hotel from a search.

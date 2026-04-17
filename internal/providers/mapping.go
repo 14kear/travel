@@ -451,7 +451,7 @@ func extractRoomTypes(raw any) []models.Room {
 		}
 	}
 
-	// Source 2: blocks array — has per-room pricing.
+	// Source 2: blocks array — has per-room pricing + rich metadata.
 	blocksRaw := jsonPath(raw, "blocks")
 	blocks, ok := blocksRaw.([]any)
 	if !ok || len(blocks) == 0 {
@@ -473,11 +473,66 @@ func extractRoomTypes(raw any) []models.Room {
 		seen[name] = true
 		price := toFloat64(jsonPath(b, "finalPrice.amount"))
 		currency, _ := jsonPath(b, "finalPrice.currency").(string)
-		rooms = append(rooms, models.Room{
+
+		room := models.Room{
 			Name:     name,
 			Price:    price,
 			Currency: currency,
-		})
+		}
+
+		// Room size (m²).
+		if size := toFloat64(jsonPath(b, "roomSize.value")); size > 0 {
+			room.SizeM2 = size
+		}
+
+		// Max guests / occupancy.
+		if maxG := toInt(jsonPath(b, "maxOccupancy")); maxG > 0 {
+			room.MaxGuests = maxG
+		} else if maxG := toInt(jsonPath(b, "nbAdults")); maxG > 0 {
+			room.MaxGuests = maxG
+		}
+
+		// Bed type from bedConfigurations or bedType.
+		if bedDesc, ok := jsonPath(b, "bedType").(string); ok && bedDesc != "" {
+			room.BedType = bedDesc
+		} else if beds := jsonPath(b, "bedConfigurations"); beds != nil {
+			if bedArr, ok := beds.([]any); ok && len(bedArr) > 0 {
+				if desc, ok := jsonPath(bedArr[0], "description").(string); ok {
+					room.BedType = desc
+				}
+			}
+		}
+
+		// Free cancellation.
+		if fc, ok := jsonPath(b, "freeCancellationUntil").(string); ok && fc != "" {
+			room.FreeCancellation = true
+		}
+		if fc, _ := jsonPath(b, "policies.showFreeCancellation").(bool); fc {
+			room.FreeCancellation = true
+		}
+
+		// Breakfast included (mealPlan or breakfast fields).
+		if mp, _ := jsonPath(b, "mealPlanIncluded").(bool); mp {
+			room.BreakfastIncluded = true
+		}
+		if bk, ok := jsonPath(b, "breakfast").(string); ok && bk != "" {
+			room.BreakfastIncluded = true
+		}
+
+		// Room-level amenities from roomFacilities or facilities.
+		if facRaw := jsonPath(b, "roomFacilities"); facRaw != nil {
+			if facArr, ok := facRaw.([]any); ok {
+				for _, f := range facArr {
+					if fname, ok := jsonPath(f, "name").(string); ok && fname != "" {
+						room.Amenities = append(room.Amenities, fname)
+					} else if fname, ok := f.(string); ok {
+						room.Amenities = append(room.Amenities, fname)
+					}
+				}
+			}
+		}
+
+		rooms = append(rooms, room)
 	}
 
 	return rooms
