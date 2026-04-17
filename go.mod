@@ -3,6 +3,8 @@ module github.com/MikkoParkkola/trvl
 go 1.26.2
 
 require (
+	github.com/bogdanfinn/fhttp v0.6.8
+	github.com/bogdanfinn/utls v1.7.7-barnius
 	github.com/browserutils/kooky v0.2.9
 	github.com/grafana/sobek v0.0.0-20260406180825-6d789dcdd177
 	github.com/refraction-networking/utls v1.8.2

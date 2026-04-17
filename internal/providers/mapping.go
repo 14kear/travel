@@ -346,23 +346,14 @@ func extractBlocksPriceSpread(raw any) (maxPrice float64, roomCount int) {
 	return maxPrice, len(seen)
 }
 
-// Hardcoded approximate exchange rates for cross-provider price normalization.
-// This is a personal tool — close enough beats an API dependency.
-var fxRates = map[[2]string]float64{
-	{"USD", "EUR"}: 0.92,
-	{"GBP", "EUR"}: 1.16,
-	{"EUR", "USD"}: 1.09,
-	{"EUR", "GBP"}: 0.86,
-}
-
-// normalizePrice converts price from fromCurrency to toCurrency using
-// hardcoded approximate rates. Returns price unchanged when currencies
-// match, either is empty, or no rate is available.
+// normalizePrice converts price from fromCurrency to toCurrency using live
+// ECB rates (via Frankfurter API, refreshed daily). Returns price unchanged
+// when currencies match, either is empty, or no rate is available.
 func normalizePrice(price float64, fromCurrency, toCurrency string) float64 {
 	if fromCurrency == toCurrency || fromCurrency == "" || toCurrency == "" {
 		return price
 	}
-	if r, ok := fxRates[[2]string{fromCurrency, toCurrency}]; ok {
+	if r := defaultFXCache.getRate(fromCurrency, toCurrency); r > 0 {
 		return price * r
 	}
 	return price
@@ -378,6 +369,14 @@ func toFloat64(v any) float64 {
 		f, err := strconv.ParseFloat(n, 64)
 		if err == nil {
 			return f
+		}
+		// Try the first numeric token before falling back to full strip.
+		// This handles composite strings like "4.84 (25)" where
+		// stripNonNumeric would concatenate all digits into "4.8425".
+		if first := firstNumericToken(n); first != "" {
+			if f, err = strconv.ParseFloat(first, 64); err == nil {
+				return f
+			}
 		}
 		// Strip currency symbols and whitespace (e.g. "€ 61" -> "61").
 		cleaned := stripNonNumeric(n)
@@ -401,4 +400,47 @@ func stripNonNumeric(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// firstNumericToken extracts the first contiguous number (integer or decimal)
+// from a string that may contain mixed text. It handles composite formats
+// like "4.84 (25)" (returns "4.84") and "€ 204" (returns "204") by
+// scanning for the first run of digits/dots/minus.
+func firstNumericToken(s string) string {
+	var b strings.Builder
+	started := false
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || r == '.' || r == '-' {
+			b.WriteRune(r)
+			started = true
+		} else if started {
+			break // end of the first numeric run
+		}
+	}
+	return b.String()
+}
+
+// lastIntToken extracts the last integer found in a string. Useful for
+// parsing review counts from composite strings like "4.84 (25)" where the
+// count appears at the end.
+func lastIntToken(s string) string {
+	var last string
+	var current strings.Builder
+	inNumber := false
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			current.WriteRune(r)
+			inNumber = true
+		} else {
+			if inNumber {
+				last = current.String()
+				current.Reset()
+				inNumber = false
+			}
+		}
+	}
+	if inNumber {
+		last = current.String()
+	}
+	return last
 }

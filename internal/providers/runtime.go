@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MikkoParkkola/trvl/internal/batchexec"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/waf"
 	"golang.org/x/time/rate"
@@ -104,7 +103,12 @@ func (rt *Runtime) getOrCreateClient(cfg *ProviderConfig) *providerClient {
 
 	var httpClient *http.Client
 	if cfg.TLS.Fingerprint == "chrome" {
-		httpClient = batchexec.ChromeHTTPClient()
+		// Use fhttp-based client that sends Chrome-like HTTP/2 SETTINGS,
+		// WINDOW_UPDATE, and PRIORITY frames. Combined with utls Chrome146
+		// TLS fingerprint, this makes requests indistinguishable from Chrome
+		// at both the TLS and HTTP/2 layers — bypassing Akamai bot detection
+		// that flags Go's x/net/http2 framing as "b_bot".
+		httpClient = newChromeH2Client()
 	} else {
 		httpClient = &http.Client{
 			Timeout: 30 * time.Second,

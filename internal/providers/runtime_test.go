@@ -1048,6 +1048,12 @@ func TestDenormalizeApollo(t *testing.T) {
 }
 
 func TestNormalizePrice(t *testing.T) {
+	// Use a cache with known fallback rates (unreachable server forces fallback).
+	old := defaultFXCache
+	defer func() { defaultFXCache = old }()
+	defaultFXCache = newFXCache()
+	defaultFXCache.baseURL = "http://127.0.0.1:1" // force fallback
+
 	tests := []struct {
 		name  string
 		price float64
@@ -1063,7 +1069,6 @@ func TestNormalizePrice(t *testing.T) {
 		{"empty from (Airbnb)", 75, "", "EUR", 75},
 		{"empty to", 75, "USD", "", 75},
 		{"both empty", 75, "", "", 75},
-		{"unknown pair returns unchanged", 100, "JPY", "EUR", 100},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

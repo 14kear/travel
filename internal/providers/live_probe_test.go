@@ -90,56 +90,38 @@ func TestLiveProbe_Hostelworld(t *testing.T) {
 func TestLiveProbe_Airbnb(t *testing.T) {
 	skipIfNoLiveProbes(t)
 
-	// Verified pattern: api_config key extracted from homepage.
-	// Uses Chrome TLS fingerprint — required for Airbnb.
+	// SSR approach: fetch the search results page HTML and extract the
+	// embedded JSON from <script id="data-deferred-state-0">. The v2/v3
+	// API endpoints were deprecated; Airbnb now embeds all search data
+	// in the server-rendered HTML via niobeClientData.
 	cfg := &ProviderConfig{
 		ID:       "airbnb",
 		Name:     "Airbnb",
 		Category: "hotels",
 		Auth: &AuthConfig{
-			Type:         "preflight",
-			PreflightURL: "https://www.airbnb.com",
-			Extractions: map[string]Extraction{
-				"api_key": {
-					Pattern:  `"api_config":\{"key":"([^"]+)"`,
-					Variable: "api_key",
-				},
-			},
+			Type:               "preflight",
+			PreflightURL:       "https://www.airbnb.com",
+			BrowserEscapeHatch: true,
 		},
-		Endpoint: "https://www.airbnb.com/api/v3/StaysSearch/d4d9503616dc72ab220ed8dcf17f166816dccb2593e7b4625c91c3fce3a3b3d6",
-		Method:   "POST",
+		Endpoint: "https://www.airbnb.com/s/${location}/homes?checkin=${checkin}&checkout=${checkout}&adults=${guests}&currency=${currency}",
+		Method:   "GET",
 		Headers: map[string]string{
-			"Content-Type":           "application/json",
-			"X-Airbnb-Api-Key":      "${api_key}",
-			"Accept":                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-			"Accept-Language":       "en",
-			"Cache-Control":         "no-cache",
-			"Pragma":                "no-cache",
-			"Sec-Ch-Ua":             `"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"`,
-			"Sec-Ch-Ua-Mobile":      "?0",
-			"Sec-Ch-Ua-Platform":    `"Windows"`,
-			"Sec-Fetch-Dest":        "document",
-			"Sec-Fetch-Mode":        "navigate",
-			"Sec-Fetch-Site":        "none",
-			"Sec-Fetch-User":        "?1",
+			"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+			"Accept-Language":           "en-US,en;q=0.9",
+			"User-Agent":               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+			"Sec-Ch-Ua":                `"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"`,
+			"Sec-Ch-Ua-Mobile":         "?0",
+			"Sec-Ch-Ua-Platform":       `"macOS"`,
+			"Sec-Fetch-Dest":           "document",
+			"Sec-Fetch-Mode":           "navigate",
+			"Sec-Fetch-Site":           "none",
+			"Sec-Fetch-User":           "?1",
 			"Upgrade-Insecure-Requests": "1",
-			"User-Agent":            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 		},
-		QueryParams: map[string]string{
-			"operationName": "StaysSearch",
-			"locale":        "en",
-			"currency":      "${currency}",
-		},
+		// No BodyTemplate needed: SSR GET replaces old POST GraphQL body.
 		BodyTemplate: `{
-			"operationName": "StaysSearch",
-			"extensions": {
-				"persistedQuery": {
-					"version": 1,
-					"sha256Hash": "d4d9503616dc72ab220ed8dcf17f166816dccb2593e7b4625c91c3fce3a3b3d6"
-				}
-			},
-			"variables": {
-				"staysSearchRequest": {
+			"_unused": "SSR extraction via body_extract_pattern",
+			"staysSearchRequest": {
 					"cursor": "",
 					"maxMapItems": 9999,
 					"metadataOnly": false,
@@ -225,16 +207,20 @@ func TestLiveProbe_Airbnb(t *testing.T) {
 		ResponseMapping: ResponseMapping{
 			ResultsPath: "data.presentation.staysSearch.results.searchResults",
 			Fields: map[string]string{
-				"name":     "listing.name",
-				"hotel_id": "listing.id",
-				"rating":   "listing.avgRatingLocalized",
-				"price":    "pricingQuote.structuredStayDisplayPrice.primaryLine.price",
-				"lat":      "listing.coordinate.latitude",
-				"lon":      "listing.coordinate.longitude",
+				"name":         "subtitle",
+				"hotel_id":     "demandStayListing.id",
+				"rating":       "avgRatingLocalized",
+				"review_count": "avgRatingLocalized",
+				"price":        "structuredDisplayPrice.primaryLine.price",
+				"lat":          "demandStayListing.location.coordinate.latitude",
+				"lon":          "demandStayListing.location.coordinate.longitude",
+				"address":      "title",
 			},
+			BodyExtractPattern: `<script[^>]*data-deferred-state-0[^>]*>[\s\S]*?(\{"data":\{"presentation":.+\})\]\]\}</script>`,
 		},
 		RateLimit: RateLimitConfig{RequestsPerSecond: 0.5},
 		TLS:      TLSConfig{Fingerprint: "chrome"},
+		Cookies:  CookieConfig{Source: "preflight"},
 	}
 
 	checkin := time.Now().AddDate(0, 0, 30).Format("2006-01-02")

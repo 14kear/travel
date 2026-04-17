@@ -476,8 +476,16 @@ func toInt(v any) int {
 	case int:
 		return n
 	case string:
-		i, _ := strconv.Atoi(n)
-		return i
+		i, err := strconv.Atoi(n)
+		if err == nil {
+			return i
+		}
+		// Try the last integer in composite strings like "4.84 (25)" -> 25.
+		if tok := lastIntToken(n); tok != "" {
+			i, _ = strconv.Atoi(tok)
+			return i
+		}
+		return 0
 	default:
 		return 0
 	}
