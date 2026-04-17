@@ -1092,6 +1092,74 @@ func TestDenormalizeApollo(t *testing.T) {
 	}
 }
 
+func TestUnwrapNiobe(t *testing.T) {
+	// Simulates Airbnb's SSR Niobe cache format:
+	// {"niobeClientData": [["CacheKey:...", {"data": {...}, "variables": {...}}]]}
+	niobe := map[string]any{
+		"niobeClientData": []any{
+			[]any{
+				"StaysSearch:{\"query\":\"Helsinki\"}",
+				map[string]any{
+					"data": map[string]any{
+						"presentation": map[string]any{
+							"staysSearch": map[string]any{
+								"results": map[string]any{
+									"searchResults": []any{
+										map[string]any{
+											"title":       "Apartment in Kamppi",
+											"avgRatingLocalized": "4.69 (127)",
+										},
+									},
+								},
+							},
+						},
+					},
+					"variables": map[string]any{
+						"staysSearchRequest": map[string]any{},
+					},
+				},
+			},
+		},
+	}
+
+	unwrapped := unwrapNiobe(niobe)
+
+	// Should unwrap to the inner payload containing "data" and "variables".
+	m, ok := unwrapped.(map[string]any)
+	if !ok {
+		t.Fatalf("unwrapNiobe returned %T, want map[string]any", unwrapped)
+	}
+	if _, hasData := m["data"]; !hasData {
+		t.Fatal("unwrapped result missing 'data' key")
+	}
+
+	// jsonPath should now resolve the results_path.
+	results := jsonPath(unwrapped, "data.presentation.staysSearch.results.searchResults")
+	arr, ok := results.([]any)
+	if !ok || len(arr) == 0 {
+		t.Fatalf("results_path did not resolve to a non-empty array: %T", results)
+	}
+	title := jsonPath(arr[0], "title")
+	if title != "Apartment in Kamppi" {
+		t.Errorf("title = %v, want Apartment in Kamppi", title)
+	}
+}
+
+func TestUnwrapNiobePassthrough(t *testing.T) {
+	// Non-Niobe JSON should be returned unchanged.
+	regular := map[string]any{
+		"data": map[string]any{"results": []any{1, 2, 3}},
+	}
+	result := unwrapNiobe(regular)
+	m, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map, got %T", result)
+	}
+	if _, hasData := m["data"]; !hasData {
+		t.Fatal("passthrough lost 'data' key")
+	}
+}
+
 func TestNormalizePrice(t *testing.T) {
 	// Use a cache with known fallback rates (unreachable server forces fallback).
 	old := defaultFXCache

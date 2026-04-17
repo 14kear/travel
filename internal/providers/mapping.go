@@ -200,6 +200,47 @@ func denormalizeApollo(v any, cache map[string]any, seen map[string]bool) any {
 	}
 }
 
+// unwrapNiobe detects Airbnb's "Niobe" SSR cache format and returns the
+// inner data object so that jsonPath can traverse it with the standard
+// results_path (e.g. "data.presentation.staysSearch.results.searchResults").
+//
+// The Niobe cache structure is:
+//
+//	{"niobeClientData": [["CacheKey:...", {"data": {...}, "variables": {...}}]]}
+//
+// Each element of niobeClientData is a 2-element array: [cacheKey, payload].
+// This function iterates all entries and returns the first payload whose
+// "data" key is a non-empty map. If the input is not Niobe-shaped, it is
+// returned unchanged.
+func unwrapNiobe(v any) any {
+	top, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	niobeRaw, hasNiobe := top["niobeClientData"]
+	if !hasNiobe {
+		return v
+	}
+	entries, ok := niobeRaw.([]any)
+	if !ok || len(entries) == 0 {
+		return v
+	}
+	for _, entry := range entries {
+		pair, ok := entry.([]any)
+		if !ok || len(pair) < 2 {
+			continue
+		}
+		payload, ok := pair[1].(map[string]any)
+		if !ok {
+			continue
+		}
+		if dataObj, hasData := payload["data"].(map[string]any); hasData && len(dataObj) > 0 {
+			return payload
+		}
+	}
+	return v
+}
+
 // isEmptyValue reports whether v is nil, an empty slice, map, or string.
 // Used by jsonPath to skip metadata/placeholder entries when traversing
 // arrays of heterogeneous objects.

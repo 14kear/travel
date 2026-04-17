@@ -18,6 +18,14 @@ type ProviderConfig struct {
 	Endpoint        string            `json:"endpoint"`
 	Method          string            `json:"method"` // "GET" or "POST"
 	Headers         map[string]string `json:"headers,omitempty"`
+	// HeaderOrder specifies the order in which request headers should be sent.
+	// When set, headers are added to the request in this order rather than
+	// map iteration order (which is random in Go). This is critical for
+	// providers whose WAF/bot-detection systems fingerprint header ordering
+	// (e.g. Booking.com, Airbnb). Only header names listed here are subject
+	// to ordering; any headers in the Headers map not listed here are appended
+	// after the ordered ones.
+	HeaderOrder     []string          `json:"header_order,omitempty"`
 	QueryParams     map[string]string `json:"query_params,omitempty"`
 	BodyTemplate    string            `json:"body_template,omitempty"`
 	Auth            *AuthConfig       `json:"auth,omitempty"`

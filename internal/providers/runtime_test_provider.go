@@ -373,6 +373,10 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		return result
 	}
 
+	// Unwrap Airbnb Niobe SSR cache: {"niobeClientData":[[key, {data:...}]]}
+	// into the inner payload so results_path can resolve normally.
+	raw = unwrapNiobe(raw)
+
 	// Denormalize Apollo cache if detected (SSR providers like Booking.com).
 	// Only denormalize ROOT_QUERY subtree to avoid seen-set poisoning.
 	if cache, isMap := raw.(map[string]any); isMap {

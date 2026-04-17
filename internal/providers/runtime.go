@@ -12,6 +12,7 @@
 package providers
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,8 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/waf"
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/time/rate"
 )
 
@@ -482,9 +485,28 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// Add headers (with both template vars and env vars).
-	for k, v := range cfg.Headers {
-		req.Header.Set(k, substituteEnvVars(substituteVars(v, vars)))
+	// Add headers in deterministic order when header_order is configured.
+	// WAF/bot-detection systems (Booking.com, Akamai) fingerprint header
+	// ordering. Go's map iteration is random, so without explicit ordering
+	// every request has a different header sequence — a bot fingerprint.
+	if len(cfg.HeaderOrder) > 0 {
+		added := make(map[string]bool, len(cfg.HeaderOrder))
+		for _, k := range cfg.HeaderOrder {
+			if v, ok := cfg.Headers[k]; ok {
+				req.Header.Set(k, substituteEnvVars(substituteVars(v, vars)))
+				added[k] = true
+			}
+		}
+		// Append any headers not listed in the order (safety net).
+		for k, v := range cfg.Headers {
+			if !added[k] {
+				req.Header.Set(k, substituteEnvVars(substituteVars(v, vars)))
+			}
+		}
+	} else {
+		for k, v := range cfg.Headers {
+			req.Header.Set(k, substituteEnvVars(substituteVars(v, vars)))
+		}
 	}
 
 	// Log jar cookie count at debug level for diagnostics.
@@ -502,7 +524,16 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// access. Note: this does not remove any User-Agent header the
 	// config sets (some providers require a browser UA to avoid WAF
 	// blocks), it adds alongside.
-	req.Header.Set("X-Personal-Use", "trvl personal noncommercial https://github.com/MikkoParkkola/trvl")
+	//
+	// Skip this header for browser-cookie providers: adding a non-standard
+	// header breaks the browser-identical request fingerprint that makes
+	// the session cookies valid. Booking.com's WAF correlates the session
+	// cookie with the original request fingerprint — an unknown header
+	// causes it to serve a degraded response (0 hotel results in the SSR
+	// Apollo cache despite HTTP 200).
+	if cfg.Cookies.Source != "browser" {
+		req.Header.Set("X-Personal-Use", "trvl personal noncommercial https://github.com/MikkoParkkola/trvl")
+	}
 
 	// Send request.
 	resp, err := pc.client.Do(req)
@@ -511,11 +542,12 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := decompressBody(resp, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	slog.Debug("search response", "provider", cfg.ID, "status", resp.StatusCode, "body_len", len(body),
+		"content_encoding", resp.Header.Get("Content-Encoding"),
 		"is_challenge", isAkamaiChallenge(resp.StatusCode, body))
 
 	// Detect Akamai/AWS WAF challenge pages. HTTP 202 is in the 2xx range so
@@ -602,6 +634,10 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("parse json: %w", err)
 	}
+
+	// Unwrap Airbnb Niobe SSR cache: {"niobeClientData":[[key, {data:...}]]}
+	// into the inner payload so results_path can resolve normally.
+	raw = unwrapNiobe(raw)
 
 	// If the parsed JSON is an Apollo normalized cache (detected by a
 	// top-level ROOT_QUERY key), resolve __ref pointers so that jsonPath
@@ -1008,7 +1044,7 @@ func doSearchRequest(ctx context.Context, client *http.Client, orig *http.Reques
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := decompressBody(resp, maxResponseBytes)
 	if err != nil {
 		return resp, nil, fmt.Errorf("search retry: read body: %w", err)
 	}
@@ -1045,7 +1081,7 @@ func doPreflightRequest(ctx context.Context, client *http.Client, auth *AuthConf
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, err := decompressBody(resp, maxResponseBytes)
 	if err != nil {
 		return resp, nil, fmt.Errorf("preflight read: %w", err)
 	}
@@ -1229,6 +1265,39 @@ func applyBrowserCookies(client *http.Client, targetURL, browserHint string) boo
 	client.Jar.SetCookies(u, cookies)
 	slog.Debug("applied browser cookies to preflight client", "url", targetURL, "count", len(cookies))
 	return true
+}
+
+// decompressBody reads and decompresses the response body based on the
+// Content-Encoding header. When the request explicitly sets Accept-Encoding
+// (e.g. "gzip, deflate, br, zstd" to match Chrome), Go's http.Transport
+// does NOT auto-decompress — it assumes the caller handles decompression.
+// This function handles gzip, br (Brotli), and zstd transparently.
+func decompressBody(resp *http.Response, limit int64) ([]byte, error) {
+	encoding := resp.Header.Get("Content-Encoding")
+	reader := io.LimitReader(resp.Body, limit)
+
+	switch encoding {
+	case "br":
+		br := brotli.NewReader(reader)
+		return io.ReadAll(br)
+	case "gzip":
+		gr, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, fmt.Errorf("gzip reader: %w", err)
+		}
+		defer gr.Close()
+		return io.ReadAll(gr)
+	case "zstd":
+		zr, err := zstd.NewReader(reader)
+		if err != nil {
+			return nil, fmt.Errorf("zstd reader: %w", err)
+		}
+		defer zr.Close()
+		return io.ReadAll(zr)
+	default:
+		// No encoding or "identity" — read raw.
+		return io.ReadAll(reader)
+	}
 }
 
 // substituteVars replaces all ${var} placeholders in s with values from vars.
