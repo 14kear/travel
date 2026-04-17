@@ -415,6 +415,18 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			if strings.Contains(resolved, "${") {
 				continue
 			}
+			// Array params (e.g. "amenities[]"): if the key ends in [] and
+			// the value contains commas, add each value as a separate param
+			// so Airbnb gets amenities[]=4&amenities[]=7 instead of amenities[]=4,7.
+			if strings.HasSuffix(k, "[]") && strings.Contains(resolved, ",") {
+				for _, sub := range strings.Split(resolved, ",") {
+					sub = strings.TrimSpace(sub)
+					if sub != "" {
+						q.Add(k, sub)
+					}
+				}
+				continue
+			}
 			q.Set(k, resolved)
 		}
 		u.RawQuery = q.Encode()
