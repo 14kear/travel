@@ -524,9 +524,15 @@ func filterHotels(hotels []models.HotelResult, opts HotelSearchOptions) []models
 		if opts.MinRating > 0 && h.Rating < opts.MinRating && !models.HasExternalProviderSource(h) {
 			continue
 		}
-		if opts.MaxDistanceKm > 0 && h.Lat != 0 && h.Lon != 0 && opts.CenterLat != 0 {
+		if h.Lat != 0 && h.Lon != 0 && opts.CenterLat != 0 {
 			dist := Haversine(opts.CenterLat, opts.CenterLon, h.Lat, h.Lon)
-			if dist > opts.MaxDistanceKm {
+			// Hard geo-outlier ceiling: reject hotels >100km from city
+			// center. External providers (Airbnb) sometimes return
+			// promoted listings from completely different cities.
+			if dist > 100 {
+				continue
+			}
+			if opts.MaxDistanceKm > 0 && dist > opts.MaxDistanceKm {
 				continue
 			}
 		}

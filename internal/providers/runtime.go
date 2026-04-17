@@ -285,18 +285,30 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	swLat := lat - boundingBoxOffset
 	swLon := lon - boundingBoxOffset
 
+	// Compute num_nights from checkin/checkout for providers that need it
+	// (e.g. Hostelworld's num-nights query param).
+	numNights := "1"
+	if tIn, err := time.Parse("2006-01-02", checkin); err == nil {
+		if tOut, err := time.Parse("2006-01-02", checkout); err == nil {
+			if n := int(tOut.Sub(tIn).Hours() / 24); n > 0 {
+				numNights = strconv.Itoa(n)
+			}
+		}
+	}
+
 	vars := map[string]string{
-		"${checkin}":  checkin,
-		"${checkout}": checkout,
-		"${currency}": currency,
-		"${guests}":   strconv.Itoa(guests),
-		"${lat}":      strconv.FormatFloat(lat, 'f', 6, 64),
-		"${lon}":      strconv.FormatFloat(lon, 'f', 6, 64),
-		"${ne_lat}":   strconv.FormatFloat(neLat, 'f', 6, 64),
-		"${ne_lon}":   strconv.FormatFloat(neLon, 'f', 6, 64),
-		"${sw_lat}":   strconv.FormatFloat(swLat, 'f', 6, 64),
-		"${sw_lon}":   strconv.FormatFloat(swLon, 'f', 6, 64),
-		"${location}": location,
+		"${checkin}":    checkin,
+		"${checkout}":   checkout,
+		"${currency}":   currency,
+		"${guests}":     strconv.Itoa(guests),
+		"${lat}":        strconv.FormatFloat(lat, 'f', 6, 64),
+		"${lon}":        strconv.FormatFloat(lon, 'f', 6, 64),
+		"${ne_lat}":     strconv.FormatFloat(neLat, 'f', 6, 64),
+		"${ne_lon}":     strconv.FormatFloat(neLon, 'f', 6, 64),
+		"${sw_lat}":     strconv.FormatFloat(swLat, 'f', 6, 64),
+		"${sw_lon}":     strconv.FormatFloat(swLon, 'f', 6, 64),
+		"${location}":   location,
+		"${num_nights}": numNights,
 	}
 
 	// Resolve provider-specific city ID. First check the static lookup
@@ -517,6 +529,13 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			// Sending a literal "${property_type}" as a query value would
 			// confuse the provider's API.
 			if strings.Contains(resolved, "${") {
+				continue
+			}
+			// Also skip params that resolved to empty string when the
+			// original template was a pure placeholder (e.g. "${sort}").
+			// Sending sort= (empty) causes HTTP 400 on providers like
+			// Hostelworld that validate sort values strictly.
+			if resolved == "" && strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") {
 				continue
 			}
 			// Array params (e.g. "amenities[]"): if the key ends in [] and

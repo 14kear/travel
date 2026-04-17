@@ -750,6 +750,9 @@ func TestToFloat64(t *testing.T) {
 		{"4.84 (25)", 4.84},
 		{"€ 204", 204},
 		{"€ 61", 61},
+		// Thousands separator in prices.
+		{"€1,204", 1204},
+		{"$2,500 per night", 2500},
 	}
 	for _, tt := range tests {
 		got := toFloat64(tt.input)
@@ -792,6 +795,10 @@ func TestFirstNumericToken(t *testing.T) {
 		{"abc", ""},
 		{"123", "123"},
 		{"-42.5 total", "-42.5"},
+		// Thousands separator: comma in "1,204" should be stripped.
+		{"€1,204", "1204"},
+		{"$2,500 per night", "2500"},
+		{"€12,345.67 total", "12345.67"},
 	}
 	for _, tt := range tests {
 		got := firstNumericToken(tt.input)
@@ -967,6 +974,25 @@ func TestSearchHotelsFilterPassthrough(t *testing.T) {
 	for substr, label := range checks {
 		if !containsSubstring(capturedQuery, substr) {
 			t.Errorf("query missing %s: %s not in %q", label, substr, capturedQuery)
+		}
+	}
+
+	// Verify that unset optional params are NOT sent when no filters given.
+	capturedQuery = "" // reset
+	hotels2, _, err := rt.SearchHotels(context.Background(), "Paris", 48.856, 2.352, "2025-06-01", "2025-06-05", "EUR", 2, nil)
+	if err != nil {
+		t.Fatalf("SearchHotels(nil filters): %v", err)
+	}
+	if len(hotels2) != 1 {
+		t.Fatalf("got %d hotels, want 1", len(hotels2))
+	}
+	// sort, min_price, max_price, property_type, amenities, free_cancellation
+	// should all be absent — either still contain ${...} (skipped) or resolve
+	// to empty (skipped by the pure-placeholder-empty check).
+	absent := []string{"sort=", "min_price=", "max_price=", "property_type=", "amenities=", "free_cancellation="}
+	for _, param := range absent {
+		if containsSubstring(capturedQuery, param) {
+			t.Errorf("unset filter param %q found in query %q", param, capturedQuery)
 		}
 	}
 }

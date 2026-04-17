@@ -716,6 +716,10 @@ func firstNumericToken(s string) string {
 		if (r >= '0' && r <= '9') || r == '.' || r == '-' {
 			b.WriteRune(r)
 			started = true
+		} else if r == ',' && started {
+			// Thousands separator (e.g. "1,204") — skip the comma but
+			// continue collecting digits so "€1,204" → "1204".
+			continue
 		} else if started {
 			break // end of the first numeric run
 		}
