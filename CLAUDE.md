@@ -5,7 +5,7 @@ Travel MCP server + CLI. 42 MCP tools, 42 CLI commands. Go 1.26, no frameworks.
 ## Hotel Providers (4 working + 1 degraded)
 
 - **Google Hotels** — direct scraping, no auth
-- **Booking.com** — ⚠️ degraded: SSR Apollo cache results[] empty since 2026-04 (CSR migration); config/cookies still work, needs GraphQL endpoint migration
+- **Booking.com** — direct GraphQL (dml/graphql); requires browser cookies (auto-detected from any installed browser via kooky)
 - **Airbnb** — SSR via Niobe cache unwrapper + deferred-state-0; dynamic city resolver
 - **Hostelworld** — dynamic city resolver via autocomplete API; rich descriptions + district names
 - **Trivago** — Streamable HTTP MCP protocol
