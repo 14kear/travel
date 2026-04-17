@@ -435,6 +435,13 @@ func extractRoomTypes(raw any) []models.Room {
 	seen := make(map[string]bool)
 	var rooms []models.Room
 
+	// Build a lookup from unitId → unit config for cross-referencing with blocks.
+	type unitInfo struct {
+		name           string
+		bedDescription string
+	}
+	unitByID := make(map[string]unitInfo)
+
 	// Source 1: matchingUnitConfigurations.unitConfigurations
 	unitsRaw := jsonPath(raw, "matchingUnitConfigurations.unitConfigurations")
 	if units, ok := unitsRaw.([]any); ok {
@@ -443,11 +450,33 @@ func extractRoomTypes(raw any) []models.Room {
 			if name == "" {
 				continue
 			}
-			if seen[name] {
-				continue
+			unitID := fmt.Sprintf("%v", jsonPath(u, "unitId"))
+
+			// Extract bed type from bedConfigurations.
+			var bedDesc string
+			if beds := jsonPath(u, "bedConfigurations"); beds != nil {
+				if bedArr, ok := beds.([]any); ok && len(bedArr) > 0 {
+					if desc, ok := jsonPath(bedArr[0], "description").(string); ok {
+						bedDesc = desc
+					} else {
+						// Build from beds array: "1 double bed"
+						if innerBeds := jsonPath(bedArr[0], "beds"); innerBeds != nil {
+							if ba, ok := innerBeds.([]any); ok {
+								for _, bed := range ba {
+									count := toInt(jsonPath(bed, "count"))
+									bedType := toInt(jsonPath(bed, "type"))
+									typeName := bookingBedType(bedType)
+									if count > 0 && typeName != "" {
+										bedDesc = fmt.Sprintf("%d %s", count, typeName)
+									}
+								}
+							}
+						}
+					}
+				}
 			}
-			seen[name] = true
-			rooms = append(rooms, models.Room{Name: name})
+
+			unitByID[unitID] = unitInfo{name: name, bedDescription: bedDesc}
 		}
 	}
 
@@ -459,8 +488,18 @@ func extractRoomTypes(raw any) []models.Room {
 	}
 
 	for _, b := range blocks {
-		// Try roomName first, then room_name.
-		name, _ := jsonPath(b, "roomName").(string)
+		// Cross-reference: get room name from unitConfigurations via blockId.roomId.
+		roomID := fmt.Sprintf("%v", jsonPath(b, "blockId.roomId"))
+		name := ""
+		var bedDesc string
+		if info, ok := unitByID[roomID]; ok {
+			name = info.name
+			bedDesc = info.bedDescription
+		}
+		// Fallback: try roomName / room_name directly on the block.
+		if name == "" {
+			name, _ = jsonPath(b, "roomName").(string)
+		}
 		if name == "" {
 			name, _ = jsonPath(b, "room_name").(string)
 		}
@@ -478,6 +517,7 @@ func extractRoomTypes(raw any) []models.Room {
 			Name:     name,
 			Price:    price,
 			Currency: currency,
+			BedType:  bedDesc,
 		}
 
 		// Room size (m²).
@@ -535,7 +575,42 @@ func extractRoomTypes(raw any) []models.Room {
 		rooms = append(rooms, room)
 	}
 
+	// Add any unitConfigurations rooms that weren't matched to blocks
+	// (rooms with no pricing in this search, e.g. sold out).
+	for unitID, info := range unitByID {
+		if !seen[info.name] {
+			seen[info.name] = true
+			rooms = append(rooms, models.Room{
+				Name:    info.name,
+				BedType: info.bedDescription,
+			})
+			_ = unitID // used for cross-reference only
+		}
+	}
+
 	return rooms
+}
+
+// bookingBedType maps Booking's numeric bed type codes to human-readable names.
+func bookingBedType(typeCode int) string {
+	switch typeCode {
+	case 1:
+		return "single bed"
+	case 2:
+		return "double bed"
+	case 3:
+		return "bunk bed"
+	case 4:
+		return "futon"
+	case 5:
+		return "sofa bed"
+	case 6:
+		return "king bed"
+	case 7:
+		return "queen bed"
+	default:
+		return "bed"
+	}
 }
 
 // extractImageURL extracts the main property image from a Booking.com SSR

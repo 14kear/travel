@@ -869,6 +869,14 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			h.Sources[0].Currency = currency
 		}
 
+		// Normalize rating scales: Hostelworld uses 0-100, Booking 0-10,
+		// Google 0-5. Detect and normalize to a consistent 0-10 scale for
+		// cross-provider comparison. Hostelworld ratings > 10 are on the
+		// 0-100 scale; divide by 10 to get 0-10.
+		if h.Rating > 10 {
+			h.Rating = h.Rating / 10.0
+		}
+
 		hotels = append(hotels, h)
 	}
 
