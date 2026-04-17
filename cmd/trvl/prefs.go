@@ -25,7 +25,7 @@ Examples:
   trvl prefs                              # show all preferences
   trvl prefs set home_airports HEL,AMS   # set home airports
   trvl prefs set carry_on_only true       # boolean preference
-  trvl prefs set min_hotel_rating 4.0    # numeric preference
+  trvl prefs set min_hotel_rating 8.0    # numeric preference (0-10 scale)
   trvl prefs set display_currency EUR    # set display currency
   trvl prefs set preferred_districts Prague=Prague 1,Prague 2,Prague 5
   trvl prefs edit                        # open in $EDITOR
@@ -71,7 +71,7 @@ Supported keys:
   ensuite_only        true/false
   fast_wifi_needed    true/false
   min_hotel_stars     integer 0-5
-  min_hotel_rating    decimal (e.g. 4.0)
+  min_hotel_rating    decimal 0-10 (e.g. 8.0)
   display_currency    3-letter currency code (e.g. EUR)
   locale              locale string (e.g. en-FI)
   loyalty_airlines    comma-separated IATA codes (e.g. KL,AY)
@@ -148,8 +148,8 @@ func applyPreference(p *preferences.Preferences, key, value string) error {
 		p.MinHotelStars = n
 	case "min_hotel_rating":
 		f, err := strconv.ParseFloat(value, 64)
-		if err != nil || f < 0 || f > 5 {
-			return fmt.Errorf("min_hotel_rating must be a number 0-5")
+		if err != nil || f < 0 || f > 10 {
+			return fmt.Errorf("min_hotel_rating must be a number 0-10")
 		}
 		p.MinHotelRating = f
 	case "display_currency":
@@ -263,8 +263,8 @@ func runPrefsInit(_ *cobra.Command, _ []string) error {
 		p.MinHotelStars = n
 	}
 
-	minRatingStr := promptString(scanner, "Minimum hotel rating (0=any, e.g. 4.0)", formatRating(p.MinHotelRating))
-	if f, err2 := strconv.ParseFloat(minRatingStr, 64); err2 == nil && f >= 0 && f <= 5 {
+	minRatingStr := promptString(scanner, "Minimum hotel rating 0-10 (0=any, e.g. 8.0)", formatRating(p.MinHotelRating))
+	if f, err2 := strconv.ParseFloat(minRatingStr, 64); err2 == nil && f >= 0 && f <= 10 {
 		p.MinHotelRating = f
 	}
 

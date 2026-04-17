@@ -56,7 +56,7 @@ type HotelSearchOptions struct {
 	// Post-fetch filters.
 	MinPrice      float64  // minimum price per night (0 = no filter)
 	MaxPrice      float64  // maximum price per night (0 = no filter)
-	MinRating     float64  // minimum guest rating, e.g. 4.0 (0 = no filter)
+	MinRating     float64  // minimum guest rating on 0-10 scale, e.g. 8.0 (0 = no filter)
 	MaxDistanceKm float64  // max km from city center (0 = no filter)
 	Amenities     []string // required amenities, all must match (nil = no filter)
 	CenterLat     float64  // city center latitude (resolved automatically if 0)
@@ -480,9 +480,8 @@ func buildTravelURL(location string, opts HotelSearchOptions) string {
 		query.Set("class", fmt.Sprintf("%d", opts.Stars))
 	}
 	if opts.MinRating > 0 {
-		// Google uses rating=8 for 4.0+, rating=6 for 3.0+, etc.
-		// The scale is rating * 2.
-		query.Set("rating", fmt.Sprintf("%.0f", opts.MinRating*2))
+		// Google's rating param is on 0-10 scale (same as our internal scale).
+		query.Set("rating", fmt.Sprintf("%.0f", opts.MinRating))
 	}
 	if opts.MaxDistanceKm > 0 {
 		// Google uses meters for the lrad (location radius) parameter.
@@ -521,7 +520,7 @@ func filterHotels(hotels []models.HotelResult, opts HotelSearchOptions) []models
 		// it meets the minimum. Unrated properties (h.Rating == 0) are
 		// suspicious — usually new listings, private rooms, or apartments
 		// without enough reviews to establish quality.
-		if opts.MinRating > 0 && h.Rating < opts.MinRating && !models.HasExternalProviderSource(h) {
+		if opts.MinRating > 0 && (h.Rating == 0 || h.Rating < opts.MinRating) {
 			continue
 		}
 		if h.Lat != 0 && h.Lon != 0 && opts.CenterLat != 0 {

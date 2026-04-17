@@ -318,13 +318,13 @@ func TestSubListingPattern(t *testing.T) {
 
 func TestFilterHotels_MinReviewThreshold(t *testing.T) {
 	hotels := []models.HotelResult{
-		{Name: "Popular", Rating: 4.5, ReviewCount: 500},
-		{Name: "Few Reviews", Rating: 4.8, ReviewCount: 10},
+		{Name: "Popular", Rating: 9.0, ReviewCount: 500},
+		{Name: "Few Reviews", Rating: 9.6, ReviewCount: 10},
 		{Name: "No Reviews", Rating: 0, ReviewCount: 0},
-		{Name: "Decent", Rating: 4.2, ReviewCount: 50},
+		{Name: "Decent", Rating: 8.4, ReviewCount: 50},
 	}
 	p := Default()
-	p.MinHotelRating = 4.0
+	p.MinHotelRating = 8.0
 
 	got := FilterHotels(hotels, "London", p)
 	names := make(map[string]bool)
@@ -332,7 +332,7 @@ func TestFilterHotels_MinReviewThreshold(t *testing.T) {
 		names[h.Name] = true
 	}
 	if names["Few Reviews"] {
-		t.Error("hotel with <20 reviews should be filtered when MinHotelRating >= 4.0")
+		t.Error("hotel with <20 reviews should be filtered when MinHotelRating >= 8.0")
 	}
 	if names["No Reviews"] {
 		t.Error("hotel with 0 reviews and 0 rating should be filtered when MinHotelRating > 0")

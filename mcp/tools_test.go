@@ -351,8 +351,8 @@ func TestHotelSummary_WithHotels(t *testing.T) {
 		Success: true,
 		Count:   2,
 		Hotels: []models.HotelResult{
-			{Name: "Budget Inn", Price: 80, Currency: "EUR", Rating: 3.5},
-			{Name: "Grand Hotel", Price: 250, Currency: "EUR", Rating: 4.8},
+			{Name: "Budget Inn", Price: 80, Currency: "EUR", Rating: 7.0},
+			{Name: "Grand Hotel", Price: 250, Currency: "EUR", Rating: 9.6},
 		},
 	}
 	summary := hotelSummary(result, "Helsinki")
@@ -469,7 +469,7 @@ func TestHotelSuggestions_HighRatedHotel(t *testing.T) {
 		Success: true,
 		Count:   1,
 		Hotels: []models.HotelResult{
-			{Name: "Awesome Hotel", Price: 200, Rating: 4.7, HotelID: "/g/123"},
+			{Name: "Awesome Hotel", Price: 200, Rating: 9.4, HotelID: "/g/123"},
 		},
 	}
 	suggestions := hotelSuggestions(result, hotels.HotelSearchOptions{

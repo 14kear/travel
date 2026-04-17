@@ -419,25 +419,25 @@ func TestFilterHotels_MaxPrice(t *testing.T) {
 
 func TestFilterHotels_MinRating(t *testing.T) {
 	hotels := []models.HotelResult{
-		{Name: "Low", Rating: 3.0},
-		{Name: "Mid", Rating: 4.0},
-		{Name: "High", Rating: 4.8},
+		{Name: "Low", Rating: 6.0},
+		{Name: "Mid", Rating: 8.0},
+		{Name: "High", Rating: 9.6},
 		{Name: "No Rating", Rating: 0}, // SHOULD be filtered out — unrated
 	}
-	result := filterHotels(hotels, HotelSearchOptions{MinRating: 4.0})
+	result := filterHotels(hotels, HotelSearchOptions{MinRating: 8.0})
 	// Unrated properties are now excluded when MinRating is set. They are
 	// typically private rooms, new listings, or apartment units without
 	// enough guest reviews to establish quality — exactly what a serious
-	// traveler does NOT want when asking for "at least 4 stars".
+	// traveler does NOT want when asking for "at least 8/10".
 	if len(result) != 2 {
 		t.Errorf("expected 2 (Mid + High), got %d", len(result))
 	}
 	for _, h := range result {
 		if h.Name == "Low" {
-			t.Error("Low should be filtered out by MinRating=4.0")
+			t.Error("Low should be filtered out by MinRating=8.0")
 		}
 		if h.Name == "No Rating" {
-			t.Error("No Rating should be filtered out by MinRating=4.0")
+			t.Error("No Rating should be filtered out by MinRating=8.0")
 		}
 	}
 }
@@ -581,7 +581,7 @@ func TestBuildTravelURL_ServerSideFilters(t *testing.T) {
 		MinPrice:      50,
 		MaxPrice:      200,
 		Stars:         4,
-		MinRating:     4.0,
+		MinRating:     8.0,
 		MaxDistanceKm: 5,
 	}
 
@@ -591,7 +591,7 @@ func TestBuildTravelURL_ServerSideFilters(t *testing.T) {
 		"min_price": "50",
 		"max_price": "200",
 		"class":     "4",
-		"rating":    "8",  // 4.0 * 2
+		"rating":    "8",  // 8.0 on 0-10 scale, passed directly
 		"lrad":      "5000", // 5 km * 1000
 	}
 	for param, want := range checks {

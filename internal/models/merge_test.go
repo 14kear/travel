@@ -162,7 +162,7 @@ func TestMergeHotelResults_GeoProximityDedup(t *testing.T) {
 	google := []HotelResult{
 		{
 			Name: "Holiday Inn Express Amsterdam - Arena Towers", Price: 120, Currency: "EUR",
-			Rating: 4.3, ReviewCount: 5000, Lat: 52.3096, Lon: 4.9418,
+			Rating: 8.6, ReviewCount: 5000, Lat: 52.3096, Lon: 4.9418,
 			Sources: []PriceSource{{Provider: "google_hotels", Price: 120, Currency: "EUR"}},
 		},
 	}
@@ -179,8 +179,8 @@ func TestMergeHotelResults_GeoProximityDedup(t *testing.T) {
 	}
 	h := result[0]
 	// Should have Google's rating + Booking's lower price.
-	if h.Rating != 4.3 {
-		t.Errorf("rating = %v, want 4.3 (from Google)", h.Rating)
+	if h.Rating != 8.6 {
+		t.Errorf("rating = %v, want 8.6 (from Google)", h.Rating)
 	}
 	if h.Price != 110 {
 		t.Errorf("price = %v, want 110 (cheapest)", h.Price)
@@ -191,7 +191,7 @@ func TestMergeHotelResults_GeoProximityDedup(t *testing.T) {
 }
 
 func TestMergeHotelResults_MergesMissingFields(t *testing.T) {
-	a := []HotelResult{{Name: "Hotel X", Price: 100, Currency: "EUR", Rating: 4.5, Stars: 4}}
+	a := []HotelResult{{Name: "Hotel X", Price: 100, Currency: "EUR", Rating: 9.0, Stars: 4}}
 	b := []HotelResult{{Name: "hotel x", Price: 90, Currency: "EUR", Address: "123 Main St", ReviewCount: 500}}
 
 	result := MergeHotelResults(a, b)
@@ -199,8 +199,8 @@ func TestMergeHotelResults_MergesMissingFields(t *testing.T) {
 		t.Fatalf("expected 1 hotel, got %d", len(result))
 	}
 	h := result[0]
-	if h.Rating != 4.5 {
-		t.Errorf("expected rating 4.5, got %f", h.Rating)
+	if h.Rating != 9.0 {
+		t.Errorf("expected rating 9.0, got %f", h.Rating)
 	}
 	if h.Stars != 4 {
 		t.Errorf("expected stars 4, got %d", h.Stars)

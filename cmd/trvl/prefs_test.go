@@ -156,16 +156,16 @@ func TestApplyPreference_MinHotelStars(t *testing.T) {
 
 func TestApplyPreference_MinHotelRating(t *testing.T) {
 	p := preferences.Default()
-	if err := applyPreference(p, "min_hotel_rating", "4.0"); err != nil {
+	if err := applyPreference(p, "min_hotel_rating", "8.0"); err != nil {
 		t.Fatal(err)
 	}
-	if p.MinHotelRating != 4.0 {
-		t.Errorf("min_hotel_rating: got %v, want 4.0", p.MinHotelRating)
+	if p.MinHotelRating != 8.0 {
+		t.Errorf("min_hotel_rating: got %v, want 8.0", p.MinHotelRating)
 	}
 
-	// Invalid value.
-	if err := applyPreference(p, "min_hotel_rating", "6.0"); err == nil {
-		t.Error("min_hotel_rating=6.0 should fail")
+	// Invalid value (above 10).
+	if err := applyPreference(p, "min_hotel_rating", "11.0"); err == nil {
+		t.Error("min_hotel_rating=11.0 should fail")
 	}
 }
 

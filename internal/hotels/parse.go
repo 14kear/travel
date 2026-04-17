@@ -259,7 +259,9 @@ func parseOrganicHotel(entry []any, currency string) models.HotelResult {
 		if ratingArr, ok := entry[7].([]any); ok && len(ratingArr) > 0 {
 			if pair, ok := ratingArr[0].([]any); ok && len(pair) >= 2 {
 				if rating, ok := pair[0].(float64); ok {
-					h.Rating = rating
+					// Google returns 0-5 scale; normalize to 0-10
+					// for consistency with external providers.
+					h.Rating = rating * 2
 				}
 				if reviews, ok := pair[1].(float64); ok {
 					h.ReviewCount = int(reviews)
@@ -477,10 +479,10 @@ func parseSponsoredHotel(entry []any, currency string) models.HotelResult {
 		}
 	}
 
-	// [5] = rating
+	// [5] = rating (Google 0-5 scale → normalize to 0-10)
 	if len(entry) > 5 {
 		if rating, ok := entry[5].(float64); ok {
-			h.Rating = rating
+			h.Rating = rating * 2
 		}
 	}
 

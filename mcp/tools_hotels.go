@@ -119,7 +119,7 @@ func searchHotelsTool() ToolDef {
 				"sort":              {Type: "string", Description: "Sort order: price, rating, distance, or stars (default: price)"},
 				"min_price":         {Type: "number", Description: "Minimum price per night (default: no filter)"},
 				"max_price":         {Type: "number", Description: "Maximum price per night (default: no filter)"},
-				"min_rating":        {Type: "number", Description: "Minimum guest rating, e.g. 4.0 (default: no filter)"},
+				"min_rating":        {Type: "number", Description: "Minimum guest rating on 0-10 scale, e.g. 8.0 (default: no filter)"},
 				"max_distance":      {Type: "number", Description: "Maximum distance from city center in km (default: no filter)"},
 				"amenities":         {Type: "string", Description: "Filter by amenities (comma-separated, e.g. pool,wifi,breakfast)"},
 				"enrich_amenities":  {Type: "boolean", Description: "Fetch detail pages for top results to get full amenity lists (slower, default: false)"},
@@ -377,7 +377,7 @@ func hotelSummary(result *models.HotelSearchResult, location string) string {
 		}
 	}
 	if bestRated != nil && (cheapest == nil || bestRated.Name != cheapest.Name) {
-		summary += fmt.Sprintf(" Highest rated: %s (%.1f/5).", bestRated.Name, bestRated.Rating)
+		summary += fmt.Sprintf(" Highest rated: %s (%.1f/10).", bestRated.Name, bestRated.Rating)
 	}
 	if bookingCount := countHotelsWithProvider(result.Hotels, "booking"); bookingCount > 0 {
 		summary += fmt.Sprintf(" Includes %d Booking.com match%s.", bookingCount, pluralSuffix(bookingCount))
@@ -821,7 +821,7 @@ func hotelSuggestions(result *models.HotelSearchResult, opts hotels.HotelSearchO
 
 	// If a great-rated hotel is found, suggest getting detailed pricing.
 	for _, h := range result.Hotels {
-		if h.Rating >= 4.5 && h.HotelID != "" {
+		if h.Rating >= 9.0 && h.HotelID != "" {
 			suggestions = append(suggestions, Suggestion{
 				Action:      "hotel_prices",
 				Description: fmt.Sprintf("Get detailed pricing for %s (%.1f rating)", h.Name, h.Rating),

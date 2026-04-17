@@ -62,7 +62,7 @@ func TestSaveTo_RoundTrip(t *testing.T) {
 		NoDormitories:   true,
 		EnSuiteOnly:     false,
 		MinHotelStars:   3,
-		MinHotelRating:  4.0,
+		MinHotelRating:  8.0,
 		DisplayCurrency: "EUR",
 		Locale:          "en-FI",
 		PreferredDistricts: map[string][]string{
@@ -88,8 +88,8 @@ func TestSaveTo_RoundTrip(t *testing.T) {
 	if !loaded.CarryOnOnly {
 		t.Error("CarryOnOnly should be true")
 	}
-	if loaded.MinHotelRating != 4.0 {
-		t.Errorf("MinHotelRating: got %v, want 4.0", loaded.MinHotelRating)
+	if loaded.MinHotelRating != 8.0 {
+		t.Errorf("MinHotelRating: got %v, want 8.0", loaded.MinHotelRating)
 	}
 	if len(loaded.HomeAirports) != 2 || loaded.HomeAirports[0] != "HEL" {
 		t.Errorf("HomeAirports: got %v", loaded.HomeAirports)

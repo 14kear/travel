@@ -28,7 +28,7 @@ func TestUpdatePreferences_PartialUpdate_PreservesOtherFields(t *testing.T) {
 		CarryOnOnly:     true,
 		DisplayCurrency: "EUR",
 		Locale:          "en-FI",
-		MinHotelRating:  3.5,
+		MinHotelRating:  7.0,
 	}
 	path := setupTempPrefs(t, initial)
 
@@ -64,8 +64,8 @@ func TestUpdatePreferences_PartialUpdate_PreservesOtherFields(t *testing.T) {
 	if result.DisplayCurrency != "EUR" {
 		t.Errorf("DisplayCurrency = %q, want EUR", result.DisplayCurrency)
 	}
-	if result.MinHotelRating != 3.5 {
-		t.Errorf("MinHotelRating = %f, want 3.5", result.MinHotelRating)
+	if result.MinHotelRating != 7.0 {
+		t.Errorf("MinHotelRating = %f, want 7.0", result.MinHotelRating)
 	}
 
 	// Verify file was actually written.

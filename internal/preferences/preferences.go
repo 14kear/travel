@@ -31,7 +31,7 @@ type Preferences struct {
 	EnSuiteOnly    bool    `json:"ensuite_only"`     // require own bathroom
 	FastWifiNeeded bool    `json:"fast_wifi_needed"` // co-working capable
 	MinHotelStars  int     `json:"min_hotel_stars"`  // 0 = any
-	MinHotelRating float64 `json:"min_hotel_rating"` // e.g. 4.0
+	MinHotelRating float64 `json:"min_hotel_rating"` // 0-10 scale, e.g. 8.0
 
 	// Preferred districts/neighborhoods per city.
 	// e.g. {"Prague": ["Prague 1", "Prague 2"], "Helsinki": ["Kallio", "Punavuori"]}
@@ -148,6 +148,13 @@ func LoadFrom(path string) (*Preferences, error) {
 	if err := json.Unmarshal(data, p); err != nil {
 		return nil, fmt.Errorf("parse preferences: %w", err)
 	}
+
+	// Migrate: rating scale changed from 0-5 to 0-10 in v0.6.5.
+	// If the value looks like the old 0-5 scale, double it.
+	if p.MinHotelRating > 0 && p.MinHotelRating <= 5 {
+		p.MinHotelRating *= 2
+	}
+
 	return p, nil
 }
 
@@ -265,10 +272,10 @@ func FilterHotels(hotels []models.HotelResult, city string, p *Preferences) []mo
 	}
 
 	// Minimum review count threshold: when the user cares about quality
-	// (MinHotelRating >= 4.0), a hotel with <20 reviews isn't enough data
+	// (MinHotelRating >= 8.0), a hotel with <20 reviews isn't enough data
 	// to trust. This catches new listings and obscure guesthouses.
 	minReviews := 0
-	if p.MinHotelRating >= 4.0 {
+	if p.MinHotelRating >= 8.0 {
 		minReviews = 20
 	}
 

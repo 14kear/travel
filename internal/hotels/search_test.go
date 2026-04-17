@@ -95,8 +95,8 @@ func TestParseHotelSearchResponse(t *testing.T) {
 	if h.HotelID != "/g/11b6d4_v_4" {
 		t.Errorf("hotel[0].HotelID = %q, want %q", h.HotelID, "/g/11b6d4_v_4")
 	}
-	if h.Rating != 4.6 {
-		t.Errorf("hotel[0].Rating = %v, want 4.6", h.Rating)
+	if h.Rating != 9.2 {
+		t.Errorf("hotel[0].Rating = %v, want 9.2 (4.6 * 2, normalized to 0-10)", h.Rating)
 	}
 }
 
@@ -375,8 +375,8 @@ func TestParseOrganicHotel(t *testing.T) {
 	if h.Name != "Grand Hotel" {
 		t.Errorf("Name = %q, want %q", h.Name, "Grand Hotel")
 	}
-	if h.Rating != 4.2 {
-		t.Errorf("Rating = %v, want 4.2", h.Rating)
+	if h.Rating != 8.4 {
+		t.Errorf("Rating = %v, want 8.4 (4.2 * 2, normalized to 0-10)", h.Rating)
 	}
 	if h.Stars != 3 {
 		t.Errorf("Stars = %d, want 3", h.Stars)

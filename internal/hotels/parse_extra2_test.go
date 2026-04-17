@@ -307,7 +307,7 @@ func TestParseOrganicHotel_AllFields(t *testing.T) {
 		{"Stars", h.Stars, 5},
 		{"Price", h.Price, 350.0},
 		{"Currency", h.Currency, "GBP"},
-		{"Rating", h.Rating, 4.8},
+		{"Rating", h.Rating, 9.6},
 		{"ReviewCount", h.ReviewCount, 2000},
 		{"HotelID", h.HotelID, "ChIJ123abc"},
 		{"Description", h.Description, "123 London Road"},

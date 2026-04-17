@@ -292,7 +292,7 @@ CATEGORY 4 — ACCOMMODATION (ask fourth)
 Q4.1  Hotel standard
       "What's the minimum hotel star rating or review score you'd stay at?
        E.g. '4 stars', '4.0 on Google', or 'any'."
-      → fields: min_hotel_stars (int), min_hotel_rating (float, e.g. 4.0)
+      → fields: min_hotel_stars (int), min_hotel_rating (float 0-10, e.g. 8.0)
 
 Q4.2  Shared rooms
       "Would you ever stay in a hostel or shared dorm, or hotels only?"

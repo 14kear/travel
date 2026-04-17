@@ -248,13 +248,13 @@ func TestColorizeRating(t *testing.T) {
 	models.UseColor = true
 	defer func() { models.UseColor = origColor }()
 
-	if got := colorizeRating(4.8, "4.8"); got != "\033[32m4.8\033[0m" {
+	if got := colorizeRating(9.6, "9.6"); got != "\033[32m9.6\033[0m" {
 		t.Fatalf("expected strong rating in green, got %q", got)
 	}
-	if got := colorizeRating(4.0, "4.0"); got != "\033[33m4.0\033[0m" {
+	if got := colorizeRating(8.0, "8.0"); got != "\033[33m8.0\033[0m" {
 		t.Fatalf("expected middling rating in yellow, got %q", got)
 	}
-	if got := colorizeRating(3.2, "3.2"); got != "\033[31m3.2\033[0m" {
+	if got := colorizeRating(6.4, "6.4"); got != "\033[31m6.4\033[0m" {
 		t.Fatalf("expected weak rating in red, got %q", got)
 	}
 	if got := colorizeRating(0, "-"); got != "-" {

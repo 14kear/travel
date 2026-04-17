@@ -504,8 +504,8 @@ func TestParseSponsoredHotel(t *testing.T) {
 	if h.ReviewCount != 500 {
 		t.Errorf("ReviewCount = %d, want 500", h.ReviewCount)
 	}
-	if h.Rating != 4.3 {
-		t.Errorf("Rating = %v, want 4.3", h.Rating)
+	if h.Rating != 8.6 {
+		t.Errorf("Rating = %v, want 8.6 (4.3 * 2, normalized to 0-10)", h.Rating)
 	}
 }
 

@@ -181,9 +181,9 @@ func colorizeRating(rating float64, text string) string {
 		return text
 	}
 	switch {
-	case rating >= 4.5:
+	case rating >= 9.0:
 		return models.Green(text)
-	case rating < 3.5:
+	case rating < 7.0:
 		return models.Red(text)
 	default:
 		return models.Yellow(text)
