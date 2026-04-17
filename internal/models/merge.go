@@ -185,14 +185,42 @@ func buildSources(h HotelResult) []PriceSource {
 	}}
 }
 
-// normalizeName lowercases, trims whitespace, and collapses internal spaces.
+// brandSuffixes are hotel chain brand suffixes that different providers
+// append inconsistently. Stripping them improves cross-provider dedup
+// hit rate (e.g. "Holiday Inn Express Arena Towers by IHG" vs
+// "Holiday Inn Express Arena Towers").
+var brandSuffixes = []string{
+	" by ihg", " powered by radisson hotels", " powered by radisson",
+	" an ihg hotel", " a marriott hotel", " by marriott",
+	" by hilton", " by hyatt", " by accor", " by wyndham",
+	" by choice hotels", " by best western",
+	" autograph collection", " tribute portfolio",
+	" curio collection", " tapestry collection",
+}
+
+// normalizeName lowercases, trims whitespace, strips brand suffixes,
+// removes punctuation, and collapses internal spaces. This maximizes
+// cross-provider dedup hits where providers use different name variants
+// for the same physical property.
 func normalizeName(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
+	// Strip brand suffixes.
+	for _, suffix := range brandSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			name = strings.TrimSuffix(name, suffix)
+			break
+		}
+	}
+	// Remove common punctuation that varies across providers.
+	name = strings.NewReplacer(
+		",", "", ".", "", "-", " ", "'", "", "'", "", "\"", "",
+		"(", "", ")", "", "&", "and",
+	).Replace(name)
 	// Collapse multiple spaces.
 	for strings.Contains(name, "  ") {
 		name = strings.ReplaceAll(name, "  ", " ")
 	}
-	return name
+	return strings.TrimSpace(name)
 }
 
 func normalizeAddress(address string) string {
