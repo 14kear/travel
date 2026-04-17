@@ -238,12 +238,13 @@ func TestLiveProbe_Airbnb(t *testing.T) {
 	if result.ResultsCount == 0 {
 		t.Error("Airbnb returned 0 results")
 	}
-	// The Airbnb persisted-query endpoint returns listing detail fields
-	// (name, coordinate, avgRating) as null -- they are hydrated client-side.
-	// Verify we at least get a hotel_id and a display price string.
+	// SSR extraction provides all fields directly — verify key fields are populated.
 	if result.SampleResult != nil {
 		if id, _ := result.SampleResult["hotel_id"].(string); id == "" {
 			t.Error("Airbnb sample result has empty hotel_id")
+		}
+		if name, _ := result.SampleResult["name"].(string); name == "" {
+			t.Error("Airbnb sample result has empty name")
 		}
 	}
 }

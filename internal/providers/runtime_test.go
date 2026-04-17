@@ -746,6 +746,10 @@ func TestToFloat64(t *testing.T) {
 		{"99.5", 99.5},
 		{true, 0},
 		{nil, 0},
+		// Composite strings: firstNumericToken extracts the leading number.
+		{"4.84 (25)", 4.84},
+		{"€ 204", 204},
+		{"€ 61", 61},
 	}
 	for _, tt := range tests {
 		got := toFloat64(tt.input)
@@ -765,6 +769,10 @@ func TestToInt(t *testing.T) {
 		{"99", 99},
 		{true, 0},
 		{nil, 0},
+		// Composite strings: lastIntToken extracts the trailing integer.
+		{"4.84 (25)", 25},
+		{"4.96 (510)", 510},
+		{"Rating: 351 reviews", 351},
 	}
 	for _, tt := range tests {
 		got := toInt(tt.input)
@@ -774,6 +782,43 @@ func TestToInt(t *testing.T) {
 	}
 }
 
+func TestFirstNumericToken(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"4.84 (25)", "4.84"},
+		{"€ 204", "204"},
+		{"abc", ""},
+		{"123", "123"},
+		{"-42.5 total", "-42.5"},
+	}
+	for _, tt := range tests {
+		got := firstNumericToken(tt.input)
+		if got != tt.want {
+			t.Errorf("firstNumericToken(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestLastIntToken(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"4.84 (25)", "25"},
+		{"4.96 (510)", "510"},
+		{"no numbers", ""},
+		{"just 42", "42"},
+		{"1 and 2 and 3", "3"},
+	}
+	for _, tt := range tests {
+		got := lastIntToken(tt.input)
+		if got != tt.want {
+			t.Errorf("lastIntToken(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
 
 func TestResolveCityID(t *testing.T) {
 	lookup := map[string]string{
