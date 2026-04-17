@@ -799,28 +799,39 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	}
 
 	// If the response carries a top-level "errors" field (GraphQL convention),
-	// surface the first error message before attempting to map results. This
-	// makes stale persistedQuery hashes, CSRF mismatches, and WAF denials
-	// immediately diagnosable instead of hiding behind a generic results_path
-	// failure.
+	// check whether this is a complete failure or a partial success.
+	// GraphQL allows {"data": {...}, "errors": [...]} — partial results with
+	// non-fatal errors (e.g. Booking returns data + errors from sub-resolvers
+	// like hotelpage/district). Only abort when there is NO data at all.
 	if topObj, ok := raw.(map[string]any); ok {
 		if errs, hasErrs := topObj["errors"].([]any); hasErrs && len(errs) > 0 {
-			if firstErr, _ := errs[0].(map[string]any); firstErr != nil {
-				msg, _ := firstErr["message"].(string)
-				code := ""
-				if ext, _ := firstErr["extensions"].(map[string]any); ext != nil {
-					code, _ = ext["code"].(string)
-				}
-				if msg == "" && code == "" {
-					msg = "unknown graphql error"
-				}
-				return nil, fmt.Errorf("graphql error: %s%s", msg, func() string {
-					if code != "" {
-						return " [" + code + "]"
+			_, hasData := topObj["data"]
+			if !hasData {
+				// No data at all — this is a complete failure.
+				if firstErr, _ := errs[0].(map[string]any); firstErr != nil {
+					msg, _ := firstErr["message"].(string)
+					code := ""
+					if ext, _ := firstErr["extensions"].(map[string]any); ext != nil {
+						code, _ = ext["code"].(string)
 					}
-					return ""
-				}())
+					if msg == "" && code == "" {
+						msg = "unknown graphql error"
+					}
+					return nil, fmt.Errorf("graphql error: %s%s", msg, func() string {
+						if code != "" {
+							return " [" + code + "]"
+						}
+						return ""
+					}())
+				}
 			}
+			// Partial success: log the errors at debug level but continue
+			// processing data. Booking.com's GraphQL often includes non-fatal
+			// errors from sub-resolvers (hotelpage service) alongside valid
+			// search results.
+			slog.Debug("graphql partial errors (continuing with data)",
+				"provider", cfg.ID,
+				"error_count", len(errs))
 		}
 	}
 
