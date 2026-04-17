@@ -381,10 +381,15 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		}
 		if filters.Sort != "" {
 			if resolved, ok := cfg.SortLookup[strings.ToLower(filters.Sort)]; ok && resolved != "" {
+				// Provider has a mapping for this sort value — use it.
 				vars["${sort}"] = resolved
-			} else {
+			} else if len(cfg.SortLookup) == 0 {
+				// No lookup table — provider accepts raw sort values.
 				vars["${sort}"] = filters.Sort
 			}
+			// When a SortLookup exists but has no mapping for this value,
+			// skip setting ${sort} entirely. Sending an unmapped value
+			// (e.g. "cheapest" to Hostelworld) causes HTTP 400.
 		}
 		if filters.Stars > 0 {
 			vars["${stars}"] = strconv.Itoa(filters.Stars)
@@ -736,6 +741,60 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			// multi-use refs (e.g. ReviewScore:42 used by both the top-level
 			// entity AND the ROOT_QUERY chain) to appear circular.
 			cache["ROOT_QUERY"] = denormalizeApollo(rootQuery, cache, nil)
+
+			// Diagnostic: Booking.com moved hotel results to CSR in early 2026.
+			// The Apollo SSR cache has search shell (filters, pagination) but
+			// results[] is empty. Log key counts at debug level for diagnostics.
+			// TODO: switch Booking to GraphQL endpoint or HTML card scraping.
+			if cfg.ID == "booking" {
+				if rqMap, ok := cache["ROOT_QUERY"].(map[string]any); ok {
+					slog.Debug("apollo cache diagnostic",
+						"provider", cfg.ID,
+						"root_keys", len(rqMap))
+					// Check searchQueries for results count
+					if sq, ok := rqMap["searchQueries"].(map[string]any); ok {
+						slog.Debug("apollo searchQueries",
+							"provider", cfg.ID,
+							"keys", len(sq))
+						// Scan search* keys for results array count.
+						// Booking moved to CSR in 2026 — SSR results[] is
+						// typically empty. Log at debug level to track when
+						// Booking restores SSR rendering or changes the key
+						// structure again. See also: the TODO above about
+						// switching to GraphQL endpoint or HTML card scraping.
+						for k, val := range sq {
+							if !strings.HasPrefix(k, "search") {
+								continue
+							}
+							inner, ok := val.(map[string]any)
+							if !ok {
+								continue
+							}
+							resultsVal, hasResults := inner["results"]
+							if !hasResults {
+								slog.Debug("apollo search: no results key",
+									"provider", cfg.ID)
+								continue
+							}
+							switch rv := resultsVal.(type) {
+							case []any:
+								slog.Debug("apollo search results",
+									"provider", cfg.ID,
+									"result_count", len(rv),
+									"inner_keys", len(inner))
+							case map[string]any:
+								slog.Debug("apollo search results is object",
+									"provider", cfg.ID,
+									"object_keys", len(rv))
+							default:
+								slog.Debug("apollo search results unexpected type",
+									"provider", cfg.ID,
+									"type", fmt.Sprintf("%T", resultsVal))
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -780,17 +839,13 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 			"provider", cfg.ID, "body_len", len(body),
 			"path", cfg.ResponseMapping.ResultsPath)
 	}
-	// The block below was a temporary debug dump; replaced with the
-	// concise empty-array log above. Guard placeholder for the deleted
-	// booking-specific debug block — this dead code will be cleaned up
-	// in the next commit.
-	if false {
-		_ = cfg.ID
-		_ = raw
-		_ = fmt.Sprintf //nolint:staticcheck
-		_ = slog.Debug
-		_ = min(0, 0)
-	}
+	// Booking.com CSR migration note (2026-04): Apollo SSR cache still
+	// has the search shell (filters, pagination, sorters) but results[]
+	// is empty. Diagnostic logging for this is in the Apollo denorm
+	// block above. When Booking restores SSR or we switch to GraphQL,
+	// the results_path will resolve normally again. Until then, Booking
+	// returns 0 results and other providers (Google, Trivago, Airbnb,
+	// Hostelworld) provide coverage.
 	if !ok {
 		// Include a body snippet + detected top-level keys so the LLM (and
 		// human) can see what actually came back. This is the difference
