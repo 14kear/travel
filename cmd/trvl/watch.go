@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/flights"
@@ -16,11 +17,13 @@ import (
 func watchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watch",
-		Short: "Track flight and hotel prices",
+		Short: "Track flight and hotel prices, and room availability",
 		Long: `Monitor flight and hotel prices over time and get alerts when prices drop.
+Also supports room-level availability monitoring with keyword matching.
 
 Examples:
   trvl watch add HEL BCN --depart 2026-07-01 --return 2026-07-08 --below 200
+  trvl watch rooms "Beverly Hills Heights, Tenerife" --checkin 2026-07-01 --checkout 2026-07-08 --keywords "2 bedroom,balcony,sea view"
   trvl watch list
   trvl watch check
   trvl watch history <id>
@@ -29,6 +32,7 @@ Examples:
 
 	cmd.AddCommand(
 		watchAddCmd(),
+		watchRoomsCmd(),
 		watchListCmd(),
 		watchRemoveCmd(),
 		watchCheckCmd(),
@@ -136,6 +140,92 @@ Examples:
 	return cmd
 }
 
+func watchRoomsCmd() *cobra.Command {
+	var (
+		checkIn    string
+		checkOut   string
+		keywords   string
+		belowPrice float64
+		currency   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "rooms HOTEL_NAME",
+		Short: "Watch for room availability matching criteria",
+		Long: `Monitor a specific hotel for when rooms matching your criteria become available.
+
+Keywords are matched case-insensitively against room names and descriptions.
+All keywords must match for a room to be considered a hit.
+
+Examples:
+  trvl watch rooms "Beverly Hills Heights, Tenerife" --checkin 2026-07-01 --checkout 2026-07-08 --keywords "2 bedroom,balcony,sea view"
+  trvl watch rooms "Hotel Lutetia Paris" --checkin 2026-08-01 --checkout 2026-08-05 --keywords "suite,terrace" --below 500`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hotelName := args[0]
+
+			if keywords == "" {
+				return fmt.Errorf("--keywords is required (comma-separated, e.g. \"2 bedroom,balcony,sea view\")")
+			}
+
+			// Parse keywords: comma-separated, trimmed.
+			var kws []string
+			for _, k := range strings.Split(keywords, ",") {
+				k = strings.TrimSpace(k)
+				if k != "" {
+					kws = append(kws, k)
+				}
+			}
+			if len(kws) == 0 {
+				return fmt.Errorf("at least one non-empty keyword is required")
+			}
+
+			store, err := watch.DefaultStore()
+			if err != nil {
+				return err
+			}
+			if err := store.Load(); err != nil {
+				return err
+			}
+
+			w := watch.Watch{
+				Type:         "room",
+				HotelName:    hotelName,
+				Destination:  hotelName, // for display in list
+				DepartDate:   checkIn,
+				ReturnDate:   checkOut,
+				RoomKeywords: kws,
+				BelowPrice:   belowPrice,
+				Currency:     currency,
+			}
+
+			id, err := store.Add(w)
+			if err != nil {
+				return fmt.Errorf("add room watch: %w", err)
+			}
+
+			fmt.Printf("Added room watch %s: %s (%s to %s)\n", id, hotelName, checkIn, checkOut)
+			fmt.Printf("  Keywords: %s\n", strings.Join(kws, ", "))
+			if belowPrice > 0 {
+				fmt.Printf("  Alert below: %.0f %s\n", belowPrice, currency)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&checkIn, "checkin", "", "Check-in date (YYYY-MM-DD, required)")
+	cmd.Flags().StringVar(&checkOut, "checkout", "", "Check-out date (YYYY-MM-DD, required)")
+	cmd.Flags().StringVar(&keywords, "keywords", "", "Comma-separated keywords to match (e.g. \"2 bedroom,balcony,sea view\")")
+	cmd.Flags().Float64Var(&belowPrice, "below", 0, "Alert when matching room price is below this amount")
+	cmd.Flags().StringVar(&currency, "currency", "USD", "Currency for price alerts")
+
+	_ = cmd.MarkFlagRequired("checkin")
+	_ = cmd.MarkFlagRequired("checkout")
+	_ = cmd.MarkFlagRequired("keywords")
+
+	return cmd
+}
+
 func watchListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -164,6 +254,9 @@ func watchListCmd() *cobra.Command {
 			rows := make([][]string, 0, len(watches))
 			for _, w := range watches {
 				route := w.Origin + " -> " + w.Destination
+				if w.IsRoomWatch() {
+					route = w.HotelName
+				}
 
 				dates := formatWatchDates(w)
 
@@ -205,6 +298,12 @@ func watchListCmd() *cobra.Command {
 // formatWatchDates returns a compact date summary depending on watch mode.
 func formatWatchDates(w watch.Watch) string {
 	switch {
+	case w.IsRoomWatch():
+		s := w.DepartDate + " / " + w.ReturnDate
+		if w.MatchedRoom != "" {
+			s += " [" + w.MatchedRoom + "]"
+		}
+		return s
 	case w.IsRouteWatch():
 		if w.CheapestDate != "" {
 			return "any (best: " + w.CheapestDate + ")"
@@ -274,7 +373,7 @@ func watchRemoveCmd() *cobra.Command {
 func watchCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check",
-		Short: "Check all watches for price changes",
+		Short: "Check all watches for price and room availability changes",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			notifier := &watch.Notifier{
@@ -283,7 +382,7 @@ func watchCheckCmd() *cobra.Command {
 				Desktop:  true,
 			}
 
-			count, err := runWatchCheckCycle(cmd.Context(), &liveChecker{}, notifier)
+			count, err := runWatchCheckCycleWithRooms(cmd.Context(), &liveChecker{}, &liveRoomChecker{}, notifier)
 			if err != nil {
 				return err
 			}
@@ -444,4 +543,33 @@ func (c *liveChecker) checkHotel(ctx context.Context, w watch.Watch) (float64, s
 		}
 	}
 	return cheapest.Price, cheapest.Currency, checkIn, nil
+}
+
+// liveRoomChecker implements watch.RoomChecker using the real hotel rooms API.
+type liveRoomChecker struct{}
+
+func (c *liveRoomChecker) CheckRooms(ctx context.Context, w watch.Watch) ([]watch.RoomMatch, error) {
+	currency := w.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+
+	result, err := resolveRoomAvailability(ctx, w.HotelName, w.DepartDate, w.ReturnDate, currency)
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []watch.RoomMatch
+	for _, room := range result.Rooms {
+		if watch.MatchRoomKeywords(w.RoomKeywords, room.Name, room.Description) {
+			matches = append(matches, watch.RoomMatch{
+				Name:        room.Name,
+				Description: room.Description,
+				Price:       room.Price,
+				Currency:    room.Currency,
+				Provider:    room.Provider,
+			})
+		}
+	}
+	return matches, nil
 }

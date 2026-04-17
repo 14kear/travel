@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,7 +24,7 @@ import (
 //   - Route watch: no dates at all → checks next 60 days for cheapest on any date
 type Watch struct {
 	ID           string    `json:"id"`
-	Type         string    `json:"type"` // "flight" or "hotel"
+	Type         string    `json:"type"` // "flight", "hotel", or "room"
 	Origin       string    `json:"origin"`
 	Destination  string    `json:"destination"`
 	DepartDate   string    `json:"depart_date,omitempty"`
@@ -37,6 +38,11 @@ type Watch struct {
 	LastPrice    float64   `json:"last_price"`
 	LowestPrice  float64   `json:"lowest_price"`
 	CheapestDate string    `json:"cheapest_date,omitempty"` // which date had the lowest price
+
+	// Room watch fields (Type == "room").
+	HotelName    string   `json:"hotel_name,omitempty"`    // hotel name for room availability lookups
+	RoomKeywords []string `json:"room_keywords,omitempty"` // all keywords must match room name+description
+	MatchedRoom  string   `json:"matched_room,omitempty"`  // last matched room name (for display)
 }
 
 // IsRouteWatch returns true if this watch monitors a route without specific dates.
@@ -47,6 +53,26 @@ func (w Watch) IsRouteWatch() bool {
 // IsDateRange returns true if this watch monitors a date range.
 func (w Watch) IsDateRange() bool {
 	return w.DepartFrom != "" && w.DepartTo != ""
+}
+
+// IsRoomWatch returns true if this watch monitors room availability.
+func (w Watch) IsRoomWatch() bool {
+	return w.Type == "room"
+}
+
+// MatchRoomKeywords checks whether all keywords appear (case-insensitive) in the
+// combined room name and description. Returns true if every keyword is found.
+func MatchRoomKeywords(keywords []string, roomName, roomDescription string) bool {
+	if len(keywords) == 0 {
+		return false
+	}
+	text := strings.ToLower(roomName + " " + roomDescription)
+	for _, kw := range keywords {
+		if !strings.Contains(text, strings.ToLower(kw)) {
+			return false
+		}
+	}
+	return true
 }
 
 const watchDateLayout = "2006-01-02"
@@ -65,6 +91,20 @@ func (w Watch) Validate() error {
 	}
 	if err := validateWatchDate("date range end", w.DepartTo); err != nil {
 		return err
+	}
+
+	// Room watch validation.
+	if w.IsRoomWatch() {
+		if w.HotelName == "" {
+			return fmt.Errorf("room watch requires a hotel name")
+		}
+		if len(w.RoomKeywords) == 0 {
+			return fmt.Errorf("room watch requires at least one keyword")
+		}
+		if w.DepartDate == "" || w.ReturnDate == "" {
+			return fmt.Errorf("room watch requires check-in (depart_date) and check-out (return_date)")
+		}
+		return nil
 	}
 
 	if w.DepartDate != "" && (w.DepartFrom != "" || w.DepartTo != "") {

@@ -8,6 +8,7 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/hotels"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/preferences"
+	"github.com/MikkoParkkola/trvl/internal/watch"
 )
 
 // --- Output schema builders ---
@@ -501,14 +502,18 @@ func hotelRoomsTool() ToolDef {
 		Name:  "hotel_rooms",
 		Title: "Hotel Room Availability",
 		Description: "Search room types and per-night pricing for a specific hotel by name. " +
-			"Resolves the hotel via Google Hotels entity search, then fetches room-level availability.",
+			"Resolves the hotel via Google Hotels entity search, then fetches room-level availability. " +
+			"When booking_url is provided (from search_hotels results), also fetches rich room data " +
+			"from the Booking.com detail page: room descriptions, bed types, sizes, and amenities " +
+			"like balcony, sea view, minibar — enabling searches for specific room features.",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"hotel_name": {Type: "string", Description: "Hotel name and optional city, e.g. 'Beverly Hills Heights, Tenerife'"},
-				"check_in":   {Type: "string", Description: "Check-in date in YYYY-MM-DD format"},
-				"check_out":  {Type: "string", Description: "Check-out date in YYYY-MM-DD format"},
-				"currency":   {Type: "string", Description: "Currency code (e.g. USD, EUR). Default: USD"},
+				"hotel_name":  {Type: "string", Description: "Hotel name and optional city, e.g. 'Beverly Hills Heights, Tenerife'"},
+				"check_in":    {Type: "string", Description: "Check-in date in YYYY-MM-DD format"},
+				"check_out":   {Type: "string", Description: "Check-out date in YYYY-MM-DD format"},
+				"currency":    {Type: "string", Description: "Currency code (e.g. USD, EUR). Default: USD"},
+				"booking_url": {Type: "string", Description: "Booking.com hotel URL from search_hotels results (enables rich room data: descriptions, bed types, sizes, amenities like balcony/sea view)"},
 			},
 			Required: []string{"hotel_name", "check_in", "check_out"},
 		},
@@ -541,6 +546,8 @@ func hotelRoomsOutputSchema() interface{} {
 						"currency":    map[string]interface{}{"type": "string"},
 						"provider":    map[string]interface{}{"type": "string"},
 						"max_guests":  map[string]interface{}{"type": "integer"},
+						"bed_type":    map[string]interface{}{"type": "string"},
+						"size_m2":     map[string]interface{}{"type": "number"},
 						"description": map[string]interface{}{"type": "string"},
 						"amenities": map[string]interface{}{
 							"type":  "array",
@@ -561,6 +568,7 @@ func handleHotelRooms(ctx context.Context, args map[string]any, elicit ElicitFun
 	checkIn := argString(args, "check_in")
 	checkOut := argString(args, "check_out")
 	currency := argString(args, "currency")
+	bookingURL := argString(args, "booking_url")
 	if currency == "" {
 		currency = "USD"
 	}
@@ -583,8 +591,19 @@ func handleHotelRooms(ctx context.Context, args map[string]any, elicit ElicitFun
 		return nil, nil, fmt.Errorf("hotel %q found (%s) but has no Google ID", hotelName, hotel.Name)
 	}
 
-	// Fetch room availability.
-	availability, err := hotels.GetRoomAvailability(ctx, hotel.HotelID, checkIn, checkOut, currency)
+	// Use the booking URL from the search result if the caller didn't provide one.
+	if bookingURL == "" && hotel.BookingURL != "" {
+		bookingURL = hotel.BookingURL
+	}
+
+	// Fetch room availability with optional Booking.com enrichment.
+	availability, err := hotels.GetRoomAvailabilityWithOpts(ctx, hotels.RoomSearchOptions{
+		HotelID:    hotel.HotelID,
+		CheckIn:    checkIn,
+		CheckOut:   checkOut,
+		Currency:   currency,
+		BookingURL: bookingURL,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("room availability for %s: %w", hotel.Name, err)
 	}
@@ -598,6 +617,14 @@ func handleHotelRooms(ctx context.Context, args map[string]any, elicit ElicitFun
 	if len(availability.Rooms) == 0 {
 		summary = fmt.Sprintf("No individual room types found for %s. Google Hotels may not expose room-level data for this property.", availability.Name)
 	} else {
+		// Count rooms with rich Booking.com data.
+		bookingRooms := 0
+		for _, r := range availability.Rooms {
+			if r.Provider == "Booking.com" || r.Description != "" {
+				bookingRooms++
+			}
+		}
+
 		// Find cheapest room.
 		cheapest := availability.Rooms[0]
 		for _, r := range availability.Rooms[1:] {
@@ -608,6 +635,9 @@ func handleHotelRooms(ctx context.Context, args map[string]any, elicit ElicitFun
 		if cheapest.Price > 0 {
 			summary += fmt.Sprintf(" Cheapest: %s %.0f/night (%s).", cheapest.Currency, cheapest.Price, cheapest.Name)
 		}
+		if bookingRooms > 0 {
+			summary += fmt.Sprintf(" %d rooms include rich Booking.com data (descriptions, amenities, bed types).", bookingRooms)
+		}
 	}
 
 	content, err := buildAnnotatedContentBlocks(summary, availability)
@@ -616,6 +646,156 @@ func handleHotelRooms(ctx context.Context, args map[string]any, elicit ElicitFun
 	}
 
 	return content, availability, nil
+}
+
+// --- Room availability watch ---
+
+func watchRoomAvailabilityTool() ToolDef {
+	return ToolDef{
+		Name:  "watch_room_availability",
+		Title: "Watch Room Availability",
+		Description: "Monitor a specific hotel for room availability matching criteria keywords. " +
+			"Creates a persistent watch that periodically checks hotel_rooms and alerts when a " +
+			"matching room becomes available. Keywords are matched case-insensitively against " +
+			"room names and descriptions; all keywords must match. Normalize synonyms before " +
+			"setting up the watch (e.g. use 'sea view' not 'ocean view' if the hotel uses that term).",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"hotel_name": {Type: "string", Description: "Hotel name (and optional city), e.g. 'Beverly Hills Heights, Tenerife'"},
+				"check_in":   {Type: "string", Description: "Check-in date in YYYY-MM-DD format"},
+				"check_out":  {Type: "string", Description: "Check-out date in YYYY-MM-DD format"},
+				"keywords":   {Type: "string", Description: "Comma-separated keywords that must all match room name/description (e.g. '2 bedroom,balcony,sea view')"},
+				"below":      {Type: "number", Description: "Optional: alert only when matching room price is below this amount"},
+				"currency":   {Type: "string", Description: "Currency code (e.g. USD, EUR). Default: USD"},
+			},
+			Required: []string{"hotel_name", "check_in", "check_out", "keywords"},
+		},
+		OutputSchema: watchRoomOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Watch Room Availability",
+			ReadOnlyHint:   false,
+			IdempotentHint: false,
+			OpenWorldHint:  false,
+		},
+	}
+}
+
+func watchRoomOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success":  map[string]interface{}{"type": "boolean"},
+			"watch_id": map[string]interface{}{"type": "string"},
+			"hotel":    map[string]interface{}{"type": "string"},
+			"check_in": map[string]interface{}{
+				"type": "string",
+			},
+			"check_out": map[string]interface{}{
+				"type": "string",
+			},
+			"keywords": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"type": "string"},
+			},
+			"below":    map[string]interface{}{"type": "number"},
+			"currency": map[string]interface{}{"type": "string"},
+			"error":    map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success"},
+	}
+}
+
+func handleWatchRoomAvailability(ctx context.Context, args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
+	hotelName := argString(args, "hotel_name")
+	checkIn := argString(args, "check_in")
+	checkOut := argString(args, "check_out")
+	keywordsRaw := argString(args, "keywords")
+	below := argFloat(args, "below", 0)
+	currency := argString(args, "currency")
+	if currency == "" {
+		currency = "USD"
+	}
+
+	if hotelName == "" || checkIn == "" || checkOut == "" || keywordsRaw == "" {
+		return nil, nil, fmt.Errorf("hotel_name, check_in, check_out, and keywords are required")
+	}
+
+	if err := models.ValidateDateRange(checkIn, checkOut); err != nil {
+		return nil, nil, err
+	}
+
+	// Parse keywords.
+	var keywords []string
+	for _, k := range strings.Split(keywordsRaw, ",") {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			keywords = append(keywords, k)
+		}
+	}
+	if len(keywords) == 0 {
+		return nil, nil, fmt.Errorf("at least one non-empty keyword is required")
+	}
+
+	store, err := watch.DefaultStore()
+	if err != nil {
+		return nil, nil, fmt.Errorf("open watch store: %w", err)
+	}
+	if err := store.Load(); err != nil {
+		return nil, nil, fmt.Errorf("load watch store: %w", err)
+	}
+
+	w := watch.Watch{
+		Type:         "room",
+		HotelName:    hotelName,
+		Destination:  hotelName,
+		DepartDate:   checkIn,
+		ReturnDate:   checkOut,
+		RoomKeywords: keywords,
+		BelowPrice:   below,
+		Currency:     currency,
+	}
+
+	id, err := store.Add(w)
+	if err != nil {
+		return nil, nil, fmt.Errorf("add room watch: %w", err)
+	}
+
+	type watchRoomResponse struct {
+		Success  bool     `json:"success"`
+		WatchID  string   `json:"watch_id"`
+		Hotel    string   `json:"hotel"`
+		CheckIn  string   `json:"check_in"`
+		CheckOut string   `json:"check_out"`
+		Keywords []string `json:"keywords"`
+		Below    float64  `json:"below,omitempty"`
+		Currency string   `json:"currency"`
+	}
+
+	resp := watchRoomResponse{
+		Success:  true,
+		WatchID:  id,
+		Hotel:    hotelName,
+		CheckIn:  checkIn,
+		CheckOut: checkOut,
+		Keywords: keywords,
+		Below:    below,
+		Currency: currency,
+	}
+
+	summary := fmt.Sprintf("Room watch %s created for %s (%s to %s). Keywords: %s.",
+		id, hotelName, checkIn, checkOut, strings.Join(keywords, ", "))
+	if below > 0 {
+		summary += fmt.Sprintf(" Alert when below %.0f %s.", below, currency)
+	}
+	summary += " The daemon will check periodically and notify when a matching room is available."
+
+	content, err := buildAnnotatedContentBlocks(summary, resp)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return content, resp, nil
 }
 
 // --- Suggestion builders ---

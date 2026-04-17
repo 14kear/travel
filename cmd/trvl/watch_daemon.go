@@ -58,7 +58,7 @@ Examples:
 			}
 
 			return runWatchDaemon(ctx, os.Stdout, interval, runNow, func(ctx context.Context) (int, error) {
-				return runWatchCheckCycle(ctx, &liveChecker{}, notifier)
+				return runWatchCheckCycleWithRooms(ctx, &liveChecker{}, &liveRoomChecker{}, notifier)
 			}, newRealWatchDaemonTicker)
 		},
 	}
@@ -70,6 +70,10 @@ Examples:
 }
 
 func runWatchCheckCycle(ctx context.Context, checker watch.PriceChecker, notifier *watch.Notifier) (int, error) {
+	return runWatchCheckCycleWithRooms(ctx, checker, nil, notifier)
+}
+
+func runWatchCheckCycleWithRooms(ctx context.Context, checker watch.PriceChecker, roomChecker watch.RoomChecker, notifier *watch.Notifier) (int, error) {
 	store, err := watch.DefaultStore()
 	if err != nil {
 		return 0, err
@@ -86,7 +90,7 @@ func runWatchCheckCycle(ctx context.Context, checker watch.PriceChecker, notifie
 	checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	notifier.NotifyAll(watch.CheckAll(checkCtx, store, checker))
+	notifier.NotifyAll(watch.CheckAllWithRooms(checkCtx, store, checker, roomChecker))
 	return len(watches), nil
 }
 

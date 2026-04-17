@@ -18,6 +18,12 @@ type Notifier struct {
 // Notify prints a check result to the writer with color coding.
 // Green = price dropped, Red = price increased, bold alert if below threshold.
 func (n *Notifier) Notify(r CheckResult) {
+	// Dispatch room watches to their own formatter.
+	if r.Watch.IsRoomWatch() {
+		n.notifyRoom(r)
+		return
+	}
+
 	if r.Error != nil {
 		fmt.Fprintf(n.Out, "%s  %s -> %s  %s\n",
 			n.red("ERR"),
@@ -96,6 +102,49 @@ func (n *Notifier) Notify(r CheckResult) {
 		strings.ToUpper(r.Watch.Type[:1])+r.Watch.Type[1:],
 		route, priceStr, changeStr, lowest, advice,
 	)
+}
+
+// notifyRoom prints a room availability check result.
+func (n *Notifier) notifyRoom(r CheckResult) {
+	hotel := r.Watch.HotelName
+	keywords := strings.Join(r.Watch.RoomKeywords, ", ")
+
+	if r.Error != nil {
+		fmt.Fprintf(n.Out, "%s  Room watch %s [%s]  %s\n",
+			n.red("ERR"), hotel, keywords, r.Error)
+		return
+	}
+
+	if !r.RoomFound {
+		fmt.Fprintf(n.Out, "%s  Room watch %s [%s]  no matching rooms available\n",
+			n.yellow("---"), hotel, keywords)
+		return
+	}
+
+	// Room found.
+	for _, m := range r.RoomMatches {
+		priceStr := ""
+		if m.Price > 0 {
+			priceStr = fmt.Sprintf("  %.0f %s", m.Price, m.Currency)
+		}
+		provider := ""
+		if m.Provider != "" {
+			provider = fmt.Sprintf(" via %s", m.Provider)
+		}
+
+		line := fmt.Sprintf("ROOM AVAILABLE  %s: %s%s%s",
+			hotel, m.Name, priceStr, provider)
+		fmt.Fprintln(n.Out, n.green(line))
+	}
+
+	if n.Desktop {
+		msg := fmt.Sprintf("%s: %d matching room(s) found [%s]",
+			hotel, len(r.RoomMatches), keywords)
+		if r.NewPrice > 0 {
+			msg += fmt.Sprintf(" from %.0f %s", r.NewPrice, r.Currency)
+		}
+		n.desktopNotify("trvl: Room Available!", msg)
+	}
 }
 
 // NotifyAll prints results for all checks.

@@ -16,6 +16,8 @@ type RoomType struct {
 	Currency    string   `json:"currency"`
 	Provider    string   `json:"provider,omitempty"`
 	MaxGuests   int      `json:"max_guests,omitempty"`
+	BedType     string   `json:"bed_type,omitempty"`
+	SizeM2      float64  `json:"size_m2,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Amenities   []string `json:"amenities,omitempty"`
 }
@@ -31,25 +33,50 @@ type RoomAvailability struct {
 	Error    string     `json:"error,omitempty"`
 }
 
+// RoomSearchOptions configures a room availability search.
+type RoomSearchOptions struct {
+	HotelID    string // Google Hotels entity ID
+	CheckIn    string // YYYY-MM-DD
+	CheckOut   string // YYYY-MM-DD
+	Currency   string // e.g. "USD", "EUR"
+	BookingURL string // optional Booking.com hotel URL for rich room data
+}
+
 // GetRoomAvailability fetches room-level pricing for a specific hotel.
 //
 // It fetches the hotel entity page and parses AF_initDataCallback blocks
 // to extract room type names, prices, and provider information.
+//
+// When a BookingURL is provided (via opts or the bookingURL parameter),
+// the function also fetches the Booking.com detail page to extract rich
+// room data (descriptions, amenities, bed types, sizes) and merges those
+// rooms into the result.
 func GetRoomAvailability(ctx context.Context, hotelID, checkIn, checkOut, currency string) (*RoomAvailability, error) {
-	if hotelID == "" {
+	return GetRoomAvailabilityWithOpts(ctx, RoomSearchOptions{
+		HotelID:  hotelID,
+		CheckIn:  checkIn,
+		CheckOut: checkOut,
+		Currency: currency,
+	})
+}
+
+// GetRoomAvailabilityWithOpts fetches room-level pricing with full options,
+// including optional Booking.com room enrichment.
+func GetRoomAvailabilityWithOpts(ctx context.Context, opts RoomSearchOptions) (*RoomAvailability, error) {
+	if opts.HotelID == "" {
 		return nil, fmt.Errorf("hotel ID is required")
 	}
-	if checkIn == "" || checkOut == "" {
+	if opts.CheckIn == "" || opts.CheckOut == "" {
 		return nil, fmt.Errorf("check-in and check-out dates are required")
 	}
-	if currency == "" {
-		currency = "USD"
+	if opts.Currency == "" {
+		opts.Currency = "USD"
 	}
 
 	client := DefaultClient()
 	entityURL := fmt.Sprintf(
 		"https://www.google.com/travel/hotels/entity/%s?q=&dates=%s,%s&hl=en&currency=%s",
-		hotelID, checkIn, checkOut, currency,
+		opts.HotelID, opts.CheckIn, opts.CheckOut, opts.Currency,
 	)
 
 	status, body, err := client.Get(ctx, entityURL)
@@ -66,16 +93,95 @@ func GetRoomAvailability(ctx context.Context, hotelID, checkIn, checkOut, curren
 		return nil, fmt.Errorf("room availability page returned empty response")
 	}
 
-	rooms, hotelName := parseRoomsFromPage(string(body), currency)
+	rooms, hotelName := parseRoomsFromPage(string(body), opts.Currency)
+
+	// Enrich with Booking.com room data when a booking URL is provided.
+	if opts.BookingURL != "" {
+		bookingRooms, err := FetchBookingRooms(ctx, opts.BookingURL, opts.CheckIn, opts.CheckOut, opts.Currency)
+		if err != nil {
+			// Non-fatal: log and continue with Google rooms only.
+			_ = err // logged inside FetchBookingRooms
+		} else {
+			rooms = mergeRoomTypes(rooms, bookingRooms)
+		}
+	}
 
 	return &RoomAvailability{
 		Success:  true,
-		HotelID:  hotelID,
+		HotelID:  opts.HotelID,
 		Name:     hotelName,
-		CheckIn:  checkIn,
-		CheckOut: checkOut,
+		CheckIn:  opts.CheckIn,
+		CheckOut: opts.CheckOut,
 		Rooms:    rooms,
 	}, nil
+}
+
+// mergeRoomTypes combines Google and Booking room lists. Booking rooms with
+// richer data (descriptions, amenities) are preferred when a room name matches.
+// Non-matching Booking rooms are appended to the result.
+func mergeRoomTypes(google, booking []RoomType) []RoomType {
+	if len(booking) == 0 {
+		return google
+	}
+	if len(google) == 0 {
+		return booking
+	}
+
+	// Index Google rooms by lowercase name for matching.
+	type indexedRoom struct {
+		index int
+		room  RoomType
+	}
+	googleByName := make(map[string]indexedRoom, len(google))
+	for i, r := range google {
+		key := strings.ToLower(strings.TrimSpace(r.Name))
+		googleByName[key] = indexedRoom{index: i, room: r}
+	}
+
+	merged := make([]RoomType, len(google))
+	copy(merged, google)
+
+	matched := make(map[string]bool)
+
+	for _, br := range booking {
+		bKey := strings.ToLower(strings.TrimSpace(br.Name))
+		if gr, found := googleByName[bKey]; found {
+			// Merge: enrich Google room with Booking data.
+			enriched := gr.room
+			if br.Description != "" && enriched.Description == "" {
+				enriched.Description = br.Description
+			}
+			if br.BedType != "" && enriched.BedType == "" {
+				enriched.BedType = br.BedType
+			}
+			if br.SizeM2 > 0 && enriched.SizeM2 == 0 {
+				enriched.SizeM2 = br.SizeM2
+			}
+			if br.MaxGuests > 0 && enriched.MaxGuests == 0 {
+				enriched.MaxGuests = br.MaxGuests
+			}
+			if len(br.Amenities) > 0 {
+				enriched.Amenities = mergeStringSlices(enriched.Amenities, br.Amenities)
+			}
+			// Keep Google price if available; add Booking as secondary.
+			if enriched.Price == 0 && br.Price > 0 {
+				enriched.Price = br.Price
+				enriched.Provider = br.Provider
+			}
+			merged[gr.index] = enriched
+			matched[bKey] = true
+		}
+	}
+
+	// Append unmatched Booking rooms (rooms only on Booking).
+	for _, br := range booking {
+		bKey := strings.ToLower(strings.TrimSpace(br.Name))
+		if !matched[bKey] {
+			merged = append(merged, br)
+		}
+	}
+
+	return merged
 }
 
 // parseRoomsFromPage extracts room-type data from a hotel entity page.
