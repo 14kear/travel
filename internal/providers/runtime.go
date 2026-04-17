@@ -12,6 +12,7 @@
 package providers
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -26,8 +27,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"bytes"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/waf"
@@ -1272,7 +1271,20 @@ func applyBrowserCookies(client *http.Client, targetURL, browserHint string) boo
 // (e.g. "gzip, deflate, br, zstd" to match Chrome), Go's http.Transport
 // does NOT auto-decompress — it assumes the caller handles decompression.
 // This function handles gzip, br (Brotli), and zstd transparently.
+//
+// When the transport (or an intermediate CDN/proxy) already decompressed the
+// body but left the Content-Encoding header intact, the declared encoding
+// won't match the actual payload. The gzip path buffers the body and falls
+// back to raw bytes on header mismatch — this is the most common case in
+// practice (e.g. Airbnb preflight via fhttp Chrome-fingerprinted transport).
 func decompressBody(resp *http.Response, limit int64) ([]byte, error) {
+	// When the transport already decompressed the body (e.g. Go's default
+	// gzip handling), Uncompressed is true and the Content-Encoding header
+	// may still be present. Reading raw is correct.
+	if resp.Uncompressed {
+		return io.ReadAll(io.LimitReader(resp.Body, limit))
+	}
+
 	encoding := resp.Header.Get("Content-Encoding")
 	reader := io.LimitReader(resp.Body, limit)
 
@@ -1281,12 +1293,30 @@ func decompressBody(resp *http.Response, limit int64) ([]byte, error) {
 		br := brotli.NewReader(reader)
 		return io.ReadAll(br)
 	case "gzip":
-		gr, err := gzip.NewReader(reader)
+		// Buffer the body so we can fall back to raw bytes if the payload
+		// is not actually gzip-encoded. This happens when the transport or
+		// a CDN decompressed the body but left the Content-Encoding header,
+		// or when the server advertises gzip but sends identity/Brotli.
+		raw, err := io.ReadAll(reader)
 		if err != nil {
-			return nil, fmt.Errorf("gzip reader: %w", err)
+			return nil, fmt.Errorf("gzip read raw: %w", err)
+		}
+		gr, err := gzip.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			// Not valid gzip — return the raw bytes as-is.
+			slog.Debug("Content-Encoding says gzip but body is not gzip, using raw",
+				"error", err.Error(), "body_len", len(raw))
+			return raw, nil
 		}
 		defer gr.Close()
-		return io.ReadAll(gr)
+		decoded, err := io.ReadAll(gr)
+		if err != nil {
+			// Gzip header valid but decompression failed mid-stream.
+			slog.Debug("gzip decompression failed mid-stream, using raw",
+				"error", err.Error(), "body_len", len(raw))
+			return raw, nil
+		}
+		return decoded, nil
 	case "zstd":
 		zr, err := zstd.NewReader(reader)
 		if err != nil {
