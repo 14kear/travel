@@ -37,17 +37,13 @@ matching Booking.com's current JS object-literal format.
 
 ## Known limitations
 
-### Airbnb v2 initial test shows 0 results
-Config applied via MCP `configure_provider`; MCP server reload required to
-pick up the new endpoint structure. Binary rebuilt + installed but running
-MCP server holds old in-memory config. Reconnect MCP client to verify.
+### ~~Airbnb v2 initial test shows 0 results~~ RESOLVED (session 5)
+SSR extraction via Niobe cache unwrapper now operational.
 
-### Hostelworld CityLookup needs server reload
-Config contains `city_lookup` field but MCP server's in-memory config still
-has hardcoded endpoint. Rebuilt binary at `/opt/homebrew/bin/trvl` has
-CityLookup support. Restart MCP server to activate.
+### ~~Hostelworld CityLookup needs server reload~~ RESOLVED (session 5)
+Hot-reload (item 11) picks up changes. 82 cities mapped.
 
-### Booking.com still blocked by AWS WAF (structural fix applied)
+### Booking.com WAF workaround established (was: still blocked)
 **What was fixed this session**:
 - destId hardcoding removed from body_template — now uses `${city_id}` variable
 - Booking CityLookup populated with 9 verified destIds: Amsterdam=-2140479,
@@ -56,22 +52,20 @@ CityLookup support. Restart MCP server to activate.
 - CSRF regex updated: `b_csrf_token:\s*'([^']+)'`
 - Elicitation-based WAF recovery wired end-to-end
 
-**What still doesn't work**: Booking serves HTTP 202 AWS WAF challenge pages
-for all requests (even from a browser with cookies). The preflight URL never
-returns the real search page with a CSRF token, so extraction fails at the
-auth step. The tier 3b sobek WAF solver needs to execute `challenge.js` and
-obtain an `aws-waf-token` cookie before the real page is accessible —
-this mechanism exists in code but the challenge appears more complex than
-what the solver currently handles.
+**Session 5 update — now working**: Accept-Encoding fix, response
+decompression (gzip/br/zstd), deterministic header ordering (HeaderOrder),
+X-Personal-Use header skip for browser providers, CLI provider wiring.
+Booking searches return results via SSR Apollo cache extraction (item 13).
+Requires a Brave tab open on Booking.com for fresh aws-waf-token cookie.
 
-**Recommended resolution**: Register for Booking.com Affiliate API
-(`developers.booking.com`). Free, authorized, your Genius pricing preserved.
-Same provider runtime framework applies — just different endpoints and auth.
-This converts the highest-ToS-risk provider from HIGH risk to ZERO.
+**Sobek JS solver limitation**: The sobek WAF solver can execute
+challenge.js but cannot produce a valid fingerprint — AWS performs canvas,
+WebGL, and AudioContext fingerprinting that requires a real browser.
+Browser tab workaround is the practical solution.
 
-**Alternative**: Ship the elicitation flow to production and hope the user
-sees the prompt. Works when the MCP client is interactive and the user
-completes the browser challenge, but remains fragile for automated use.
+**Affiliate API remains recommended** for eliminating WAF/ToS risk:
+Register at `developers.booking.com`. Free, authorized, Genius pricing
+preserved. Same provider runtime framework applies.
 
 ## Legal review of elicitation flow (summary)
 
@@ -210,34 +204,120 @@ Akamai's `b_bot` signal derived from HTTP/2 SETTINGS frame fingerprinting.
 Ratings are currently sourced from Google's hotel card as a dedup
 workaround. A proper fix requires either the Booking Affiliate API or
 HTTP/2 SETTINGS frame mimicry.
+**Session 5 update**: Confirmed ratings are still 0 in Booking SSR;
+dedup merge pipeline sources ratings from Google hotel cards instead.
 
 ### Booking per-city WAF cookies
 Switching search cities on Booking may require a fresh WAF preflight.
 The cookie jar preserves cookies across config reloads (item 20), but
 city switches within a single session can still trigger a new challenge
 if Booking's WAF associates the cookie with a specific `dest_id`.
+**Session 5 update**: aws-waf-token now persists in Brave cookie DB and
+auto-refreshes with an open Booking tab. Sobek JS solver evaluated but
+cannot fake canvas/WebGL/AudioContext fingerprints.
 
 ### Hostelworld Helsinki city ID may be incorrect
 Helsinki searches return 0 results. The mapped city ID may not match
 Hostelworld's current taxonomy. Needs verification against their
 autocomplete endpoint.
 
-### Airbnb v2 initial test shows 0 results
-Config applied via MCP `configure_provider`; MCP server reload required to
-pick up the new endpoint structure. Binary rebuilt + installed but running
-MCP server holds old in-memory config. Reconnect MCP client to verify.
+### ~~Airbnb v2 initial test shows 0 results~~ RESOLVED (session 5)
+Airbnb now uses SSR extraction via Niobe cache unwrapper and
+deferred-state-0 script tag. Gzip decompression fallback handles
+Content-Encoding mismatches. All fields populated.
 
-### Hostelworld CityLookup needs server reload
-Config contains `city_lookup` field but MCP server's in-memory config still
-has hardcoded endpoint. Rebuilt binary at `/opt/homebrew/bin/trvl` has
-CityLookup support. Restart MCP server to activate.
+### ~~Hostelworld CityLookup needs server reload~~ RESOLVED (session 5)
+Hostelworld expanded to 82 cities (25 new + 12 aliases). Hot-reload
+(item 11) picks up changes without server restart.
+
+## Completed in session 5 (Streamable HTTP, decompression, SSR, dedup)
+
+### 23. Trivago: Streamable HTTP MCP protocol migration ✅
+Trivago provider was returning 404. Migrated from legacy SSE transport to
+Streamable HTTP MCP protocol. Provider now fully operational.
+
+### 24. Booking: Accept-Encoding + response decompression ✅
+Booking responses were failing silently due to compressed payloads.
+Added Accept-Encoding header support, response decompression for gzip,
+Brotli (br), and zstd. Deterministic header ordering via `HeaderOrder`
+config field. `X-Personal-Use` header skip for browser-based providers.
+CLI provider wiring completed.
+
+### 25. Airbnb SSR extraction ✅
+Implemented Niobe cache unwrapper for Airbnb's server-rendered pages.
+Extracts data from `deferred-state-0` script tag. Updated field mappings
+to match current Airbnb SSR payload structure.
+
+### 26. Airbnb gzip decompression fallback ✅
+Graceful decompression fallback when server Content-Encoding header
+mismatches actual encoding. Prevents failures on Airbnb responses that
+claim gzip but send uncompressed (or vice versa).
+
+### 27. Source deduplication in MergeHotelResults ✅
+Cross-provider merge now deduplicates by source, preventing the same
+hotel from appearing multiple times when multiple providers return it.
+
+### 28. test_provider search path alignment ✅
+Five fixes to align `test_provider` MCP tool with the actual provider
+search path, ensuring test results match production behavior.
+
+### 29. Hostelworld expanded to 82 cities ✅
+Added 25 new city IDs and 12 city name aliases. Total coverage now 82
+European cities, up from the previous ~20.
+
+### 30. AWS WAF JS solver investigation ✅
+Evaluated sobek-based JS solver for AWS WAF challenge.js execution.
+The solver can run the JS but cannot produce a valid fingerprint —
+AWS challenge.js performs canvas, WebGL, and AudioContext fingerprinting
+that requires a real browser environment. Browser tab workaround is the
+viable path.
+
+### 31. Cookie freshness: aws-waf-token persistence ✅
+Verified that `aws-waf-token` cookie persists in Brave's cookie DB and
+auto-refreshes as long as a Booking tab remains open. Cookie jar
+integration reads fresh tokens automatically.
+
+## Provider status (as of session 5)
+
+| Provider    | Status  | Notes |
+|-------------|---------|-------|
+| Google      | Working | Direct scraping, no auth needed |
+| Booking     | Working | Requires Brave tab open for WAF cookie refresh |
+| Airbnb      | Working | SSR extraction via Niobe/deferred-state-0 |
+| Hostelworld | Working | 82 cities mapped |
+| Trivago     | Working | Streamable HTTP MCP protocol |
+
+## Known limitations (updated session 5)
+
+### Booking requires Brave tab open for fresh aws-waf-token
+The aws-waf-token cookie auto-refreshes when a Booking.com tab is open
+in Brave. Without an open tab, the token expires and searches fail with
+a WAF challenge response. This is the practical workaround since the
+sobek JS solver cannot fake browser fingerprints.
+
+### WAF JS solver (sobek) cannot fake browser fingerprint
+AWS challenge.js performs canvas, WebGL, and AudioContext fingerprinting.
+The sobek JS runtime lacks these browser APIs, so it cannot produce a
+valid aws-waf-token. A headless browser (Playwright/Puppeteer) could
+work but adds significant complexity and dependency weight.
+
+### Booking ratings still 0 in SSR
+Booking's server-rendered search results do not include ratings.
+The dedup merge pipeline sources ratings from Google's hotel card data
+instead. This is adequate for comparison but means Booking-only results
+(not matched to Google) show rating 0.
+
+### Hostelworld Helsinki city ID may be incorrect
+Helsinki searches return 0 results. The mapped city ID may not match
+Hostelworld's current taxonomy. Needs verification against their
+autocomplete endpoint.
 
 ## Next actions
 
 1. Verify Hostelworld Helsinki city ID against their autocomplete API
-2. Investigate Akamai HTTP/2 SETTINGS fingerprinting for Booking rating
-   access (or accept Google-sourced ratings as permanent workaround)
-3. Consider live FX rates (Open Exchange Rates free tier) to replace
+2. Consider live FX rates (Open Exchange Rates free tier) to replace
    hardcoded currency conversion
-4. Booking.com Affiliate API registration remains the highest-ROI single
+3. Booking.com Affiliate API registration remains the highest-ROI single
    action for eliminating WAF/ToS risk entirely
+4. Evaluate Playwright-based WAF solver as alternative to sobek for
+   environments where a Brave tab workaround is impractical

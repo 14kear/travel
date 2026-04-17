@@ -1,6 +1,14 @@
 # trvl
 
-Travel MCP server + CLI. 41 MCP tools, 40 CLI commands. Go 1.26, no frameworks.
+Travel MCP server + CLI. 41 MCP tools, 41 CLI commands. Go 1.26, no frameworks.
+
+## Hotel Providers (5 working)
+
+- **Google Hotels** — direct scraping, no auth
+- **Booking.com** — SSR Apollo cache extraction; requires Brave tab open for aws-waf-token
+- **Airbnb** — SSR via Niobe cache unwrapper + deferred-state-0
+- **Hostelworld** — 82 European cities mapped
+- **Trivago** — Streamable HTTP MCP protocol
 
 ## Architecture
 
