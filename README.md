@@ -16,7 +16,7 @@
 
 > **41 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
 >
-> Also works as a standalone CLI with 42 commands.
+> Also works as a standalone CLI with 40 commands.
 
 ### What it looks like
 
@@ -321,7 +321,7 @@ See [Quick Setup step 3](#3-optional-teach-your-ai-about-trvl) above for AGENTS.
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 39 commands:
+trvl also works as a standalone CLI tool with 40 commands:
 
 All search commands accept `--currency <CODE>` (e.g. `--currency EUR`) to convert displayed prices. trvl detects the actual API currency and converts at the display layer — no hardcoded currencies.
 
@@ -597,7 +597,7 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | **Data** | Real-time from Google Flights + 3 hotel sources (Google Hotels, Trivago, Airbnb) + 20 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, European Sleeper, Snälltåget, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) + 5 free destination APIs |
 | **Auth** | No personal API keys required. Two providers (NS, Digitransit/VR) use public keys embedded in the binary. Optional browser/cookie fallbacks are available for protected providers when explicitly enabled. |
 | **MCP** | Full v2025-11-25 — 41 tools, 7 prompts, resources, structured content, progress notifications, resource subscriptions, tool description orchestration |
-| **CLI** | 42 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
+| **CLI** | 40 commands (+ 6 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
 | **Travel hacks** | 18 detectors (throwaway, hidden-city, positioning, ferry, multi-modal, stopover, date-flex, and more) |
 | **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |

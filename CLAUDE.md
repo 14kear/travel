@@ -1,6 +1,6 @@
 # trvl
 
-Travel MCP server + CLI. 41 MCP tools, 41 CLI commands. Go 1.26, no frameworks.
+Travel MCP server + CLI. 41 MCP tools, 40 CLI commands. Go 1.26, no frameworks.
 
 ## Architecture
 
