@@ -287,10 +287,17 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		"${location}": location,
 	}
 
-	// Resolve provider-specific city ID when the config provides a lookup
-	// table (e.g. Hostelworld requires numeric city IDs in the URL path).
+	// Resolve provider-specific city ID. First check the static lookup
+	// table; if not found, fall back to the dynamic city_resolver API.
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+	} else if cfg.CityResolver != nil {
+		if id, err := resolveCityIDDynamic(ctx, cfg, pc.client, location, rt.registry); err != nil {
+			slog.Warn("city_resolver failed, continuing without city_id",
+				"provider", cfg.ID, "location", location, "error", err.Error())
+		} else {
+			vars["${city_id}"] = id
+		}
 	}
 
 	// When cookies.source is "browser", unconditionally seed the client's

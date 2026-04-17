@@ -46,6 +46,12 @@ type ProviderConfig struct {
 	//   {"prague": "19", "amsterdam": "3", "helsinki": "45"}
 	CityLookup map[string]string `json:"city_lookup,omitempty"`
 
+	// CityResolver describes how to dynamically resolve a city name to a
+	// provider-specific ID via an HTTP autocomplete/suggestions API. When a
+	// city is not found in CityLookup, the runtime calls this endpoint and
+	// caches the result back into CityLookup for future use.
+	CityResolver *CityResolverConfig `json:"city_resolver,omitempty"`
+
 	// PropertyTypeLookup maps normalized property type names to provider-specific
 	// identifiers (e.g. Booking uses numeric codes, Airbnb uses string IDs).
 	// Used when the endpoint/query template contains ${property_type} and the
@@ -94,6 +100,42 @@ type FilterComposite struct {
 	Separator string             `json:"separator"`                  // URL-encoded separator (e.g. "%3B")
 	Parts     map[string]string  `json:"parts"`                      // filter_var → url_prefix mapping
 	Scales    map[string]float64 `json:"scales,omitempty"`           // filter_var → multiplier (e.g. min_rating × 10 for Booking's 0-100 scale)
+}
+
+// CityResolverConfig describes how to dynamically resolve a city name to a
+// provider-specific ID via an HTTP autocomplete/suggestions API.
+//
+// Example for Booking.com:
+//
+//	{
+//	  "url": "https://accommodations.booking.com/autocomplete.json?lang=en&text=${location}&limit=1",
+//	  "method": "GET",
+//	  "result_path": "results",
+//	  "id_field": "dest_id",
+//	  "name_field": "city_name"
+//	}
+type CityResolverConfig struct {
+	// URL is the autocomplete endpoint. ${location} is replaced with the
+	// URL-encoded search city name.
+	URL string `json:"url"`
+	// Method defaults to "GET".
+	Method string `json:"method,omitempty"`
+	// Headers are optional HTTP headers for the autocomplete request.
+	Headers map[string]string `json:"headers,omitempty"`
+	// ResultPath is the dot-notation path to the first result object in the
+	// JSON response. Use "results.0" for array indexing. If the path points
+	// to an array, the first element is used.
+	ResultPath string `json:"result_path"`
+	// IDField is the JSON key within the result object that holds the city ID.
+	IDField string `json:"id_field"`
+	// NameField is the JSON key within the result object that holds the
+	// display name (used for cache-key normalization). Optional.
+	NameField string `json:"name_field,omitempty"`
+	// ExtraFields maps additional variable names (without ${}) to JSON keys
+	// in the result object. For example, Booking returns "dest_type" alongside
+	// "dest_id" — setting {"dest_type": "dest_type"} captures both. These
+	// are stored in the vars map as ${varname} for URL template substitution.
+	ExtraFields map[string]string `json:"extra_fields,omitempty"`
 }
 
 // AuthConfig describes how to authenticate with the provider.

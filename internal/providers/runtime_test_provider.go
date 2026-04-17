@@ -95,11 +95,19 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 		"${location}": location,
 	}
 
-	// Resolve provider-specific city ID when the config provides a lookup
-	// table (same behaviour as searchProvider so test_provider faithfully
-	// mirrors live search URL construction).
+	// Resolve provider-specific city ID. Static lookup first, then dynamic
+	// resolver (same behaviour as searchProvider so test_provider faithfully
+	// mirrors live search URL construction). Pass nil registry — test_provider
+	// is diagnostic and should not persist cache changes to disk.
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+	} else if cfg.CityResolver != nil {
+		if id, err := resolveCityIDDynamic(ctx, cfg, pc.client, location, nil); err != nil {
+			slog.Warn("city_resolver failed in test_provider",
+				"provider", cfg.ID, "location", location, "error", err.Error())
+		} else {
+			vars["${city_id}"] = id
+		}
 	}
 
 	// Seed browser cookies unconditionally when configured, same as
