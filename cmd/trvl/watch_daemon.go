@@ -69,10 +69,6 @@ Examples:
 	return cmd
 }
 
-func runWatchCheckCycle(ctx context.Context, checker watch.PriceChecker, notifier *watch.Notifier) (int, error) {
-	return runWatchCheckCycleWithRooms(ctx, checker, nil, notifier)
-}
-
 func runWatchCheckCycleWithRooms(ctx context.Context, checker watch.PriceChecker, roomChecker watch.RoomChecker, notifier *watch.Notifier) (int, error) {
 	store, err := watch.DefaultStore()
 	if err != nil {
