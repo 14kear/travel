@@ -331,6 +331,12 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 		var parts []string
 		for filterVar, prefix := range fc.Parts {
 			if val := vars["${"+filterVar+"}"]; val != "" {
+				// Apply scale if defined (e.g. min_rating × 10 for Booking's 0-100 scale).
+				if scale, hasScale := fc.Scales[filterVar]; hasScale && scale != 0 {
+					if f, err := strconv.ParseFloat(val, 64); err == nil {
+						val = strconv.Itoa(int(f * scale))
+					}
+				}
 				parts = append(parts, prefix+val)
 			}
 		}

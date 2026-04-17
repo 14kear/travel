@@ -72,9 +72,10 @@ type ProviderConfig struct {
 // FilterComposite describes how to build a compound URL parameter from
 // individual filter variables. See ProviderConfig.FilterComposite.
 type FilterComposite struct {
-	TargetVar string            `json:"target_var"`          // output variable name (e.g. "nflt")
-	Separator string            `json:"separator"`           // URL-encoded separator (e.g. "%3B")
-	Parts     map[string]string `json:"parts"`               // filter_var → url_prefix mapping
+	TargetVar string             `json:"target_var"`                 // output variable name (e.g. "nflt")
+	Separator string             `json:"separator"`                  // URL-encoded separator (e.g. "%3B")
+	Parts     map[string]string  `json:"parts"`                      // filter_var → url_prefix mapping
+	Scales    map[string]float64 `json:"scales,omitempty"`           // filter_var → multiplier (e.g. min_rating × 10 for Booking's 0-100 scale)
 }
 
 // AuthConfig describes how to authenticate with the provider.
