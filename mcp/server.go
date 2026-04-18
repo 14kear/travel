@@ -373,12 +373,12 @@ func (s *Server) handleToolsCall(req *Request) *Response {
 	progressToken := fmt.Sprintf("%s-%v", params.Name, req.ID)
 	progress := s.makeProgressFunc(progressToken)
 
-	// Create a context with a generous ceiling; individual handlers may derive
-	// shorter deadlines for sub-operations.
-	// MCP is always user-facing, so mark context as interactive. This allows
-	// provider runtime to fire the Tier 4 browser escape hatch automatically
-	// when a WAF challenge blocks a search request.
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	// Per-tool timeout. This is the hard ceiling for any single tool call.
+	// The wrapHandler wrapper also enforces toolTimeout (60s) as a fallback,
+	// but this server-level timeout is the canonical one. Previously 120s,
+	// which was too generous — agents spawning 8 parallel searches would all
+	// hang for 2 minutes before timing out.
+	ctx, cancel := context.WithTimeout(context.Background(), toolTimeout)
 	defer cancel()
 	ctx = providers.WithInteractive(ctx)
 

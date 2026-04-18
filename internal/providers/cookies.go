@@ -151,7 +151,7 @@ func waitForFreshCookies(ctx context.Context, targetURL string, prevSnapshot []*
 		pollInterval = time.Second
 	}
 	if maxWait <= 0 {
-		maxWait = 15 * time.Second
+		maxWait = 10 * time.Second
 	}
 	deadline := time.Now().Add(maxWait)
 	prevKey := cookieSnapshotKey(prevSnapshot)
@@ -206,7 +206,11 @@ func cookieSnapshotKey(cookies []*http.Cookie) string {
 // first access (subsequent calls are cached by the Keychain daemon). The
 // previous 5s budget caused systematic timeouts before the valid Brave
 // cookies could be returned.
-const browserCookieLookupTimeout = 15 * time.Second
+// browserCookieLookupTimeout bounds how long we spend reading cookies from
+// browser stores. Previously 15s — reduced to 5s because kooky hits the
+// macOS Keychain which is fast when cached (< 1s) and the 15s was allowing
+// stale lookups to delay searches significantly.
+const browserCookieLookupTimeout = 5 * time.Second
 
 // browserCookiesForURL reads cookies from the user's browsers matching the
 // given URL's domain. Iterates all registered browser cookie stores and
