@@ -4,6 +4,7 @@ package flights
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -54,7 +55,8 @@ func parseFlights(rawFlights []any) []models.FlightResult {
 
 		fr, err := parseOneFlight(entry)
 		if err != nil {
-			continue // skip unparseable entries
+			slog.Debug("skipped unparseable flight entry", "error", err)
+			continue
 		}
 
 		results = append(results, fr)

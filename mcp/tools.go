@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -126,7 +127,21 @@ func (s *Server) wrapHandler(inner ToolHandler) ToolHandler {
 			return nil, nil, fmt.Errorf("tool execution queued but timed out waiting for a slot: %w", ctx.Err())
 		}
 
-		content, structured, err := inner(ctx, args, elicit, sampling, progress)
+		// Recover from panics in tool handlers. A nil-pointer dereference or
+		// index-out-of-bounds in a parse function must not crash the MCP
+		// server — convert to a tool-call error so the agent can retry.
+		var content []ContentBlock
+		var structured interface{}
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("tool panicked: %v", r)
+					slog.Error("tool handler panic recovered", "panic", r)
+				}
+			}()
+			content, structured, err = inner(ctx, args, elicit, sampling, progress)
+		}()
 		if err != nil {
 			return content, structured, err
 		}

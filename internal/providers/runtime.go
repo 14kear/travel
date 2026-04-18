@@ -37,6 +37,12 @@ const (
 	authCacheDuration  = 10 * time.Minute
 	boundingBoxOffset  = 0.15
 	maxResponseBytes   = 10 * 1024 * 1024 // 10 MB
+
+	// Circuit breaker: skip providers with N+ consecutive errors and no
+	// success within the cooldown window. Prevents wasting 15-30s per
+	// search on providers that are consistently blocked or down.
+	circuitBreakerThreshold = 5
+	circuitBreakerCooldown  = 5 * time.Minute
 )
 
 // HotelFilterParams carries search filter values that should be passed through
@@ -179,6 +185,17 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 	var wg sync.WaitGroup
 
 	for _, cfg := range providers {
+		// Circuit breaker: skip providers that have failed repeatedly
+		// without any recent success. Prevents wasting 15-30s on preflight
+		// + WAF recovery for providers that are consistently down.
+		if cfg.ErrorCount >= circuitBreakerThreshold && !cfg.LastSuccess.IsZero() &&
+			time.Since(cfg.LastSuccess) > circuitBreakerCooldown {
+			slog.Info("circuit breaker: skipping provider",
+				"provider", cfg.ID,
+				"errors", cfg.ErrorCount,
+				"last_success", cfg.LastSuccess.Format(time.RFC3339))
+			continue
+		}
 		wg.Add(1)
 		go func(cfg *ProviderConfig) {
 			defer wg.Done()
