@@ -36,8 +36,8 @@ func TestWithElicit_GetElicit(t *testing.T) {
 }
 
 func TestGetElicit_NilContext(t *testing.T) {
-	//nolint:staticcheck // intentional nil ctx for test
-	fn := getElicit(nil)
+	var ctx context.Context //nolint:SA1012 // intentional nil ctx for edge-case test
+	fn := getElicit(ctx)
 	if fn != nil {
 		t.Error("expected nil for nil context")
 	}
