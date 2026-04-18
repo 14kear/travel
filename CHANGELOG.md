@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-04-18
+
+### Added
+- `trvl providers status` command — health classification (healthy/stale/error), relative timestamps, color output
+- `trvl providers status --probe` — live test request against each provider
+- Airbnb city_lookup with 130 global cities (URL-safe slug resolution)
+- Hostelworld global city coverage: 53→103 cities (Asia-Pacific, Americas, Africa, Oceania)
+- httptest-based integration tests for providers, ground transport, hack detectors
+- Shared httptest helper in `internal/testutil/`
+
+### Changed
+- Provider runtime: city_lookup now overrides `${location}` for URL-based providers (Airbnb)
+- Provider catalog: updated Hostelworld/Booking/Airbnb auth hints with correct city IDs and rating scales
+
 ## [0.6.5] - 2026-04-18
 
 ### Fixed
