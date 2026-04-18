@@ -81,18 +81,29 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 	swLat := lat - boundingBoxOffset
 	swLon := lon - boundingBoxOffset
 
+	// Compute num_nights from checkin/checkout (mirrors searchProvider).
+	numNights := "1"
+	if tIn, err := time.Parse("2006-01-02", checkin); err == nil {
+		if tOut, err := time.Parse("2006-01-02", checkout); err == nil {
+			if n := int(tOut.Sub(tIn).Hours() / 24); n > 0 {
+				numNights = strconv.Itoa(n)
+			}
+		}
+	}
+
 	vars := map[string]string{
-		"${checkin}":  checkin,
-		"${checkout}": checkout,
-		"${currency}": currency,
-		"${guests}":   strconv.Itoa(guests),
-		"${lat}":      strconv.FormatFloat(lat, 'f', 6, 64),
-		"${lon}":      strconv.FormatFloat(lon, 'f', 6, 64),
-		"${ne_lat}":   strconv.FormatFloat(neLat, 'f', 6, 64),
-		"${ne_lon}":   strconv.FormatFloat(neLon, 'f', 6, 64),
-		"${sw_lat}":   strconv.FormatFloat(swLat, 'f', 6, 64),
-		"${sw_lon}":   strconv.FormatFloat(swLon, 'f', 6, 64),
-		"${location}": location,
+		"${checkin}":    checkin,
+		"${checkout}":   checkout,
+		"${currency}":   currency,
+		"${guests}":     strconv.Itoa(guests),
+		"${lat}":        strconv.FormatFloat(lat, 'f', 6, 64),
+		"${lon}":        strconv.FormatFloat(lon, 'f', 6, 64),
+		"${ne_lat}":     strconv.FormatFloat(neLat, 'f', 6, 64),
+		"${ne_lon}":     strconv.FormatFloat(neLon, 'f', 6, 64),
+		"${sw_lat}":     strconv.FormatFloat(swLat, 'f', 6, 64),
+		"${sw_lon}":     strconv.FormatFloat(swLon, 'f', 6, 64),
+		"${location}":   location,
+		"${num_nights}": numNights,
 	}
 
 	// Resolve provider-specific city ID. Static lookup first, then dynamic
@@ -101,12 +112,19 @@ func TestProvider(ctx context.Context, cfg *ProviderConfig, location string, lat
 	// is diagnostic and should not persist cache changes to disk.
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+		// When endpoint uses ${location} not ${city_id}, override with slug.
+		if !strings.Contains(cfg.Endpoint, "${city_id}") {
+			vars["${location}"] = id
+		}
 	} else if cfg.CityResolver != nil {
 		if id, err := resolveCityIDDynamic(ctx, cfg, pc.client, location, nil); err != nil {
 			slog.Warn("city_resolver failed in test_provider",
 				"provider", cfg.ID, "location", location, "error", err.Error())
 		} else {
 			vars["${city_id}"] = id
+			if !strings.Contains(cfg.Endpoint, "${city_id}") {
+				vars["${location}"] = id
+			}
 		}
 	}
 
