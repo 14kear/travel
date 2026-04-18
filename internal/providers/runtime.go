@@ -311,12 +311,22 @@ func (rt *Runtime) searchProvider(ctx context.Context, cfg *ProviderConfig, loca
 	// table; if not found, fall back to the dynamic city_resolver API.
 	if id := resolveCityID(cfg.CityLookup, location); id != "" {
 		vars["${city_id}"] = id
+		// When the endpoint uses ${location} rather than ${city_id} (e.g.
+		// Airbnb embeds the location slug directly in the URL path), override
+		// ${location} with the looked-up value so the provider gets a
+		// URL-safe slug instead of raw user input.
+		if !strings.Contains(cfg.Endpoint, "${city_id}") {
+			vars["${location}"] = id
+		}
 	} else if cfg.CityResolver != nil {
 		if id, err := resolveCityIDDynamic(ctx, cfg, pc.client, location, rt.registry); err != nil {
 			slog.Warn("city_resolver failed, continuing without city_id",
 				"provider", cfg.ID, "location", location, "error", err.Error())
 		} else {
 			vars["${city_id}"] = id
+			if !strings.Contains(cfg.Endpoint, "${city_id}") {
+				vars["${location}"] = id
+			}
 		}
 	}
 

@@ -278,24 +278,39 @@ func runProvidersDisable(id string) error {
 // --- status ---
 
 func providersStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var probe bool
+
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show health status of all providers",
 		Long: `Show the health status of all configured providers.
-Displays last success time, error count, and last error message.
-Highlights stale providers (no success in 24 hours with errors).
+
+Each provider is classified as:
+  healthy       last successful request within 24 hours
+  stale         last successful request more than 24 hours ago
+  error         has a recorded error
+  unconfigured  no requests have been made yet
+
+Use --probe to run a live test request against each provider (slow).
 
 Examples:
   trvl providers status
+  trvl providers status --probe
   trvl providers status --format json`,
-		RunE: runProvidersStatus,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProvidersStatus(cmd, args, probe)
+		},
 	}
+
+	cmd.Flags().BoolVar(&probe, "probe", false, "Run a live test request against each provider")
+
+	return cmd
 }
 
-func runProvidersStatus(cmd *cobra.Command, _ []string) error {
+func runProvidersStatus(cmd *cobra.Command, _ []string, probe bool) error {
 	reg, err := providers.NewRegistry()
 	if err != nil {
-		return fmt.Errorf("list providers: %w", err)
+		return fmt.Errorf("providers status: %w", err)
 	}
 	configs := reg.List()
 
@@ -306,63 +321,67 @@ func runProvidersStatus(cmd *cobra.Command, _ []string) error {
 
 	if len(configs) == 0 {
 		fmt.Println("No providers configured.")
+		fmt.Println("Run 'trvl providers enable <id>' to add one.")
 		return nil
 	}
 
-	headers := []string{"ID", "Status", "Last Success", "Errors", "Last Error"}
+	headers := []string{"Name", "Category", "Status", "Last Success", "Last Error"}
 	rows := make([][]string, 0, len(configs))
+
 	for _, cfg := range configs {
-		status := cfg.Status()
-		stale := cfg.IsStale()
+		status := classifyProviderStatus(cfg)
+		displayStatus := colorProviderStatus(status)
 
-		switch {
-		case stale:
-			status = models.Red("stale")
-		case status == "ok":
-			status = models.Green(status)
-		case status == "error":
-			status = models.Red(status)
-		default:
-			status = models.Dim(status)
-		}
-
-		lastSuccess := "-"
-		if !cfg.LastSuccess.IsZero() {
-			age := time.Since(cfg.LastSuccess).Truncate(time.Minute)
-			lastSuccess = fmt.Sprintf("%s (%s ago)", cfg.LastSuccess.Format("2006-01-02 15:04"), age)
-		}
-
-		errCount := "-"
-		if cfg.ErrorCount > 0 {
-			errCount = fmt.Sprintf("%d", cfg.ErrorCount)
-		}
+		lastSuccess := relativeTimeStr(cfg.LastSuccess)
 
 		lastErr := "-"
 		if cfg.LastError != "" {
-			lastErr = cfg.LastError
-			if len(lastErr) > 50 {
-				lastErr = lastErr[:47] + "..."
-			}
+			lastErr = truncateStr(cfg.LastError, 80)
 		}
 
-		rows = append(rows, []string{cfg.ID, status, lastSuccess, errCount, lastErr})
+		rows = append(rows, []string{
+			cfg.Name,
+			cfg.Category,
+			displayStatus,
+			lastSuccess,
+			lastErr,
+		})
 	}
 
-	models.Banner(os.Stdout, "🔌", "Providers", fmt.Sprintf("%d configured", len(configs)))
+	models.Banner(os.Stdout, "\U0001F50C", "Provider Status", fmt.Sprintf("%d configured", len(configs)))
 	fmt.Println()
 	models.FormatTable(os.Stdout, headers, rows)
 
-	// Show stale warning.
-	var staleNames []string
+	// Show stale/error summary.
+	var staleNames, errorNames []string
 	for _, cfg := range configs {
-		if cfg.IsStale() {
+		status := classifyProviderStatus(cfg)
+		switch status {
+		case "stale":
 			staleNames = append(staleNames, cfg.ID)
+		case "error":
+			errorNames = append(errorNames, cfg.ID)
 		}
 	}
-	if len(staleNames) > 0 {
+	if len(errorNames) > 0 {
 		fmt.Println()
-		fmt.Fprintf(os.Stderr, "  %s Stale: %s (no success in 24h with errors)\n",
+		fmt.Fprintf(os.Stderr, "  %s Errors: %s\n",
+			models.Red("!"), strings.Join(errorNames, ", "))
+	}
+	if len(staleNames) > 0 {
+		if len(errorNames) == 0 {
+			fmt.Println()
+		}
+		fmt.Fprintf(os.Stderr, "  %s Stale: %s (no success in 24h)\n",
 			models.Yellow("!"), strings.Join(staleNames, ", "))
+	}
+
+	// Probe mode: run a live test against each provider.
+	if probe {
+		fmt.Println()
+		fmt.Println(models.Bold("Running live probes..."))
+		fmt.Println()
+		runStatusProbes(configs)
 	}
 
 	return nil

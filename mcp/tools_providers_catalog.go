@@ -82,12 +82,13 @@ var availableProviders = []providerSuggestion{
 		Category:    "hotels",
 		Description: "Hostels and budget accommodation worldwide.",
 		AuthPattern: "rest_apikey",
-		AuthHint: "REST API with API key from page source.\n" +
+		AuthHint: "REST API with API key from page source. Global coverage (100+ cities).\n" +
 			"Reference: search GitHub for 'hostelworld api' or 'hostelworld-api'\n" +
 			"  - Look for src/client.ts or similar for the API base URL and endpoints\n" +
 			"  - Auth: APIGEE API key extracted from homepage HTML via regex APIGEE_KEY:\"([^\"]+)\"\n" +
-			"  - City IDs: numeric (e.g. Paris=14, London=3, Barcelona=83, Berlin=26, Rome=36)\n" +
-			"  - Resolve city IDs via autocomplete: /api/search/autocomplete?query=CityName\n" +
+			"  - City IDs: numeric (e.g. Paris=14, London=3, Bangkok=149, Tokyo=452, New York=13, Sydney=81)\n" +
+			"  - Resolve city IDs: visit hostelworld.com/hostels/CityName, extract id= from map link\n" +
+			"  - Coverage: Europe, Asia-Pacific, Americas, Middle East/Africa, Oceania\n" +
 			"  - Rating: 0-100 scale, set rating_scale: 0.1 to normalize to 0-10\n" +
 			"  - Note: REST API, results in .properties[] array",
 		Reference:      "search GitHub for hostelworld api",
@@ -301,7 +302,7 @@ func skeletonHostelworld() map[string]any {
 			"FILL_key_header": "${api_key}",
 		},
 		"query_params": map[string]any{
-			"FILL_city_id_param":  "FILL: numeric city_id (Paris=59, London=64, Barcelona=33, Berlin=4, Rome=88)",
+			"FILL_city_id_param":  "FILL: numeric city_id (Paris=14, London=3, Bangkok=149, Tokyo=452, New York=13, Sydney=81)",
 			"FILL_checkin_param":  "${checkin}",
 			"FILL_checkout_param": "${checkout}",
 			"FILL_guests_param":   "${guests}",
