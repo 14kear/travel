@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-04-18
+
+### Changed
+- mcp test suite: 175s → 0.7s (250x speedup with `-short`, 2.3x without)
+- Ground transport: DI refactor enables httptest coverage for 5 providers
+- Test coverage: 59% → 64% (architectural ceiling without full DI rewrite)
+
+### Fixed
+- Data race in `SetExternalProviderRuntime` (sync.RWMutex guard)
+- TestProvider missing `${num_nights}` computation (Hostelworld probe fix)
+- TestProvider missing `${location}` override for URL-based providers (Airbnb)
+- staticcheck SA1012 nil context in test
+
+### Added
+- 10 live HTTP tests gated behind `testing.Short()` (skip in fast mode)
+- `t.Parallel()` on ~423 independent mcp tests
+- httptest DI tests for FlixBus, RegioJet, SNCF, Trainline, Eckeroline
+
 ## [0.6.7] - 2026-04-18
 
 ### Fixed
