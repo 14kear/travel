@@ -260,6 +260,15 @@ func SearchFerryhopper(ctx context.Context, from, to, date, currency string) ([]
 		return nil, fmt.Errorf("ferryhopper: content text too large (%d bytes)", len(contentText))
 	}
 
+	// The MCP server sometimes returns plain text instead of JSON (e.g.
+	// "Ferry routes not available" or "Found no itineraries"). Only attempt
+	// JSON parse when the content looks like a JSON object or array.
+	if len(contentText) == 0 || (contentText[0] != '{' && contentText[0] != '[') {
+		slog.Debug("ferryhopper: content is not JSON, treating as no results",
+			"preview", contentText[:min(len(contentText), 80)])
+		return nil, nil
+	}
+
 	var tripResult ferryhopperTripResult
 	if err := json.Unmarshal([]byte(contentText), &tripResult); err != nil {
 		return nil, fmt.Errorf("ferryhopper: decode trip result: %w", err)
