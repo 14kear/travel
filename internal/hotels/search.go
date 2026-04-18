@@ -207,12 +207,17 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 	var rawBatches [][]models.HotelResult
 
 	for sortIdx, googleSort := range sortOrders {
+		// Bail if context is already cancelled (tool timeout hit).
+		if ctx.Err() != nil {
+			break
+		}
 		// Brief cooldown between sort orders to avoid Google 429 rate limits.
-		// Skip for the first sort order (no prior requests to cool down from).
 		if sortIdx > 0 {
 			select {
 			case <-time.After(500 * time.Millisecond):
 			case <-ctx.Done():
+			}
+			if ctx.Err() != nil {
 				break
 			}
 		}

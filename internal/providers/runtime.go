@@ -43,6 +43,12 @@ const (
 	// search on providers that are consistently blocked or down.
 	circuitBreakerThreshold = 5
 	circuitBreakerCooldown  = 5 * time.Minute
+
+	// perProviderTimeout caps any single provider's full execution:
+	// preflight → cookie read → WAF solve → search → parse. Without
+	// this, a provider stuck in the browser cookie lookup (15s) + WAF
+	// solver (20s) + retry cascade can hold up the entire search.
+	perProviderTimeout = 30 * time.Second
 )
 
 // HotelFilterParams carries search filter values that should be passed through
@@ -199,7 +205,12 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 		wg.Add(1)
 		go func(cfg *ProviderConfig) {
 			defer wg.Done()
-			hotels, err := rt.searchProvider(ctx, cfg, location, lat, lon, checkin, checkout, currency, guests, filters)
+			// Per-provider timeout: prevent any single provider from holding
+			// up the entire search. Covers the full preflight → auth → search
+			// → parse cascade including browser cookie reads and WAF solving.
+			provCtx, provCancel := context.WithTimeout(ctx, perProviderTimeout)
+			defer provCancel()
+			hotels, err := rt.searchProvider(provCtx, cfg, location, lat, lon, checkin, checkout, currency, guests, filters)
 			results <- result{hotels: hotels, err: err, id: cfg.ID, name: cfg.Name}
 		}(cfg)
 	}
