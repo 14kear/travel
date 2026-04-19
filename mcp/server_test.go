@@ -128,8 +128,8 @@ func TestToolsList(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	if len(result.Tools) != 44 {
-		t.Fatalf("expected 44 tools, got %d", len(result.Tools))
+	if len(result.Tools) != 45 {
+		t.Fatalf("expected 45 tools, got %d", len(result.Tools))
 	}
 
 	expected := map[string]bool{
@@ -177,6 +177,7 @@ func TestToolsList(t *testing.T) {
 		"test_provider":              false,
 		"optimize_trip_dates":        false,
 		"assess_trip":               false,
+		"optimize_booking":          false,
 	}
 	for _, tool := range result.Tools {
 		if _, ok := expected[tool.Name]; !ok {
