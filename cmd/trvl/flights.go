@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/MikkoParkkola/trvl/internal/baggage"
 	"github.com/MikkoParkkola/trvl/internal/deals"
 	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/flights"
@@ -196,7 +197,46 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 		}
 	}
 
-	headers := []string{"Price", "Duration", "Stops", "Route"}
+	// Compute all-in costs (base fare + baggage fees - FF benefits).
+	// Only shown when at least one flight's all-in cost differs from base.
+	type allInInfo struct {
+		cost      float64
+		breakdown string
+	}
+	allInData := make([]allInInfo, len(result.Flights))
+	showAllIn := false
+	prefs, _ := preferences.Load() //nolint:errcheck // default prefs on error
+	if prefs != nil { // all-in is self-gating: column only appears when allIn != basePrice for any flight
+		needCheckedBag := !prefs.CarryOnOnly
+		needCarryOn := true
+		var ffStatuses []baggage.FFStatus
+		for _, fp := range prefs.FrequentFlyerPrograms {
+			ffStatuses = append(ffStatuses, baggage.FFStatus{
+				Alliance: fp.Alliance,
+				Tier:     fp.Tier,
+			})
+		}
+		for i, f := range result.Flights {
+			airlineCode := ""
+			if len(f.Legs) > 0 {
+				airlineCode = f.Legs[0].AirlineCode
+			}
+			if airlineCode == "" {
+				continue
+			}
+			allIn, breakdown := baggage.AllInCost(f.Price, airlineCode, needCheckedBag, needCarryOn, ffStatuses)
+			allInData[i] = allInInfo{cost: allIn, breakdown: breakdown}
+			if allIn != f.Price {
+				showAllIn = true
+			}
+		}
+	}
+
+	headers := []string{"Price"}
+	if showAllIn {
+		headers = append(headers, "All-in")
+	}
+	headers = append(headers, "Duration", "Stops", "Route")
 	if showProvider {
 		headers = append(headers, "Provider")
 	}
@@ -211,7 +251,7 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 		prices = prices.With(f.Price)
 	}
 
-	for _, f := range result.Flights {
+	for i, f := range result.Flights {
 		route := flightRoute(f)
 		airline := ""
 		flightNum := ""
@@ -227,10 +267,15 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 
 		row := []string{
 			prices.Apply(f.Price, formatPrice(f.Price, f.Currency)),
+		}
+		if showAllIn {
+			row = append(row, formatAllIn(f.Price, f.Currency, allInData[i].cost, allInData[i].breakdown))
+		}
+		row = append(row,
 			formatDuration(f.Duration),
 			colorizeStops(f.Stops),
 			route,
-		}
+		)
 		if showProvider {
 			row = append(row, flightProviderLabel(f))
 		}
@@ -331,6 +376,31 @@ func formatDuration(minutes int) string {
 		return fmt.Sprintf("%dm", m)
 	}
 	return fmt.Sprintf("%dh %dm", h, m)
+}
+
+// formatAllIn renders the all-in cost cell for the flight table.
+// Shows the total cost and a parenthetical explaining the delta, e.g.:
+//
+//	"EUR 124 (+€35 bag)" — baggage fee added
+//	"EUR 89 (bags incl)" — no extra charge
+//	"EUR 89 (FF bags)"   — FF status waived the fee
+func formatAllIn(basePrice float64, currency string, allInCost float64, breakdown string) string {
+	if allInCost <= 0 || breakdown == "" {
+		return formatPrice(basePrice, currency)
+	}
+	label := breakdown
+	if allInCost == basePrice {
+		// No price difference — shorten the label.
+		switch {
+		case strings.Contains(breakdown, "FF"):
+			label = "FF bags"
+		case strings.Contains(breakdown, "included"):
+			label = "bags incl"
+		default:
+			label = breakdown
+		}
+	}
+	return fmt.Sprintf("%s %.0f (%s)", currency, allInCost, label)
 }
 
 // formatStops returns a human-readable stops string.

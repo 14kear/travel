@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MikkoParkkola/trvl/internal/baggage"
 	"github.com/MikkoParkkola/trvl/internal/flights"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/preferences"
@@ -31,8 +32,10 @@ func flightSearchOutputSchema() interface{} {
 						"duration":     map[string]interface{}{"type": "integer"},
 						"stops":        map[string]interface{}{"type": "integer"},
 						"provider":     map[string]interface{}{"type": "string"},
-						"booking_url":  map[string]interface{}{"type": "string"},
-						"self_connect": map[string]interface{}{"type": "boolean"},
+						"booking_url":    map[string]interface{}{"type": "string"},
+						"all_in_cost":    map[string]interface{}{"type": "number", "description": "Total cost including baggage fees adjusted for FF status"},
+						"bag_breakdown":  map[string]interface{}{"type": "string", "description": "Baggage cost explanation, e.g. '+€35 checked bag' or 'bags included'"},
+						"self_connect":   map[string]interface{}{"type": "boolean"},
 						"warnings": map[string]interface{}{
 							"type":  "array",
 							"items": map[string]interface{}{"type": "string"},
@@ -268,17 +271,62 @@ func handleSearchFlights(ctx context.Context, args map[string]any, elicit Elicit
 		result.Count = len(result.Flights)
 	}
 
+	// Enrich flights with all-in cost (base fare + baggage - FF benefits).
+	type enrichedFlight struct {
+		models.FlightResult
+		AllInCost    float64 `json:"all_in_cost,omitempty"`
+		BagBreakdown string  `json:"bag_breakdown,omitempty"`
+	}
+	enrichedFlights := make([]enrichedFlight, len(result.Flights))
+	if prefs != nil && result.Success {
+		needCheckedBag := !prefs.CarryOnOnly
+		needCarryOn := true
+		var ffStatuses []baggage.FFStatus
+		for _, fp := range prefs.FrequentFlyerPrograms {
+			ffStatuses = append(ffStatuses, baggage.FFStatus{
+				Alliance: fp.Alliance,
+				Tier:     fp.Tier,
+			})
+		}
+		for i, f := range result.Flights {
+			enrichedFlights[i].FlightResult = f
+			airlineCode := ""
+			if len(f.Legs) > 0 {
+				airlineCode = f.Legs[0].AirlineCode
+			}
+			if airlineCode != "" {
+				allIn, breakdown := baggage.AllInCost(f.Price, airlineCode, needCheckedBag, needCarryOn, ffStatuses)
+				if breakdown != "" {
+					enrichedFlights[i].AllInCost = allIn
+					enrichedFlights[i].BagBreakdown = breakdown
+				}
+			}
+		}
+	} else {
+		for i, f := range result.Flights {
+			enrichedFlights[i].FlightResult = f
+		}
+	}
+
 	// Build suggestions for progressive disclosure.
 	suggestions := flightSuggestions(result, origin, dest, date, opts)
 
 	// Build structured response.
-	type flightResponse struct {
-		*models.FlightSearchResult
-		Suggestions []Suggestion `json:"suggestions,omitempty"`
+	type enrichedFlightSearchResult struct {
+		Success     bool             `json:"success"`
+		Count       int              `json:"count"`
+		TripType    string           `json:"trip_type"`
+		Flights     []enrichedFlight `json:"flights"`
+		Error       string           `json:"error,omitempty"`
+		Suggestions []Suggestion     `json:"suggestions,omitempty"`
 	}
-	resp := flightResponse{
-		FlightSearchResult: result,
-		Suggestions:        suggestions,
+	resp := enrichedFlightSearchResult{
+		Success:     result.Success,
+		Count:       result.Count,
+		TripType:    result.TripType,
+		Flights:     enrichedFlights,
+		Error:       result.Error,
+		Suggestions: suggestions,
 	}
 
 	content, err := buildAnnotatedContentBlocks(flightSummary(result, origin, dest), resp)

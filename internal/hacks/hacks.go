@@ -13,7 +13,7 @@ import (
 
 // Hack represents a detected travel optimization opportunity.
 type Hack struct {
-	Type        string   `json:"type"`                  // "throwaway", "hidden_city", "positioning", "split", "night_transport", "stopover", "date_flex", "open_jaw", "ferry_positioning", "multi_stop", "currency_arbitrage", "calendar_conflict", "tuesday_booking", "low_cost_carrier", "multimodal_skip_flight", "multimodal_positioning", "multimodal_open_jaw_ground", "multimodal_return_split", "advance_purchase", "group_split"
+	Type        string   `json:"type"`                  // "throwaway", "hidden_city", "positioning", "split", "night_transport", "stopover", "date_flex", "open_jaw", "ferry_positioning", "multi_stop", "currency_arbitrage", "calendar_conflict", "tuesday_booking", "low_cost_carrier", "multimodal_skip_flight", "multimodal_positioning", "multimodal_open_jaw_ground", "multimodal_return_split", "advance_purchase", "group_split", "fare_breakpoint", "destination_airport", "fuel_surcharge"
 	Title       string   `json:"title"`                 // human-readable hack name
 	Description string   `json:"description"`           // explanation for the traveller
 	Savings     float64  `json:"savings"`               // EUR saved vs naive booking
@@ -92,6 +92,8 @@ func DetectAll(ctx context.Context, in DetectorInput) []Hack {
 		detectAdvancePurchase,
 		detectGroupSplit,
 		detectRailFlyArbitrage,
+		detectFareBreakpoint,
+		detectDestinationAirport,
 	}
 
 	// Each detector gets a child context with a per-detector timeout so a
