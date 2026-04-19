@@ -360,6 +360,99 @@ func TestDeduplicateSources(t *testing.T) {
 	}
 }
 
+func TestComputeSavings_MultipleSourcesDifferentPrices(t *testing.T) {
+	hotels := []HotelResult{{
+		Name: "Test Hotel",
+		Sources: []PriceSource{
+			{Provider: "google_hotels", Price: 120, Currency: "EUR"},
+			{Provider: "booking", Price: 95, Currency: "EUR"},
+			{Provider: "airbnb", Price: 150, Currency: "EUR"},
+		},
+	}}
+	ComputeSavings(hotels)
+	if hotels[0].Savings != 55 {
+		t.Errorf("Savings = %v, want 55", hotels[0].Savings)
+	}
+	if hotels[0].CheapestSource != "booking" {
+		t.Errorf("CheapestSource = %q, want booking", hotels[0].CheapestSource)
+	}
+}
+
+func TestComputeSavings_SingleSource(t *testing.T) {
+	hotels := []HotelResult{{
+		Name: "Test Hotel",
+		Sources: []PriceSource{
+			{Provider: "google_hotels", Price: 120, Currency: "EUR"},
+		},
+	}}
+	ComputeSavings(hotels)
+	if hotels[0].Savings != 0 {
+		t.Errorf("Savings = %v, want 0 for single source", hotels[0].Savings)
+	}
+}
+
+func TestComputeSavings_SamePrice(t *testing.T) {
+	hotels := []HotelResult{{
+		Name: "Test Hotel",
+		Sources: []PriceSource{
+			{Provider: "google_hotels", Price: 100, Currency: "EUR"},
+			{Provider: "booking", Price: 100, Currency: "EUR"},
+		},
+	}}
+	ComputeSavings(hotels)
+	if hotels[0].Savings != 0 {
+		t.Errorf("Savings = %v, want 0 for same price", hotels[0].Savings)
+	}
+}
+
+func TestComputeSavings_ZeroPriceIgnored(t *testing.T) {
+	hotels := []HotelResult{{
+		Name: "Test Hotel",
+		Sources: []PriceSource{
+			{Provider: "google_hotels", Price: 0, Currency: "EUR"},
+			{Provider: "booking", Price: 95, Currency: "EUR"},
+			{Provider: "airbnb", Price: 120, Currency: "EUR"},
+		},
+	}}
+	ComputeSavings(hotels)
+	if hotels[0].Savings != 25 {
+		t.Errorf("Savings = %v, want 25", hotels[0].Savings)
+	}
+	if hotels[0].CheapestSource != "booking" {
+		t.Errorf("CheapestSource = %q, want booking", hotels[0].CheapestSource)
+	}
+}
+
+func TestComputeSavings_EmptySources(t *testing.T) {
+	hotels := []HotelResult{{Name: "Test Hotel"}}
+	ComputeSavings(hotels)
+	if hotels[0].Savings != 0 {
+		t.Errorf("Savings = %v, want 0 for no sources", hotels[0].Savings)
+	}
+}
+
+func TestComputeSavings_CalledByMerge(t *testing.T) {
+	// Verify that MergeHotelResults populates savings.
+	batch1 := []HotelResult{{
+		Name: "Hotel Foo", Price: 120, Currency: "EUR",
+		Sources: []PriceSource{{Provider: "google_hotels", Price: 120, Currency: "EUR"}},
+	}}
+	batch2 := []HotelResult{{
+		Name: "Hotel Foo", Price: 95, Currency: "EUR",
+		Sources: []PriceSource{{Provider: "booking", Price: 95, Currency: "EUR"}},
+	}}
+	merged := MergeHotelResults(batch1, batch2)
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 merged hotel, got %d", len(merged))
+	}
+	if merged[0].Savings != 25 {
+		t.Errorf("Savings = %v, want 25 after merge", merged[0].Savings)
+	}
+	if merged[0].CheapestSource != "booking" {
+		t.Errorf("CheapestSource = %q, want booking", merged[0].CheapestSource)
+	}
+}
+
 func TestHaversineMeters(t *testing.T) {
 	// Helsinki to Tallinn ≈ 80km.
 	dist := haversineMeters(60.1699, 24.9384, 59.4370, 24.7536)

@@ -298,6 +298,7 @@ func TestToolRegistration_AllTools(t *testing.T) {
 		"remove_provider",
 		"suggest_providers",
 		"test_provider",
+		"optimize_trip_dates",
 	}
 
 	if len(s.tools) != len(expectedTools) {

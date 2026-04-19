@@ -274,6 +274,7 @@ func searchBestHotel(ctx context.Context, city, checkIn, checkOut string, guests
 		Guests:   guests,
 		Sort:     "cheapest",
 		Currency: currency,
+		MaxPages: 1, // Only need cheapest hotel, not full results. Reduces 9 HTTP requests to 1.
 	}
 	if prefs != nil {
 		if prefs.MinHotelRating > 0 {

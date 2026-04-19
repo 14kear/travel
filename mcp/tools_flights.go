@@ -312,14 +312,17 @@ func handleSearchDates(ctx context.Context, args map[string]any, elicit ElicitFu
 		return nil, nil, err
 	}
 
-	opts := flights.DateSearchOptions{
-		FromDate:  startDate,
-		ToDate:    endDate,
-		Duration:  argInt(args, "trip_duration", 0),
-		RoundTrip: argBool(args, "is_round_trip", false),
+	opts := flights.CalendarOptions{
+		FromDate:   startDate,
+		ToDate:     endDate,
+		TripLength: argInt(args, "trip_duration", 0),
+		RoundTrip:  argBool(args, "is_round_trip", false),
 	}
 
-	result, err := flights.SearchDates(ctx, origin, dest, opts)
+	// Use SearchCalendar (1 API call via GetCalendarGraph) instead of the
+	// legacy SearchDates (N calls, one per date). Falls back to N-call
+	// automatically if CalendarGraph fails.
+	result, err := flights.SearchCalendar(ctx, origin, dest, opts)
 	if err != nil {
 		return nil, nil, err
 	}

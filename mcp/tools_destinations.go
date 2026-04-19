@@ -564,3 +564,133 @@ func handlePlanTrip(ctx context.Context, args map[string]any, elicit ElicitFunc,
 	}
 	return []ContentBlock{{Type: "text", Text: string(data)}}, result, nil
 }
+
+// --- Optimize Trip Dates tool ---
+
+func optimizeTripDatesOutputSchema() interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"success": map[string]interface{}{"type": "boolean"},
+			"best_date": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"depart_date": map[string]interface{}{"type": "string"},
+					"return_date": map[string]interface{}{"type": "string"},
+					"flight_cost": map[string]interface{}{"type": "number"},
+					"total_cost":  map[string]interface{}{"type": "number"},
+					"currency":    map[string]interface{}{"type": "string"},
+					"savings":     map[string]interface{}{"type": "number"},
+				},
+			},
+			"options": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"depart_date": map[string]interface{}{"type": "string"},
+						"return_date": map[string]interface{}{"type": "string"},
+						"flight_cost": map[string]interface{}{"type": "number"},
+						"total_cost":  map[string]interface{}{"type": "number"},
+						"currency":    map[string]interface{}{"type": "string"},
+						"savings":     map[string]interface{}{"type": "number"},
+					},
+				},
+			},
+			"max_savings": map[string]interface{}{"type": "number"},
+			"currency":    map[string]interface{}{"type": "string"},
+			"error":       map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"success"},
+	}
+}
+
+func optimizeTripDatesTool() ToolDef {
+	return ToolDef{
+		Name:        "optimize_trip_dates",
+		Title:       "Optimize Trip Dates",
+		Description: "Find the cheapest dates for a trip within a date range. Searches flight prices across the range and returns the optimal departure dates sorted by total cost.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"origin":      {Type: "string", Description: "Origin airport IATA code (e.g. HEL)"},
+				"destination": {Type: "string", Description: "Destination airport IATA code or city name"},
+				"from_date":   {Type: "string", Description: "Start of search range (YYYY-MM-DD)"},
+				"to_date":     {Type: "string", Description: "End of search range (YYYY-MM-DD)"},
+				"trip_length": {Type: "integer", Description: "Trip length in nights"},
+				"guests":      {Type: "integer", Description: "Number of guests (default: 1)"},
+				"currency":    {Type: "string", Description: "Target currency (e.g. EUR)"},
+			},
+			Required: []string{"origin", "destination", "from_date", "to_date", "trip_length"},
+		},
+		OutputSchema: optimizeTripDatesOutputSchema(),
+		Annotations: &ToolAnnotations{
+			Title:          "Optimize Trip Dates",
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+			OpenWorldHint:  true,
+		},
+	}
+}
+
+func handleOptimizeTripDates(ctx context.Context, args map[string]any, elicit ElicitFunc, sampling SamplingFunc, progress ProgressFunc) ([]ContentBlock, interface{}, error) {
+	origin := strings.ToUpper(argString(args, "origin"))
+	destination := argString(args, "destination")
+	fromDate := argString(args, "from_date")
+	toDate := argString(args, "to_date")
+	tripLength := argInt(args, "trip_length", 0)
+	guests := argInt(args, "guests", 1)
+	currency := argString(args, "currency")
+
+	if origin == "" || destination == "" {
+		return nil, nil, fmt.Errorf("origin and destination are required")
+	}
+	if fromDate == "" || toDate == "" {
+		return nil, nil, fmt.Errorf("from_date and to_date are required")
+	}
+
+	result, err := trip.OptimizeTripDates(ctx, trip.OptimizeTripDatesInput{
+		Origin:      origin,
+		Destination: destination,
+		FromDate:    fromDate,
+		ToDate:      toDate,
+		TripLength:  tripLength,
+		Guests:      guests,
+		Currency:    currency,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	summary := optimizeTripDatesSummary(result, origin, destination)
+	content, err := buildAnnotatedContentBlocks(summary, result)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return content, result, nil
+}
+
+func optimizeTripDatesSummary(result *trip.OptimizeTripDatesResult, origin, dest string) string {
+	if !result.Success {
+		if result.Error != "" {
+			return fmt.Sprintf("Trip date optimization %s to %s failed: %s", origin, dest, result.Error)
+		}
+		return fmt.Sprintf("Could not find optimal dates from %s to %s.", origin, dest)
+	}
+
+	parts := []string{
+		fmt.Sprintf("Found %d date options for %s -> %s", len(result.Options), origin, dest),
+	}
+
+	if result.BestDate != nil {
+		parts = append(parts, fmt.Sprintf("Cheapest: depart %s, return %s at %s %.0f",
+			result.BestDate.DepartDate, result.BestDate.ReturnDate,
+			result.BestDate.Currency, result.BestDate.TotalCost))
+	}
+	if result.MaxSavings > 0 {
+		parts = append(parts, fmt.Sprintf("Max savings: %s %.0f", result.Currency, result.MaxSavings))
+	}
+
+	return strings.Join(parts, ". ") + "."
+}

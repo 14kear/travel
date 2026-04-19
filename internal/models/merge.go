@@ -145,7 +145,39 @@ func MergeHotelResults(sources ...[]HotelResult) []HotelResult {
 	for _, k := range order {
 		result = append(result, *merged[k])
 	}
+	ComputeSavings(result)
 	return result
+}
+
+// ComputeSavings populates Savings and CheapestSource for each hotel that has
+// multiple price sources. Savings = max(sources.price) - min(sources.price).
+// Only set when there are 2+ sources with different prices.
+func ComputeSavings(hotels []HotelResult) {
+	for i := range hotels {
+		h := &hotels[i]
+		if len(h.Sources) < 2 {
+			continue
+		}
+		minPrice := math.MaxFloat64
+		maxPrice := 0.0
+		cheapest := ""
+		for _, s := range h.Sources {
+			if s.Price <= 0 {
+				continue
+			}
+			if s.Price < minPrice {
+				minPrice = s.Price
+				cheapest = s.Provider
+			}
+			if s.Price > maxPrice {
+				maxPrice = s.Price
+			}
+		}
+		if minPrice < maxPrice && cheapest != "" {
+			h.Savings = math.Round(maxPrice - minPrice)
+			h.CheapestSource = cheapest
+		}
+	}
 }
 
 func sameHotelCandidate(existing, incoming HotelResult, maxDistanceMeters float64) bool {

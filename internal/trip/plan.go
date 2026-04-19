@@ -173,7 +173,10 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 		}
 	}
 
-	// Search all three in parallel.
+	// Search all three in parallel, sharing one HTTP client for connection
+	// reuse and shared rate limiting across the 3 parallel goroutines.
+	client := newCompoundSearchClient()
+
 	var (
 		outResult   *models.FlightSearchResult
 		retResult   *models.FlightSearchResult
@@ -187,14 +190,14 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		outResult, outErr = flights.SearchFlights(ctx, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
+		outResult, outErr = flights.SearchFlightsWithClient(ctx, client, input.Origin, input.Destination, input.DepartDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
 			Adults: input.Guests,
 		})
 	}()
 	go func() {
 		defer wg.Done()
-		retResult, retErr = flights.SearchFlights(ctx, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
+		retResult, retErr = flights.SearchFlightsWithClient(ctx, client, input.Destination, input.Origin, input.ReturnDate, flights.SearchOptions{
 			SortBy: models.SortCheapest,
 			Adults: input.Guests,
 		})
@@ -202,7 +205,7 @@ func PlanTrip(ctx context.Context, input PlanInput) (*PlanResult, error) {
 	go func() {
 		defer wg.Done()
 		hotelLocation := models.ResolveHotelCity(input.Destination)
-		hotelResult, hotelErr = hotels.SearchHotels(ctx, hotelLocation, hotelOpts)
+		hotelResult, hotelErr = hotels.SearchHotelsWithClient(ctx, client, hotelLocation, hotelOpts)
 	}()
 	wg.Wait()
 

@@ -40,7 +40,9 @@ func hotelSearchOutputSchema() interface{} {
 							"type":  "array",
 							"items": map[string]interface{}{"type": "string"},
 						},
-						"eco_certified": map[string]interface{}{"type": "boolean"},
+						"eco_certified":   map[string]interface{}{"type": "boolean"},
+						"savings":         map[string]interface{}{"type": "number", "description": "Price savings vs most expensive source"},
+						"cheapest_source": map[string]interface{}{"type": "string", "description": "Provider with lowest price"},
 						"sources": map[string]interface{}{
 							"type": "array",
 							"items": map[string]interface{}{

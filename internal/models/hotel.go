@@ -49,7 +49,9 @@ type HotelResult struct {
 	Amenities    []string      `json:"amenities,omitempty"`
 	BookingURL   string        `json:"booking_url,omitempty"`
 	EcoCertified bool          `json:"eco_certified,omitempty"`
-	Sources      []PriceSource `json:"sources,omitempty"` // All providers that found this hotel
+	Sources        []PriceSource `json:"sources,omitempty"`          // All providers that found this hotel
+	Savings        float64       `json:"savings,omitempty"`          // price difference: most expensive source - cheapest source
+	CheapestSource string        `json:"cheapest_source,omitempty"` // provider name of cheapest source
 }
 
 // ProviderStatus reports the outcome of a single external provider query.

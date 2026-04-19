@@ -244,9 +244,20 @@ func formatHotelsTable(ctx context.Context, targetCurrency string, result *model
 		}
 	}
 
+	showSavings := false
+	for _, h := range result.Hotels {
+		if h.Savings > 0 {
+			showSavings = true
+			break
+		}
+	}
+
 	headers := []string{"Name", "Stars", "Rating", "Reviews", "Price"}
 	if showSources {
 		headers = append(headers, "Sources")
+	}
+	if showSavings {
+		headers = append(headers, "Savings")
 	}
 	headers = append(headers, "Amenities")
 	rows := make([][]string, 0, len(result.Hotels))
@@ -279,6 +290,13 @@ func formatHotelsTable(ctx context.Context, targetCurrency string, result *model
 		row := []string{h.Name, starsStr, colorizeRating(h.Rating, ratingStr), reviewsStr, priceStr}
 		if showSources {
 			row = append(row, hotelSourceLabels(h))
+		}
+		if showSavings {
+			savingsStr := ""
+			if h.Savings > 0 {
+				savingsStr = fmt.Sprintf("Save %.0f %s via %s", h.Savings, h.Currency, hotelSourceLabel(h.CheapestSource))
+			}
+			row = append(row, savingsStr)
 		}
 		row = append(row, amenStr)
 		rows = append(rows, row)
