@@ -301,6 +301,9 @@ func TestToolRegistration_AllTools(t *testing.T) {
 		"optimize_trip_dates",
 		"assess_trip",
 		"optimize_booking",
+		"build_profile",
+		"add_booking",
+		"interview_trip",
 	}
 
 	if len(s.tools) != len(expectedTools) {
