@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"golang.org/x/time/rate"
 )
 
 // ---------------------------------------------------------------------------
@@ -295,7 +296,9 @@ func TestSearchSNCF_UnknownDestination(t *testing.T) {
 
 func TestSearchSNCF_DefaultCurrency(t *testing.T) {
 	origDo := sncfDo
-	t.Cleanup(func() { sncfDo = origDo })
+	origLimiter := sncfLimiter
+	t.Cleanup(func() { sncfDo = origDo; sncfLimiter = origLimiter })
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	sncfDo = func(req *http.Request) (*http.Response, error) {
 		// Return a valid calendar response.
@@ -321,7 +324,9 @@ func TestSearchSNCF_DefaultCurrency(t *testing.T) {
 
 func TestSearchSNCFCalendar_200OK(t *testing.T) {
 	origDo := sncfDo
-	t.Cleanup(func() { sncfDo = origDo })
+	origLimiter := sncfLimiter
+	t.Cleanup(func() { sncfDo = origDo; sncfLimiter = origLimiter })
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	sncfDo = func(req *http.Request) (*http.Response, error) {
 		body := `[{"date":"2026-05-01","price":3500},{"date":"2026-05-02","price":null}]`
@@ -351,7 +356,9 @@ func TestSearchSNCFCalendar_200OK(t *testing.T) {
 
 func TestSearchSNCFCalendar_NonOKStatus(t *testing.T) {
 	origDo := sncfDo
-	t.Cleanup(func() { sncfDo = origDo })
+	origLimiter := sncfLimiter
+	t.Cleanup(func() { sncfDo = origDo; sncfLimiter = origLimiter })
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	sncfDo = func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -376,11 +383,14 @@ func TestSearchSNCFCalendar_403WithBrowserCookieRetry(t *testing.T) {
 	origDo := sncfDo
 	origBrowserCookies := sncfBrowserCookies
 	origFetchViaNab := sncfFetchViaNab
+	origLimiter := sncfLimiter
 	t.Cleanup(func() {
 		sncfDo = origDo
 		sncfBrowserCookies = origBrowserCookies
 		sncfFetchViaNab = origFetchViaNab
+		sncfLimiter = origLimiter
 	})
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	callCount := 0
 	sncfDo = func(req *http.Request) (*http.Response, error) {
@@ -585,7 +595,9 @@ func TestSearchTrainline_InvalidDate(t *testing.T) {
 
 func TestSearchTrainline_200OK_HappyPath(t *testing.T) {
 	origDo := trainlineDo
-	t.Cleanup(func() { trainlineDo = origDo })
+	origLimiter := trainlineLimiter
+	t.Cleanup(func() { trainlineDo = origDo; trainlineLimiter = origLimiter })
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	trainlineDo = func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -609,7 +621,9 @@ func TestSearchTrainline_200OK_HappyPath(t *testing.T) {
 
 func TestSearchTrainline_NonOKStatus(t *testing.T) {
 	origDo := trainlineDo
-	t.Cleanup(func() { trainlineDo = origDo })
+	origLimiter := trainlineLimiter
+	t.Cleanup(func() { trainlineDo = origDo; trainlineLimiter = origLimiter })
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	trainlineDo = func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -630,7 +644,9 @@ func TestSearchTrainline_NonOKStatus(t *testing.T) {
 
 func TestSearchTrainline_403_NoBrowserFallbacks(t *testing.T) {
 	origDo := trainlineDo
-	t.Cleanup(func() { trainlineDo = origDo })
+	origLimiter := trainlineLimiter
+	t.Cleanup(func() { trainlineDo = origDo; trainlineLimiter = origLimiter })
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	trainlineDo = func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
@@ -653,11 +669,14 @@ func TestSearchTrainline_403_DatadomeSeedRetry(t *testing.T) {
 	origDo := trainlineDo
 	origBrowserCookies := trainlineBrowserCookies
 	origFetchViaNab := trainlineFetchViaNab
+	origLimiter := trainlineLimiter
 	t.Cleanup(func() {
 		trainlineDo = origDo
 		trainlineBrowserCookies = origBrowserCookies
 		trainlineFetchViaNab = origFetchViaNab
+		trainlineLimiter = origLimiter
 	})
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	callCount := 0
 	trainlineDo = func(req *http.Request) (*http.Response, error) {

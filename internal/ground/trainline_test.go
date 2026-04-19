@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"golang.org/x/time/rate"
 )
 
 func TestLookupTrainlineStation(t *testing.T) {
@@ -273,11 +274,14 @@ func TestSearchTrainline_UsesNabFallbackOn403(t *testing.T) {
 	origDo := trainlineDo
 	origFetchViaNab := trainlineFetchViaNab
 	origBrowserCookies := trainlineBrowserCookies
+	origLimiter := trainlineLimiter
 	t.Cleanup(func() {
 		trainlineDo = origDo
 		trainlineFetchViaNab = origFetchViaNab
 		trainlineBrowserCookies = origBrowserCookies
+		trainlineLimiter = origLimiter
 	})
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	trainlineDo = func(*http.Request) (*http.Response, error) {
 		return &http.Response{

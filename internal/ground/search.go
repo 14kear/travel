@@ -153,10 +153,17 @@ func SearchByName(ctx context.Context, from, to, date string, opts SearchOptions
 			endDate = t.AddDate(0, 0, 7).Format("2006-01-02")
 		}
 
-		// Snap fares goroutine.
-		launchProvider(&wg, results, "eurostar snap", func() ([]models.GroundRoute, error) {
-			return SearchEurostar(ctx, from, to, date, endDate, opts.Currency, true)
-		})
+		// Snap fares goroutine — Snap fares are released up to 14 days
+		// before travel and only on specific routes (see eurostarSnapRoutes).
+		// Search today→today+14 so Snap deals surface regardless of the
+		// user's search date.
+		if HasEurostarSnapRoute(from, to) {
+			snapStart := time.Now().Format("2006-01-02")
+			snapEnd := time.Now().AddDate(0, 0, 14).Format("2006-01-02")
+			launchProvider(&wg, results, "eurostar snap", func() ([]models.GroundRoute, error) {
+				return SearchEurostar(ctx, from, to, snapStart, snapEnd, opts.Currency, true)
+			})
+		}
 
 		// Regular fares goroutine.
 		launchProvider(&wg, results, "eurostar", func() ([]models.GroundRoute, error) {

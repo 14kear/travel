@@ -70,12 +70,41 @@ var eurostarStations = map[string]EurostarStation{
 	"lille": {
 		UIC: "8722326", Name: "Lille Europe", City: "Lille", Country: "FR",
 	},
+	"antwerp": {
+		UIC: "8821006", Name: "Antwerpen-Centraal", City: "Antwerp", Country: "BE",
+	},
+	"antwerpen": {
+		UIC: "8821006", Name: "Antwerpen-Centraal", City: "Antwerp", Country: "BE",
+	},
 }
 
 // LookupEurostarStation resolves a city name to a Eurostar station (case-insensitive).
 func LookupEurostarStation(city string) (EurostarStation, bool) {
 	s, ok := eurostarStations[strings.ToLower(strings.TrimSpace(city))]
 	return s, ok
+}
+
+// eurostarSnapRoutes lists the city pairs where Eurostar Snap fares are
+// available (up to 14 days before travel).
+// Source: https://snap.eurostar.com/uk-en
+var eurostarSnapRoutes = map[[2]string]bool{
+	{"paris", "brussels"}:   true,
+	{"paris", "amsterdam"}:  true,
+	{"paris", "rotterdam"}:  true,
+	{"paris", "cologne"}:    true,
+	{"london", "brussels"}:  true,
+	{"london", "paris"}:     true,
+	{"london", "lille"}:     true,
+	{"london", "amsterdam"}: true,
+	{"london", "rotterdam"}: true,
+}
+
+// HasEurostarSnapRoute returns true if the city pair is a Snap route
+// (checked in both directions).
+func HasEurostarSnapRoute(from, to string) bool {
+	a := strings.ToLower(strings.TrimSpace(from))
+	b := strings.ToLower(strings.TrimSpace(to))
+	return eurostarSnapRoutes[[2]string{a, b}] || eurostarSnapRoutes[[2]string{b, a}]
 }
 
 func eurostarRequestHeaders(cookieHeader string) []eurostarHeader {

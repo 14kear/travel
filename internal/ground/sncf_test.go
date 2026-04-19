@@ -10,6 +10,7 @@ import (
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"github.com/MikkoParkkola/trvl/internal/testutil"
+	"golang.org/x/time/rate"
 )
 
 func TestLookupSNCFStation(t *testing.T) {
@@ -194,11 +195,14 @@ func TestSearchSNCFCalendar_UsesNabFallbackOn403(t *testing.T) {
 	origDo := sncfDo
 	origFetchViaNab := sncfFetchViaNab
 	origBrowserCookies := sncfBrowserCookies
+	origLimiter := sncfLimiter
 	t.Cleanup(func() {
 		sncfDo = origDo
 		sncfFetchViaNab = origFetchViaNab
 		sncfBrowserCookies = origBrowserCookies
+		sncfLimiter = origLimiter
 	})
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	sncfDo = func(*http.Request) (*http.Response, error) {
 		return &http.Response{

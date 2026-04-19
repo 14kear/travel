@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
+	"golang.org/x/time/rate"
 )
 
 // ---------------------------------------------------------------------------
@@ -24,11 +25,14 @@ func TestSearchSNCFCalendar_HappyPath(t *testing.T) {
 	origDo := sncfDo
 	origFetchViaNab := sncfFetchViaNab
 	origBrowserCookies := sncfBrowserCookies
+	origLimiter := sncfLimiter
 	t.Cleanup(func() {
 		sncfDo = origDo
 		sncfFetchViaNab = origFetchViaNab
 		sncfBrowserCookies = origBrowserCookies
+		sncfLimiter = origLimiter
 	})
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	// Mock SNCF calendar API: return a single-day calendar entry.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,11 +103,14 @@ func TestSearchSNCFCalendar_HTTP403_FallsToNab(t *testing.T) {
 	origDo := sncfDo
 	origFetchViaNab := sncfFetchViaNab
 	origBrowserCookies := sncfBrowserCookies
+	origLimiter := sncfLimiter
 	t.Cleanup(func() {
 		sncfDo = origDo
 		sncfFetchViaNab = origFetchViaNab
 		sncfBrowserCookies = origBrowserCookies
+		sncfLimiter = origLimiter
 	})
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -157,10 +164,13 @@ func TestSearchSNCFCalendar_HTTP403_FallsToNab(t *testing.T) {
 func TestSearchSNCFCalendar_NoPriceForDate(t *testing.T) {
 	origDo := sncfDo
 	origBrowserCookies := sncfBrowserCookies
+	origLimiter := sncfLimiter
 	t.Cleanup(func() {
 		sncfDo = origDo
 		sncfBrowserCookies = origBrowserCookies
+		sncfLimiter = origLimiter
 	})
+	sncfLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -352,10 +362,13 @@ func TestParseSNCFBFFResponse_PriceInCents(t *testing.T) {
 func TestSearchTrainline_MockHappyPath(t *testing.T) {
 	origDo := trainlineDo
 	origBrowserCookies := trainlineBrowserCookies
+	origLimiter := trainlineLimiter
 	t.Cleanup(func() {
 		trainlineDo = origDo
 		trainlineBrowserCookies = origBrowserCookies
+		trainlineLimiter = origLimiter
 	})
+	trainlineLimiter = rate.NewLimiter(rate.Inf, 1)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
