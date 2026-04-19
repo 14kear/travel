@@ -283,9 +283,10 @@ func TestExpandCandidates_unknown_origin_unknown_dest(t *testing.T) {
 	input.defaults()
 	candidates := expandCandidates(input)
 
-	// Unknown origin + unknown destination: only baseline candidate.
-	if len(candidates) != 1 {
-		t.Errorf("expected exactly 1 candidate for unknown origin+dest, got %d", len(candidates))
+	// Unknown origin + unknown destination: baseline + date-flex candidates only.
+	// FlexDays defaults to 3, so we get 1 baseline + 6 date-flex = 7.
+	if len(candidates) != 7 {
+		t.Errorf("expected 7 candidates for unknown origin+dest (1 baseline + 6 date-flex), got %d", len(candidates))
 	}
 }
 

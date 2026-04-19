@@ -244,34 +244,114 @@ func expandCandidates(input OptimizeInput) []*candidate {
 		})
 	}
 
+	// 5. Date flexibility: generate candidates with shifted dates.
+	// These are searched via CalendarGraph in the SEARCH phase (1 API call)
+	// rather than N individual searches.
+	if input.FlexDays > 0 {
+		for d := -input.FlexDays; d <= input.FlexDays; d++ {
+			if d == 0 {
+				continue // baseline already covers d=0
+			}
+			shiftedDepart := shiftDate(input.DepartDate, d)
+			shiftedReturn := shiftDate(input.ReturnDate, d)
+			if shiftedDepart == "" {
+				continue
+			}
+			if input.ReturnDate != "" && shiftedReturn == "" {
+				continue
+			}
+			candidates = append(candidates, &candidate{
+				origin:     origin,
+				dest:       dest,
+				departDate: shiftedDepart,
+				returnDate: shiftedReturn,
+				strategy:   fmt.Sprintf("Shift dates by %+d days", d),
+				hackTypes:  []string{"date_flex"},
+			})
+		}
+	}
+
+	// 6. Hidden city: search to a beyond-destination via airline hub.
+	// When the destination is a major airline hub, flights to cities
+	// beyond the hub that connect through it can be cheaper.
+	hiddenCityBeyond := map[string][]string{
+		"AMS": {"HEL", "RIX", "TLL", "ARN"}, // KLM hub — search to Nordics/Baltics via AMS
+		"FRA": {"PRG", "WAW", "BUD", "VIE"}, // Lufthansa hub — search to Central/Eastern Europe via FRA
+		"CDG": {"BRU", "GVA", "LIS"},         // Air France hub
+		"MUC": {"PRG", "VIE", "BUD"},         // Lufthansa hub
+		"IST": {"TBS", "SOF", "OTP"},         // Turkish hub
+		"CPH": {"ARN", "HEL", "OSL"},         // SAS hub
+		"ZRH": {"MXP", "VIE", "MUC"},         // Swiss hub
+	}
+
+	if beyondCities, ok := hiddenCityBeyond[dest]; ok {
+		for _, beyond := range beyondCities {
+			if beyond == origin {
+				continue
+			}
+			candidates = append(candidates, &candidate{
+				origin:     origin,
+				dest:       beyond,
+				departDate: input.DepartDate,
+				returnDate: input.ReturnDate,
+				strategy:   fmt.Sprintf("Hidden city: book to %s, exit at %s", beyond, dest),
+				hackTypes:  []string{"hidden_city"},
+			})
+		}
+	}
+
 	return candidates
+}
+
+// shiftDate shifts a YYYY-MM-DD date string by the given number of days.
+// Returns "" if the input is empty or unparseable.
+func shiftDate(date string, days int) string {
+	if date == "" {
+		return ""
+	}
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return ""
+	}
+	return t.AddDate(0, 0, days).Format("2006-01-02")
 }
 
 // searchCandidates executes flight searches for candidates within the API budget.
 // It prioritizes the baseline (direct) search first, then alternatives.
+//
+// Date-flex candidates are resolved via a single CalendarGraph call (1 API call
+// for the entire flex range) instead of N individual searches.
 func searchCandidates(ctx context.Context, candidates []*candidate, client *batchexec.Client, input OptimizeInput) {
 	budget := int64(input.MaxAPICalls)
 	var used atomic.Int64
 
-	// Sort: baseline (no hacks) first, then by expected lower transfer cost.
-	sorted := make([]*candidate, len(candidates))
-	copy(sorted, candidates)
-	sort.SliceStable(sorted, func(i, j int) bool {
+	// Pre-resolve date-flex candidates via CalendarGraph (1 API call).
+	resolveFlexDatesViaCalendar(ctx, candidates, input, &used, budget)
+
+	// Sort remaining candidates: baseline (no hacks) first, then by transfer cost.
+	var remaining []*candidate
+	for _, c := range candidates {
+		if c.searched {
+			continue // already resolved (date-flex)
+		}
+		remaining = append(remaining, c)
+	}
+	sort.SliceStable(remaining, func(i, j int) bool {
 		// Baseline first.
-		if len(sorted[i].hackTypes) == 0 {
+		if len(remaining[i].hackTypes) == 0 {
 			return true
 		}
-		if len(sorted[j].hackTypes) == 0 {
+		if len(remaining[j].hackTypes) == 0 {
 			return false
 		}
-		return sorted[i].transferCost < sorted[j].transferCost
+		return remaining[i].transferCost < remaining[j].transferCost
 	})
 
 	// Use semaphore for concurrency control (max 4 parallel searches).
 	sem := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 
-	for _, c := range sorted {
+	for _, c := range remaining {
 		if used.Load() >= budget {
 			break
 		}
@@ -313,6 +393,72 @@ func searchCandidates(ctx context.Context, candidates []*candidate, client *batc
 	}
 
 	wg.Wait()
+}
+
+// resolveFlexDatesViaCalendar uses a single CalendarGraph API call to get
+// prices for the entire flex date range. It populates date-flex candidates
+// with synthetic FlightResult entries containing the calendar prices.
+func resolveFlexDatesViaCalendar(ctx context.Context, candidates []*candidate, input OptimizeInput, used *atomic.Int64, budget int64) {
+	if input.FlexDays <= 0 {
+		return
+	}
+
+	// Collect date-flex candidates.
+	flexCandidates := make(map[string]*candidate) // departDate -> candidate
+	for _, c := range candidates {
+		if len(c.hackTypes) == 1 && c.hackTypes[0] == "date_flex" {
+			flexCandidates[c.departDate] = c
+		}
+	}
+	if len(flexCandidates) == 0 {
+		return
+	}
+
+	if used.Add(1) > budget {
+		return
+	}
+
+	origin := strings.ToUpper(input.Origin)
+	dest := strings.ToUpper(input.Destination)
+
+	// Compute the date range covering all flex days.
+	fromDate := shiftDate(input.DepartDate, -input.FlexDays)
+	toDate := shiftDate(input.DepartDate, input.FlexDays)
+	if fromDate == "" || toDate == "" {
+		return
+	}
+
+	tripLength := 0
+	roundTrip := input.ReturnDate != ""
+	if roundTrip {
+		departT, err1 := time.Parse("2006-01-02", input.DepartDate)
+		returnT, err2 := time.Parse("2006-01-02", input.ReturnDate)
+		if err1 == nil && err2 == nil {
+			tripLength = int(returnT.Sub(departT).Hours() / 24)
+		}
+	}
+
+	calResult, err := flights.SearchCalendar(ctx, origin, dest, flights.CalendarOptions{
+		FromDate:   fromDate,
+		ToDate:     toDate,
+		TripLength: tripLength,
+		RoundTrip:  roundTrip,
+		Adults:     input.Guests,
+	})
+	if err != nil || calResult == nil || !calResult.Success || len(calResult.Dates) == 0 {
+		return
+	}
+
+	// Map calendar prices to flex candidates.
+	for _, dp := range calResult.Dates {
+		if c, ok := flexCandidates[dp.Date]; ok && dp.Price > 0 {
+			c.searched = true
+			c.currency = dp.Currency
+			c.flights = []models.FlightResult{
+				{Price: dp.Price, Currency: dp.Currency},
+			}
+		}
+	}
 }
 
 // priceCandidate computes all-in cost for a searched candidate.
