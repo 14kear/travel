@@ -1018,7 +1018,7 @@ func TestApplyPreference_EmptyCity(t *testing.T) {
 	}
 }
 
-func TestApplyPreference_UnknownKey(t *testing.T) {
+func TestApplyPreference_UnknownKey_Max(t *testing.T) {
 	p := &preferences.Preferences{}
 	err := applyPreference((*prefsWrapper)(p), "nonexistent_key", "value")
 	if err == nil {
