@@ -100,11 +100,33 @@ type providerClient struct {
 }
 
 // NewRuntime creates a Runtime backed by the given registry.
+// It eagerly pre-warms browser cookies for all providers that use
+// cookies.source = "browser", so the first search doesn't block on
+// the macOS Keychain cold-start (6-10s on first access).
 func NewRuntime(registry *Registry) *Runtime {
-	return &Runtime{
+	rt := &Runtime{
 		registry: registry,
 		clients:  make(map[string]*providerClient),
 	}
+
+	// Eager cookie warm-up: start background kooky reads for all
+	// browser-cookie providers immediately. By the time the user's
+	// first search arrives (typically 1-5s later), the warm cache
+	// will have the cookies ready.
+	if registry == nil {
+		return rt
+	}
+	for _, cfg := range registry.List() {
+		if cfg.Cookies.Source == "browser" {
+			warmURL := cfg.Endpoint
+			if cfg.Auth != nil && cfg.Auth.PreflightURL != "" {
+				warmURL = cfg.Auth.PreflightURL
+			}
+			WarmBrowserCookies(warmURL, cfg.Cookies.Browser)
+		}
+	}
+
+	return rt
 }
 
 // getOrCreateClient returns the providerClient for the given config,

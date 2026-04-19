@@ -200,18 +200,14 @@ func cookieSnapshotKey(cookies []*http.Cookie) string {
 }
 
 // browserCookieLookupTimeout bounds how long we spend reading cookies from
-// browser stores. On macOS, kooky iterates ALL registered browser finders
-// concurrently, many of which fail fast (no such file). However, the Brave
-// and Chrome stores require a Keychain lookup for the Safe Storage password
-// plus an SQLite read with AES decryption — this routinely takes 6-10s on
-// first access (subsequent calls are cached by the Keychain daemon). The
-// previous 5s budget caused systematic timeouts before the valid Brave
-// cookies could be returned.
-// browserCookieLookupTimeout bounds how long we spend reading cookies from
-// browser stores. Previously 15s — reduced to 5s because kooky hits the
-// macOS Keychain which is fast when cached (< 1s) and the 15s was allowing
-// stale lookups to delay searches significantly.
-const browserCookieLookupTimeout = 5 * time.Second
+// browser stores. On macOS, kooky's first Keychain access for the Safe
+// Storage password + SQLite AES decryption takes 6-10s on cold start
+// (subsequent calls are cached by the Keychain daemon in < 1s). A 5s
+// budget caused systematic timeouts before valid Brave/Chrome cookies
+// could be returned, triggering the full WAF recovery cascade on every
+// first search. 12s gives cold Keychain enough headroom while staying
+// well within perProviderTimeout (30s).
+const browserCookieLookupTimeout = 12 * time.Second
 
 // --- Browser cookie warm-up cache ---
 //
