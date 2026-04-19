@@ -56,6 +56,7 @@ func registerTools(s *Server) {
 		suggestProvidersTool(),
 		testProviderTool(),
 		optimizeTripDatesTool(),
+		assessTripTool(),
 	}
 	s.handlers["search_flights"] = s.wrapHandler(handleSearchFlights)
 	s.handlers["search_dates"] = s.wrapHandler(handleSearchDates)
@@ -100,6 +101,7 @@ func registerTools(s *Server) {
 	s.handlers["suggest_providers"] = s.wrapHandler(s.wrapProviderHandler(handleSuggestProviders))
 	s.handlers["test_provider"] = s.wrapHandler(s.wrapProviderHandler(handleTestProvider))
 	s.handlers["optimize_trip_dates"] = s.wrapHandler(handleOptimizeTripDates)
+	s.handlers["assess_trip"] = s.wrapHandler(handleAssessTrip)
 }
 
 // wrapHandler returns a ToolHandler that delegates to the inner handler and

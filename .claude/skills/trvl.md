@@ -50,7 +50,7 @@ Read `~/.claude/travel-profile.md` if exists. Apply: departure time prefs, FF st
 ## ASK FIRST (2-3 Qs max)
 From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) for conflicts. Don't re-ask obvious info.
 
-## CORE TOOLS (selected high-signal tools; trvl exposes 43 MCP tools overall via gateway_invoke server="trvl")
+## CORE TOOLS (selected high-signal tools; trvl exposes 44 MCP tools overall via gateway_invoke server="trvl")
 | Tool | Use | Key params |
 |------|-----|-----------|
 | `search_flights` | Flights A→B | origin,destination,departure_date,[return_date,cabin_class,max_stops] |
@@ -74,6 +74,9 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 | `search_route` | Multi-modal routing across flights, trains, buses, and ferries | from,to,[depart_after,arrive_by] |
 | `get_weather` | Weather forecast for a city | location,[travel_dates] |
 | `get_baggage_rules` | Airline carry-on and checked-bag rules | airline |
+| `optimize_trip_dates` | Cheapest dates across range (1 API call) | origin,destination,from_date,to_date,trip_length |
+| `assess_trip` | GO/WAIT/NO_GO viability check | origin,destination,depart_date,return_date,[passport] |
+| `detect_accommodation_hacks` | Split stay across hotels to save | city,check_in,check_out |
 
 ## ALWAYS RUN THESE CHECKS
 1. **Nearby airports** — HEL/TMP/TKU, LHR/LGW/STN, CDG/ORY/BVA, JFK/EWR
@@ -96,6 +99,11 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 | Bus vs train | Short haul | search_ground both, compare FlixBus vs RegioJet vs Eurostar |
 | Overnight bus | Long routes | FlixBus night buses save hotel night |
 | Eurostar deals | London↔EU | search_ground London Paris — Eurostar auto-included |
+| Accommodation split | 4+ nights | detect_accommodation_hacks — saves 15%+ |
+| Cross-provider savings | Multi-source hotel | hotel search auto-shows cheapest source |
+| Flight combo | RT vs split airlines | DetectFlightCombo — compares RT vs 2x one-way |
+| Nested returns | 2+ trips same route | DetectFlightCombo — swaps return legs across trips |
+| Trip viability | Before booking | assess_trip — GO/WAIT/NO_GO with cost breakdown |
 
 ## OUTPUT FORMAT
 Be DECISIVE — 1 recommendation, not 50 options. Show exact details:
