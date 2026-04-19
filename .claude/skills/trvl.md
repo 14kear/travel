@@ -76,6 +76,8 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 | `get_baggage_rules` | Airline carry-on and checked-bag rules | airline |
 | `optimize_trip_dates` | Cheapest dates across range (1 API call) | origin,destination,from_date,to_date,trip_length |
 | `assess_trip` | GO/WAIT/NO_GO viability check | origin,destination,depart_date,return_date,[passport] |
+| `optimize_booking` | Unified optimizer: all combos | origin,destination,departure_date,[return_date,flex_days,carry_on_only] |
+| `detect_travel_hacks` | Run 39 parallel hack detectors | origin,destination,date,[return_date,carry_on] |
 | `detect_accommodation_hacks` | Split stay across hotels to save | city,check_in,check_out |
 
 ## ALWAYS RUN THESE CHECKS
@@ -86,7 +88,14 @@ From?|To?|When?|Flex?|Travelers?|Budget? Check calendar (Google/Apple/manual) fo
 5. **Luggage math** — low-cost+bag vs full-service all-in
 6. **Status airline preference** — if profile has FF status, prefer within 15%
 
-## HACKS (apply when relevant)
+## OPTIMIZER WORKFLOW
+When the user asks about a trip, ALWAYS try optimize_booking first:
+1. `optimize_booking` origin=X destination=Y depart_date=D return_date=R flex_days=3
+2. Show top 3 options with savings vs naive booking
+3. For each option, explain which hacks were applied
+4. Show all-in costs (including bags adjusted for FF status)
+
+## HACKS (39 detectors — apply when relevant)
 | Hack | When | Detection |
 |------|------|-----------|
 | Positioning flights | Long-haul expensive | explore→cheap hub→search(hub,dest) |

@@ -44,7 +44,13 @@ for s in trvl; do
 done
 ```
 
-This bundled skill file teaches you how to use trvl optimally whenever the user mentions flights, hotels, travel, or trips.
+The skill at `.claude/skills/trvl.md` teaches you how to:
+- Ask the right questions (From? To? When? Flex? Budget?)
+- Run hack detectors automatically after every search
+- Use the unified optimizer (`optimize_booking`) for trip planning
+- Show the "Naive -> Optimized -> Saved" comparison after every plan
+- Use all-in pricing with FF benefits (bag fees included, status benefits subtracted)
+- Apply 39 travel hack detectors to find savings opportunities
 
 ### Step 4: Verify
 
@@ -56,7 +62,7 @@ trvl flights HEL LHR 2026-07-01 --format json | head -5
 # Expected: JSON with flight results
 ```
 
-Tell the user: "trvl is installed with 45 MCP tools and 2 bundled Claude skills. I can search flights, hotels, destinations, plan trips, find weekend getaways, find optimal travel windows, optimize multi-city routes, find nearby restaurants, check local events, search ground transport (buses, trains, ferries, night trains), detect travel hacks, check weather forecasts, look up airline baggage rules, find airport lounges, check visa requirements, calculate points-vs-cash redemptions, and configure additional data providers (Airbnb, Booking.com, Hostelworld). Just ask me anything about travel."
+Tell the user: "trvl is installed with 45 MCP tools and 2 bundled Claude skills. It includes 39 travel hack detectors that auto-fire on searches, a unified optimizer (optimize_booking) that searches all combinations of origins, destinations, dates, and transport modes, all-in pricing with FF status (bag fees included, FF benefits subtracted), miles tracking and earning estimates, and cross-provider hotel price comparison with savings display. I can search flights, hotels, destinations, plan trips, find weekend getaways, find optimal travel windows, optimize multi-city routes, find nearby restaurants, check local events, search ground transport (buses, trains, ferries, night trains), detect travel hacks, check weather forecasts, look up airline baggage rules, find airport lounges, check visa requirements, calculate points-vs-cash redemptions, and configure additional data providers (Airbnb, Booking.com, Hostelworld). Just ask me anything about travel."
 
 ### Step 5: (Optional) Set up free API keys for enhanced data
 
@@ -183,6 +189,29 @@ Save with `update_preferences`.
 | `activity_preferences` | e.g. `["museums","food","nature"]` — destination matching |
 | `dietary_needs` | e.g. `["vegetarian","halal"]` — restaurant filtering |
 | `notes` | Free-text for anything else |
+
+**Frequent flyer and miles configuration:**
+
+Users with frequent flyer status get all-in pricing that accounts for free checked bags, lounge access, and miles earning. Here's an example FF configuration:
+
+```json
+{
+  "frequent_flyer_programs": [
+    {"alliance": "skyteam", "tier": "gold", "airline_code": "KL", "program_name": "Flying Blue", "miles_balance": 45000},
+    {"alliance": "oneworld", "tier": "sapphire", "airline_code": "RJ", "program_name": "Royal Plus"}
+  ],
+  "carry_on_only": false,
+  "nationality": "FI",
+  "home_airports": ["HEL"]
+}
+```
+
+When FF status is set:
+- Flight results include all-in pricing (bag fees included, FF benefits like free checked bags subtracted)
+- Miles earning estimates appear on each flight
+- Airline preference within 15% price delta of the cheapest option for the FF's alliance
+- Lounge access is annotated on `search_lounges` results
+- `calculate_points_value` uses the correct floor/ceiling valuations for the specific program
 
 **Continuous learning — the profile is never "done":**
 
@@ -335,6 +364,36 @@ Returns: visa status (`visa-free`, `visa-required`, `visa-on-arrival`, `e-visa`,
 {"cash_price": 450, "points_required": 20000, "program": "finnair-plus"}
 ```
 Returns: effective cents-per-point, floor/ceiling valuation for the program, verdict (`use points`, `pay cash`, or `borderline`), and explanation.
+
+### optimize_booking — Unified trip optimizer
+```json
+{"origin": "HEL", "destination": "BCN", "departure_date": "2026-07-01", "return_date": "2026-07-08"}
+```
+Optional:
+- `flex_days`: date flexibility +/-N days (default 3)
+- `guests`: number of passengers (default 1)
+- `currency`: display currency (default EUR)
+- `max_results`: top N results to return (default 5)
+- `max_api_calls`: API call budget (default 15)
+- `need_checked_bag`: whether a checked bag is needed
+- `carry_on_only`: carry-on only trip
+
+Returns: ranked booking strategies with all-in cost (baggage + FF status), savings vs naive direct booking. Searches alternative origins, destinations, rail+fly stations, hidden-city candidates, and date flexibility in a single call.
+
+### optimize_trip_dates — Find cheapest dates across a range
+```json
+{"origin": "HEL", "destination": "BCN", "from_date": "2026-07-01", "to_date": "2026-07-31", "trip_length": 7}
+```
+
+Returns: cheapest departure dates across the entire range using a single CalendarGraph API call. Much faster than searching day by day.
+
+### assess_trip — Trip viability pre-check
+```json
+{"origin": "HEL", "destination": "BKK", "depart_date": "2026-07-01", "return_date": "2026-07-14"}
+```
+Optional: `passport` (ISO country code for visa check)
+
+Returns: GO / WAIT / NO_GO verdict with parallel checks for flights, hotels, visa requirements, and weather. Use before detailed planning to quickly validate a trip idea.
 
 ### MCP Prompts (for complex workflows)
 - `plan-trip` — Full trip planning: flights + hotels + budget analysis
