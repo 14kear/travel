@@ -224,8 +224,8 @@ func TestInvalidPhaseReturnsEmpty(t *testing.T) {
 		t.Error("expected non-empty instructions even for invalid phase")
 	}
 
-	qs, _ = OnboardingQuestions(5, &TravelProfile{}, nil)
+	qs, _ = OnboardingQuestions(6, &TravelProfile{}, nil)
 	if len(qs) != 0 {
-		t.Errorf("expected empty questions for phase 5, got %d", len(qs))
+		t.Errorf("expected empty questions for phase 6, got %d", len(qs))
 	}
 }

@@ -56,6 +56,63 @@ type TravelProfile struct {
 	// Metadata
 	GeneratedAt string   `json:"generated_at"`
 	Sources     []string `json:"sources"`
+
+	// Reasoning layer — WHY the user makes decisions (optional, populated via onboarding phase 5).
+	TravelModes       []TravelMode              `json:"travel_modes,omitempty"`
+	CityIntelligence  []CityIntelligence        `json:"city_intelligence,omitempty"`
+	BookingStrategies []BookingStrategy         `json:"booking_strategies,omitempty"`
+	PriceElasticity   []PreferenceElasticity    `json:"price_elasticity,omitempty"`
+	DestinationGraph  []DestinationRelationship `json:"destination_graph,omitempty"`
+	TravelIdentity    string                    `json:"travel_identity,omitempty"`    // one-sentence: "Multimodal optimizer who works remotely from favourite cities"
+	DecisionFramework string                    `json:"decision_framework,omitempty"` // "Price first, then filter by quality. Never overpays but will stretch for the right experience."
+}
+
+// TravelMode captures a distinct travel persona with different search parameters.
+type TravelMode struct {
+	Name       string   `json:"name"`        // "solo_remote", "with_partner", "with_kids", "weekend_break"
+	Companions int      `json:"companions"`  // 0=solo, 1=partner, 2+=family
+	Accom      string   `json:"accom"`       // "apartment", "boutique_hotel", "any"
+	AccomNeeds []string `json:"accom_needs"` // ["wifi_fast","laundry","kitchen","2br"]
+	BudgetFlex float64  `json:"budget_flex"` // 1.0=strict, 1.3=will pay 30% more for right property
+	Dining     string   `json:"dining"`      // "eat_out", "cook", "partner_cooks", "mix"
+	Transport  string   `json:"transport"`   // "multimodal", "flights_only", "ground_preferred"
+	Priority   string   `json:"priority"`    // "price", "experience", "convenience", "speed"
+}
+
+// CityIntelligence captures per-city knowledge depth and preferences.
+type CityIntelligence struct {
+	City           string   `json:"city"`
+	KnowledgeLevel string   `json:"knowledge_level"`          // "local", "regular", "occasional", "aspirational"
+	YearsLived     int      `json:"years_lived,omitempty"`
+	Neighbourhoods []string `json:"neighbourhoods,omitempty"` // preferred areas
+	Restaurants    []string `json:"restaurants,omitempty"`
+	WhyVisit       string   `json:"why_visit"`               // "friends", "family", "partner", "work", "events", "tourism"
+	TypicalStay    int      `json:"typical_stay"`            // days
+	Notes          string   `json:"notes,omitempty"`
+}
+
+// BookingStrategy captures how the user makes booking decisions.
+type BookingStrategy struct {
+	Name        string `json:"name"`        // human-readable
+	Pattern     string `json:"pattern"`     // machine key: "cheapest_fare_plus_status", "multi_book_cancel", "overnight_layover_home", "snap_watching"
+	Description string `json:"description"` // explanation of the strategy
+	Frequency   string `json:"frequency"`   // "always", "often", "sometimes", "when_available"
+}
+
+// PreferenceElasticity captures what moves the user's price tolerance.
+type PreferenceElasticity struct {
+	Factor     string  `json:"factor"`                // "modern_interior", "sauna", "location", "breakfast_quality", "laundry"
+	Impact     string  `json:"impact"`                // "will_pay_more", "dealbreaker", "nice_to_have"
+	PriceDelta float64 `json:"price_delta,omitempty"` // how much more they'd pay, as multiplier (1.3 = 30% more)
+}
+
+// DestinationRelationship captures WHY a destination matters.
+type DestinationRelationship struct {
+	City      string `json:"city"`
+	Reason    string `json:"reason"`              // "home", "family", "friends", "partner", "history", "events", "aspirational", "transit_hub"
+	Person    string `json:"person,omitempty"`    // who connects them to this city
+	Frequency string `json:"frequency"`           // "weekly", "monthly", "quarterly", "yearly", "once", "never_been"
+	Sentiment string `json:"sentiment"`           // "love", "practical", "nostalgic", "curious", "avoid"
 }
 
 // AirlineStats tracks usage frequency for a single airline.

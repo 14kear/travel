@@ -7,6 +7,7 @@ package profile
 // Phase 2 — Travel Style: accommodation, budget, transport, remote work, days.
 // Phase 3 — Deep Patterns: favourite destinations, neighbourhoods, properties, food, hacks, lounges.
 // Phase 4 — Specifics: companion details, wishlist, avoidances, languages/cities, motivation.
+// Phase 5 — Reasoning: decision triggers, booking strategies, price elasticity, travel identity.
 //
 // Questions already answerable from the profile are skipped. An empty question
 // list signals the phase is complete (profile is comprehensive enough).
@@ -31,6 +32,8 @@ func OnboardingQuestions(phase int, prof *TravelProfile, answers map[string]stri
 		return phase3Questions(prof, answers), instructions
 	case 4:
 		return phase4Questions(prof, answers), instructions
+	case 5:
+		return phase5Questions(prof, answers), instructions
 	default:
 		return nil, instructions
 	}
@@ -289,6 +292,80 @@ func phase4Questions(prof *TravelProfile, answers map[string]string) []Question 
 			Text:     "What draws you to a destination — mountains, beaches, culture, food scenes, nightlife, history?",
 			Type:     "multi_choice",
 			Options:  []string{"mountains", "beaches", "culture", "food", "nightlife", "history", "nature", "architecture"},
+			Required: false,
+		})
+	}
+
+	return questions
+}
+
+// phase5Questions returns Phase 5 (Reasoning) questions that capture WHY the
+// user makes decisions — their decision triggers, booking strategies, price
+// elasticity, and travel identity. These populate the reasoning layer fields
+// added in TravelProfile (TravelModes, BookingStrategies, PriceElasticity,
+// DestinationGraph, TravelIdentity, DecisionFramework).
+func phase5Questions(prof *TravelProfile, answers map[string]string) []Question {
+	var questions []Question
+
+	// Decision trigger — what the user checks first when evaluating a flight.
+	// Skip if already answered or if the profile has comprehensive booking strategy data.
+	hasStrategies := len(prof.BookingStrategies) > 0
+	if !hasStrategies && answers["flight_decision_trigger"] == "" {
+		questions = append(questions, Question{
+			Key:  "flight_decision_trigger",
+			Text: "When you find a flight, what do you check first? Price, schedule, airline, or route?",
+			Type: "choice",
+			Options: []string{
+				"price",
+				"schedule",
+				"airline",
+				"route",
+				"mix",
+			},
+			Required: false,
+		})
+	}
+
+	// Apartment vs hotel reasoning — what drives the choice in a specific city.
+	// Skip if the profile already has multiple travel modes defined.
+	hasModes := len(prof.TravelModes) >= 2
+	if !hasModes && answers["accom_choice_reasoning"] == "" {
+		questions = append(questions, Question{
+			Key:      "accom_choice_reasoning",
+			Text:     "What makes you choose an apartment over a hotel in a specific city?",
+			Type:     "text",
+			Required: false,
+		})
+	}
+
+	// Booking tricks and strategies — captures BookingStrategies entries.
+	if !hasStrategies && answers["booking_strategies"] == "" {
+		questions = append(questions, Question{
+			Key:      "booking_strategies",
+			Text:     "Do you have any booking tricks or strategies you use regularly? (e.g. book cheapest fare and upgrade, multi-book and cancel, overnight layovers to save)",
+			Type:     "text",
+			Required: false,
+		})
+	}
+
+	// Price elasticity — what would make the user pay more than usual.
+	hasPriceElasticity := len(prof.PriceElasticity) > 0
+	if !hasPriceElasticity && answers["price_stretch"] == "" {
+		questions = append(questions, Question{
+			Key:      "price_stretch",
+			Text:     "What would make you pay more for accommodation than usual? (e.g. sauna, great location, modern interior, included breakfast)",
+			Type:     "text",
+			Required: false,
+		})
+	}
+
+	// Travel identity — one-sentence self-description.
+	// Skip if the profile already has a travel identity set.
+	if prof.TravelIdentity == "" && answers["travel_identity"] == "" {
+		questions = append(questions, Question{
+			Key:      "travel_identity",
+			Text:     "Describe your ideal trip in one sentence.",
+			Type:     "text",
 			Required: false,
 		})
 	}
