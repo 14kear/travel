@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.11] - 2026-04-19
+
+### Added
+- **Cross-provider price savings**: when multiple providers (Google, Booking, Airbnb, etc.) return the same hotel, surfaces the savings opportunity — "Save €55 via Booking" — in CLI table and MCP JSON output
+- **Trip date optimizer**: new `optimize_trip_dates` MCP tool finds cheapest departure dates across a date range using a single CalendarGraph API call (43rd MCP tool)
+
+### Changed
+- `search_dates` MCP handler switched from legacy per-date search (N API calls) to CalendarGraph (1 call) — ~29x fewer requests for a 30-day range
+- Accommodation split hack hotel lookups now use `MaxPages: 1` — ~8x fewer HTTP requests per segment
+- `plan_trip` now shares a single HTTP client across its 3 parallel searches for connection reuse
+
 ## [0.6.10] - 2026-04-18
 
 ### Fixed
