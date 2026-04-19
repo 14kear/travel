@@ -40,6 +40,12 @@ var regionalPasses = []regionalPass{
 	{Name: "BahnCard 50", Country: "DE", PriceEUR: 244, Period: "annual",
 		Coverage: "50% off all DB flex fares, 25% off advance fares",
 		ValidFor: []string{"DE"}, Notes: "Pays for itself in 3-4 long-distance trips"},
+	{Name: "Carte Avantage", Country: "FR", PriceEUR: 49, Period: "annual",
+		Coverage: "30% off SNCF TGV/Intercites fares",
+		ValidFor: []string{"FR"}, Notes: "For ages 12-27 or 60+; pays for itself in 1 trip"},
+	{Name: "Generalabonnement", Country: "CH", PriceEUR: 340, Period: "monthly",
+		Coverage: "Unlimited travel on ALL Swiss trains, buses, boats, cable cars",
+		ValidFor: []string{"CH"}, Notes: "CHF 3860/year; the nuclear option for frequent Swiss travel"},
 }
 
 // iataToCountry maps IATA airport codes to ISO 3166-1 alpha-2 country codes.

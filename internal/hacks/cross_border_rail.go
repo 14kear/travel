@@ -25,10 +25,11 @@ var crossBorderRoutes = map[string]map[string]arbitrageRoute{
 		"MUC": {cheaperSite: "bahn.de (DB)", cheaperURL: "https://www.bahn.de", savings: "€20-40"},
 		"FRA": {cheaperSite: "bahn.de (DB)", cheaperURL: "https://www.bahn.de", savings: "€15-30"},
 	},
-	// Vienna→Italy: book on ÖBB, not Trenitalia
+	// Vienna→Italy/Munich: book on ÖBB, not Trenitalia/DB
 	"VIE": {
 		"VCE": {cheaperSite: "oebb.at (ÖBB)", cheaperURL: "https://www.oebb.at", savings: "€20-40"},
 		"MXP": {cheaperSite: "oebb.at (ÖBB)", cheaperURL: "https://www.oebb.at", savings: "€20-30"},
+		"MUC": {cheaperSite: "oebb.at (ÖBB)", cheaperURL: "https://www.oebb.at", savings: "€15-30"},
 	},
 	// Zurich→Italy: book on SBB, not Trenitalia
 	"ZRH": {
@@ -38,6 +39,18 @@ var crossBorderRoutes = map[string]map[string]arbitrageRoute{
 	"PRG": {
 		"MUC": {cheaperSite: "cd.cz (Czech Railways)", cheaperURL: "https://www.cd.cz", savings: "€10-20"},
 		"BER": {cheaperSite: "cd.cz (Czech Railways)", cheaperURL: "https://www.cd.cz", savings: "€15-25"},
+	},
+	// Brussels→Paris: book on b-europe
+	"BRU": {
+		"PAR": {cheaperSite: "b-europe.com", cheaperURL: "https://www.b-europe.com", savings: "€10-20"},
+	},
+	// Berlin→Prague: book on CD (reverse of PRG→BER)
+	"BER": {
+		"PRG": {cheaperSite: "cd.cz (Czech Railways)", cheaperURL: "https://www.cd.cz", savings: "€10-20"},
+	},
+	// Munich→Venice: book on ÖBB
+	"MUC": {
+		"VCE": {cheaperSite: "oebb.at (ÖBB)", cheaperURL: "https://www.oebb.at", savings: "€20-35"},
 	},
 }
 
