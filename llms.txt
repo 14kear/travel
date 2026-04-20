@@ -23,7 +23,7 @@ for s in trvl travel-hacks travel-agent travel-agent-compact; do
   curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/$s.md" -o "$HOME/.claude/skills/$s.md"
 done
 
-## MCP Tools (50 total)
+## MCP Tools (54 total)
 
 - search_flights(origin, destination, departure_date, [return_date, cabin_class, max_stops, sort_by, alliances, depart_after, depart_before, less_emissions, carry_on_bags, checked_bags, require_checked_bag, max_price, max_duration, exclude_basic, airlines])
   - checked_bags: HIDDEN GOOGLE FEATURE — server-side filter not exposed in Google's own UI
@@ -78,6 +78,14 @@ done
   - Find the cheapest dates for a trip within a date range. Uses CalendarGraph API for fast single-request price retrieval across the entire range. Returns optimal departure dates sorted by total cost.
 - assess_trip(origin, destination, depart_date, return_date, [guests, passport, currency])
   - Pre-check trip viability before booking. Runs parallel checks for flights, hotels, visa, and weather. Returns GO/WAIT/NO_GO verdict with cost breakdown.
+- watch_price(type, origin, destination, date, target_price, [return_date, location, check_in, check_out, currency])
+  - Create a price watch. Monitors flight or hotel prices and tracks history. Returns current price vs target.
+- list_watches()
+  - Show all active price watches with status (watching/triggered/expired) and price history.
+- check_watches()
+  - Re-check all active watches against current prices. Returns which prices dropped below target.
+- provider_health()
+  - Show per-provider health summary: total calls, success rate, average latency, last error. Read from ~/.trvl/health.jsonl.
 
 ## MCP Prompts
 

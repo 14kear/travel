@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-04-20
+
+### Added
+- **54 MCP tools** — 4 new tools: `watch_price` (price alert with target threshold), `list_watches`, `check_watches` (re-check all watches for drops), `provider_health` (per-provider success rate, latency, errors)
+- **Provider health logging** — append-only `~/.trvl/health.jsonl` records every provider API call with timing and status. Auto-rotates at 1MB
+- **Singleflight deduplication** — concurrent searches for the same route coalesce into a single API call (flights, hotels, ground)
+
+### Changed
+- **Connection pooling** — MaxIdleConns 100, MaxIdleConnsPerHost 10, IdleConnTimeout 90s for better HTTP connection reuse
+- **File splits** — `tools_hotels.go` 939→652 LOC, `tools_flights.go` 883→640 LOC
+- **Magic number documentation** — all bare numeric constants annotated with "Why N:" reasoning
+- **Legal disclaimer** — expanded to cover all providers, states ToS risk explicitly
+- **Booking.com cold-start** — cookie timeout 5s→12s, eager pre-warm at NewRuntime init
+
+### Fixed
+- **Hotel post-filter** — external provider results (Airbnb, Booking.com) without ratings no longer dropped by MinRating filter
+- **Optimizer currency** — pre-priced ground candidates use input currency instead of hardcoded EUR
+- **All staticcheck warnings** resolved (7 total)
+- **CI coverage threshold** raised from 50% to 75%
+
 ## [1.0.0] - 2026-04-20
 
 ### Added
