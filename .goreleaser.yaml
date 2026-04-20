@@ -50,7 +50,7 @@ release:
   header: |
     ## trvl {{ .Version }}
 
-    Google Flights + Hotels from your terminal. Free, no API keys.
+    AI travel agent — 54 MCP tools for flights, hotels, ground transport, price alerts. Free, no API keys.
 
     ### Install
 
@@ -74,7 +74,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: https://github.com/MikkoParkkola/trvl
-    description: "Google Flights + Hotels from your terminal — MCP server, 41 tools, no API keys"
+    description: "AI travel agent — 54 MCP tools for flights, hotels, ground transport, price alerts. Free, no API keys."
     license: "PolyForm-Noncommercial-1.0.0"
     install: |
       bin.install "trvl"
