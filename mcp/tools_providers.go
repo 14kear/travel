@@ -773,3 +773,97 @@ func handleSuggestProviders(_ context.Context, args map[string]any, _ ElicitFunc
 	}
 	return content, suggestions, nil
 }
+
+// --- provider_health ---
+
+// providerHealthTool returns the MCP tool definition for provider_health.
+func providerHealthTool() ToolDef {
+	return ToolDef{
+		Name:        "provider_health",
+		Title:       "Provider Health Summary",
+		Description: "Shows per-provider health statistics aggregated from the local health log (~/.trvl/health.jsonl): total calls, success rate, average latency, and last error. Use this to diagnose which external providers are failing or slow.",
+		InputSchema: InputSchema{
+			Type:       "object",
+			Properties: map[string]Property{},
+		},
+		OutputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"providers": schemaArray(map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"provider":      schemaString(),
+						"total_calls":   schemaInt(),
+						"success_count": schemaInt(),
+						"error_count":   schemaInt(),
+						"timeout_count": schemaInt(),
+						"success_rate":  schemaNum(),
+						"avg_latency_ms": schemaInt(),
+						"last_error":    schemaString(),
+					},
+				}),
+			},
+		},
+		Annotations: &ToolAnnotations{
+			Title:          "Provider Health Summary",
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+		},
+	}
+}
+
+// handleProviderHealth processes a provider_health tool call.
+func handleProviderHealth(_ context.Context, _ map[string]any, _ ElicitFunc, _ SamplingFunc, _ ProgressFunc, _ *providers.Registry, _ *providers.Runtime) ([]ContentBlock, interface{}, error) {
+	dir, err := providers.HealthLogDir()
+	if err != nil {
+		return nil, nil, fmt.Errorf("provider_health: %w", err)
+	}
+
+	summary := providers.HealthSummary(dir)
+	if len(summary) == 0 {
+		return textContent("No health data recorded yet. Health entries are written after provider searches."), nil, nil
+	}
+
+	type row struct {
+		Provider     string  `json:"provider"`
+		TotalCalls   int     `json:"total_calls"`
+		SuccessCount int     `json:"success_count"`
+		ErrorCount   int     `json:"error_count"`
+		TimeoutCount int     `json:"timeout_count"`
+		SuccessRate  float64 `json:"success_rate"`
+		AvgLatencyMs int64   `json:"avg_latency_ms"`
+		LastError    string  `json:"last_error,omitempty"`
+	}
+
+	rows := make([]row, 0, len(summary))
+	var lines []string
+	for _, h := range summary {
+		rows = append(rows, row{
+			Provider:     h.Provider,
+			TotalCalls:   h.TotalCalls,
+			SuccessCount: h.SuccessCount,
+			ErrorCount:   h.ErrorCount,
+			TimeoutCount: h.TimeoutCount,
+			SuccessRate:  h.SuccessRate,
+			AvgLatencyMs: h.AvgLatencyMs,
+			LastError:    h.LastError,
+		})
+		line := fmt.Sprintf("- %s: %d calls, %.0f%% ok, avg %dms",
+			h.Provider, h.TotalCalls, h.SuccessRate*100, h.AvgLatencyMs)
+		if h.ErrorCount > 0 || h.TimeoutCount > 0 {
+			line += fmt.Sprintf(", %d errors, %d timeouts", h.ErrorCount, h.TimeoutCount)
+		}
+		if h.LastError != "" {
+			line += fmt.Sprintf(", last error: %s", h.LastError)
+		}
+		lines = append(lines, line)
+	}
+
+	text := fmt.Sprintf("Provider health (%d provider(s)):\n%s", len(rows), strings.Join(lines, "\n"))
+	structured := map[string]any{"providers": rows}
+	content, err := buildAnnotatedContentBlocks(text, structured)
+	if err != nil {
+		return nil, nil, err
+	}
+	return content, structured, nil
+}

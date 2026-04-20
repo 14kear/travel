@@ -306,6 +306,10 @@ func TestToolRegistration_AllTools(t *testing.T) {
 		"interview_trip",
 		"onboard_profile",
 		"search_hotel_by_name",
+		"provider_health",
+		"watch_price",
+		"list_watches",
+		"check_watches",
 	}
 
 	if len(s.tools) != len(expectedTools) {

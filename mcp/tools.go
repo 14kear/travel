@@ -56,6 +56,7 @@ func registerTools(s *Server) {
 		removeProviderTool(),
 		suggestProvidersTool(),
 		testProviderTool(),
+		providerHealthTool(),
 		optimizeTripDatesTool(),
 		assessTripTool(),
 		optimizeBookingTool(),
@@ -63,6 +64,9 @@ func registerTools(s *Server) {
 		addBookingTool(),
 		interviewTripTool(),
 		onboardProfileTool(),
+		watchPriceTool(),
+		listWatchesTool(),
+		checkWatchesTool(),
 	}
 	s.handlers["search_flights"] = s.wrapHandler(handleSearchFlights)
 	s.handlers["search_dates"] = s.wrapHandler(handleSearchDates)
@@ -107,6 +111,7 @@ func registerTools(s *Server) {
 	s.handlers["remove_provider"] = s.wrapHandler(s.wrapProviderHandler(handleRemoveProvider))
 	s.handlers["suggest_providers"] = s.wrapHandler(s.wrapProviderHandler(handleSuggestProviders))
 	s.handlers["test_provider"] = s.wrapHandler(s.wrapProviderHandler(handleTestProvider))
+	s.handlers["provider_health"] = s.wrapHandler(s.wrapProviderHandler(handleProviderHealth))
 	s.handlers["optimize_trip_dates"] = s.wrapHandler(handleOptimizeTripDates)
 	s.handlers["assess_trip"] = s.wrapHandler(handleAssessTrip)
 	s.handlers["optimize_booking"] = s.wrapHandler(handleOptimizeBooking)
@@ -114,6 +119,9 @@ func registerTools(s *Server) {
 	s.handlers["add_booking"] = s.wrapHandler(handleAddBooking)
 	s.handlers["interview_trip"] = s.wrapHandler(handleInterviewTrip)
 	s.handlers["onboard_profile"] = s.wrapHandler(handleOnboardProfile)
+	s.handlers["watch_price"] = s.wrapHandler(handleWatchPrice)
+	s.handlers["list_watches"] = s.wrapHandler(handleListWatches)
+	s.handlers["check_watches"] = s.wrapHandler(handleCheckWatches)
 }
 
 // wrapHandler returns a ToolHandler that delegates to the inner handler and

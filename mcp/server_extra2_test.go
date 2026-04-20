@@ -51,11 +51,11 @@ func TestNewServer(t *testing.T) {
 	if s == nil {
 		t.Fatal("NewServer returned nil")
 	}
-	if len(s.tools) != 50 {
-		t.Errorf("expected 50 tools, got %d", len(s.tools))
+	if len(s.tools) != 54 {
+		t.Errorf("expected 54 tools, got %d", len(s.tools))
 	}
-	if len(s.handlers) != 50 {
-		t.Errorf("expected 50 handlers, got %d", len(s.handlers))
+	if len(s.handlers) != 54 {
+		t.Errorf("expected 54 handlers, got %d", len(s.handlers))
 	}
 }
 
@@ -172,12 +172,15 @@ func TestToolAnnotations(t *testing.T) {
 		"watch_room_availability": true,
 		"build_profile":           true,
 		"add_booking":             true,
+		"watch_price":             true,
 	}
 
 	// Tools that create new resources on each call — not idempotent.
 	nonIdempotentTools := map[string]bool{
 		"watch_room_availability": true,
 		"add_booking":             true,
+		"watch_price":             true,
+		"check_watches":           true,
 	}
 
 	s := NewServer()

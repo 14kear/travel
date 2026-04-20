@@ -255,10 +255,11 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 	}
 
 	type result struct {
-		hotels []models.HotelResult
-		err    error
-		id     string
-		name   string
+		hotels    []models.HotelResult
+		err       error
+		id        string
+		name      string
+		latencyMs int64
 	}
 
 	results := make(chan result, len(providers))
@@ -284,8 +285,9 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 			// → parse cascade including browser cookie reads and WAF solving.
 			provCtx, provCancel := context.WithTimeout(ctx, perProviderTimeout)
 			defer provCancel()
+			t0 := time.Now()
 			hotels, err := rt.searchProvider(provCtx, cfg, location, lat, lon, checkin, checkout, currency, guests, filters)
-			results <- result{hotels: hotels, err: err, id: cfg.ID, name: cfg.Name}
+			results <- result{hotels: hotels, err: err, id: cfg.ID, name: cfg.Name, latencyMs: time.Since(t0).Milliseconds()}
 		}(cfg)
 	}
 
@@ -301,11 +303,23 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 		if r.err != nil {
 			slog.Warn("provider error", "provider", r.id, "error", r.err.Error())
 			rt.registry.MarkError(r.id, r.err.Error())
+			errMsg := r.err.Error()
+			status := "error"
+			if isTimeoutError(r.err) {
+				status = "timeout"
+			}
+			LogHealth(HealthEntry{
+				Provider:  r.id,
+				Operation: "search",
+				Status:    status,
+				LatencyMs: r.latencyMs,
+				Error:     errMsg,
+			})
 			statuses = append(statuses, models.ProviderStatus{
 				ID:      r.id,
 				Name:    r.name,
 				Status:  "error",
-				Error:   r.err.Error(),
+				Error:   errMsg,
 				FixHint: providerFixHint(r.err),
 			})
 			if firstErr == nil {
@@ -314,6 +328,13 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 			continue
 		}
 		rt.registry.MarkSuccess(r.id)
+		LogHealth(HealthEntry{
+			Provider:  r.id,
+			Operation: "search",
+			Status:    "ok",
+			LatencyMs: r.latencyMs,
+			Results:   len(r.hotels),
+		})
 		statuses = append(statuses, models.ProviderStatus{
 			ID:      r.id,
 			Name:    r.name,
@@ -327,6 +348,17 @@ func (rt *Runtime) SearchHotels(ctx context.Context, location string, lat, lon f
 		return nil, statuses, firstErr
 	}
 	return combined, statuses, nil
+}
+
+// isTimeoutError returns true when err is a context deadline or timeout.
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "deadline exceeded") ||
+		strings.Contains(msg, "context deadline") ||
+		strings.Contains(msg, "timeout")
 }
 
 // providerFixHint generates an actionable LLM-readable hint for common failures.
