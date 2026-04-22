@@ -187,7 +187,7 @@ Save with `update_preferences`.
 | `min_hotel_stars` | Passed to Google Hotels API as search filter |
 | `min_hotel_rating` | Passed to search + activates 20-review minimum gate |
 | `preferred_districts` | `FilterHotels()` strict-filters or prioritizes by neighborhood |
-| `carry_on_only` | Travel hack detectors: hidden-city and throwaway require carry-on |
+| `carry_on_only` | Tailors baggage guidance for hidden-city and throwaway; hidden-city is still checked when false |
 | `prefer_direct` | Flight search: nonstop filter |
 | `default_companions` | 0=solo, 1=couple, 2+=family/group — personalizes search defaults |
 | `trip_types` | e.g. `["city_break","beach","adventure"]` — destination suggestions |

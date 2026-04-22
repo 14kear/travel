@@ -292,7 +292,7 @@ func All() []AirlineBaggage {
 }
 
 // BaggageNote returns a short human-readable note about carry-on rules for use
-// in hack descriptions. Highlights restrictions relevant to hidden-city / throwaway.
+// in hack descriptions. Hidden-city is still evaluated when checked baggage is needed.
 func BaggageNote(airlineCode string) string {
 	ab, ok := database[airlineCode]
 	if !ok {
@@ -304,7 +304,7 @@ func BaggageNote(airlineCode string) string {
 	if ab.CarryOnMaxKg == 0 {
 		return fmt.Sprintf("✓ %s allows carry-on with no weight limit", ab.Name)
 	}
-	return fmt.Sprintf("✓ %s allows %s carry-on — fits hidden city restriction", ab.Name, formatKg(ab.CarryOnMaxKg))
+	return fmt.Sprintf("✓ %s allows %s carry-on", ab.Name, formatKg(ab.CarryOnMaxKg))
 }
 
 func formatKg(kg float64) string {

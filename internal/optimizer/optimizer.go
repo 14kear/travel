@@ -617,11 +617,13 @@ func priceCandidate(c *candidate, input OptimizeInput) {
 		airlineCode = bestFlight.Legs[0].AirlineCode
 	}
 
+	needCarryOn := true
+
 	allIn, _ := baggage.AllInCost(
 		bestFlight.Price,
 		airlineCode,
 		input.NeedCheckedBag,
-		!input.CarryOnOnly, // needCarryOn = opposite of carryOnOnly
+		needCarryOn,
 		ffStatuses,
 	)
 
@@ -635,7 +637,7 @@ func priceCandidate(c *candidate, input OptimizeInput) {
 		bestFlight.Price,
 		airlineCode,
 		input.NeedCheckedBag,
-		!input.CarryOnOnly,
+		needCarryOn,
 		nil, // no FF statuses
 	)
 	c.ffSavings = allInNoFF - allIn

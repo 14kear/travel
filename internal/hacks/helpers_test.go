@@ -442,7 +442,7 @@ func TestRoutesToughDestination(t *testing.T) {
 				},
 			},
 			dest: "BCN",
-			want: true, // optimistic fallback: has flights but no multi-leg match
+			want: false,
 		},
 		{
 			name: "multi-leg with dest as intermediate",
@@ -470,7 +470,7 @@ func TestRoutesToughDestination(t *testing.T) {
 				},
 			},
 			dest: "BCN",
-			want: true, // optimistic: has flights
+			want: false,
 		},
 	}
 

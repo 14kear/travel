@@ -361,6 +361,24 @@ func TestBuildAnnotatedContentBlocks_Basic(t *testing.T) {
 
 // --- searchHotelsTool schema ---
 
+func TestSearchFlightsTool_AirlineProperties(t *testing.T) {
+	t.Parallel()
+	tool := searchFlightsTool()
+
+	for _, prop := range []string{"airlines", "alliances"} {
+		p, ok := tool.InputSchema.Properties[prop]
+		if !ok {
+			t.Fatalf("missing property %q in search_flights schema", prop)
+		}
+		if p.Type != "string" {
+			t.Errorf("property %q type = %q, want string", prop, p.Type)
+		}
+		if p.Description == "" {
+			t.Errorf("property %q has empty description", prop)
+		}
+	}
+}
+
 func TestSearchHotelsTool_FilterProperties(t *testing.T) {
 	t.Parallel()
 	tool := searchHotelsTool()

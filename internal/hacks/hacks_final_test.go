@@ -409,10 +409,10 @@ func TestRoutesThrough_NoLegs(t *testing.T) {
 			{Price: 100, Legs: nil},
 		},
 	}
-	// No legs means single-leg = skipped, but len(Flights)>0 so optimistic return.
+	// No legs means there is no evidence of transit through the requested airport.
 	got := routesThroughDestination(result, "AMS")
-	if !got {
-		t.Error("expected true (optimistic fallback)")
+	if got {
+		t.Error("expected false without leg evidence")
 	}
 }
 
@@ -423,10 +423,10 @@ func TestRoutesThrough_OnlyOneFlightOneLeg(t *testing.T) {
 			{Price: 100, Legs: []models.FlightLeg{{ArrivalAirport: models.AirportInfo{Code: "AMS"}}}},
 		},
 	}
-	// Single-leg: cannot be hidden-city. Loop skips it, but optimistic fallback.
+	// Single-leg: cannot be hidden-city because the requested airport is final.
 	got := routesThroughDestination(result, "AMS")
-	if !got {
-		t.Error("expected true (optimistic fallback, single-leg skipped)")
+	if got {
+		t.Error("expected false for a single-leg flight")
 	}
 }
 

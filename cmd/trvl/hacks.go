@@ -80,7 +80,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&returnDate, "return", "", "Return date for round-trip analysis (YYYY-MM-DD)")
-	cmd.Flags().BoolVar(&carryOnOnly, "carry-on", false, "Flag carry-on-only trips (enables hidden city suggestions)")
+	cmd.Flags().BoolVar(&carryOnOnly, "carry-on", false, "Flag carry-on-only trips (tailors hidden-city baggage guidance)")
 	cmd.Flags().StringVar(&currency, "currency", "EUR", "Display currency")
 
 	cmd.ValidArgsFunction = airportCompletion

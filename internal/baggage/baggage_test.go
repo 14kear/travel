@@ -106,8 +106,8 @@ func TestBaggageNote_Normal(t *testing.T) {
 	if !strings.Contains(note, "12kg") {
 		t.Errorf("expected '12kg' in KL note, got: %q", note)
 	}
-	if !strings.Contains(note, "hidden city") {
-		t.Errorf("expected 'hidden city' in KL note, got: %q", note)
+	if strings.Contains(note, "hidden city restriction") {
+		t.Errorf("baggage note should not describe hidden city as carry-on restricted, got: %q", note)
 	}
 }
 

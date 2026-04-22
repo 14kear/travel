@@ -178,6 +178,7 @@ func detectHiddenCity(ctx context.Context, in DetectorInput) []Hack {
 // FlightRoutesThroughAirport returns true when at least one flight routes
 // through the given airport before the final destination.
 func FlightRoutesThroughAirport(flts []models.FlightResult, airport string) bool {
+	airport = strings.ToUpper(strings.TrimSpace(airport))
 	if airport == "" {
 		return false
 	}
@@ -186,12 +187,12 @@ func FlightRoutesThroughAirport(flts []models.FlightResult, airport string) bool
 			continue
 		}
 		for i := 0; i < len(f.Legs)-1; i++ {
-			if f.Legs[i].ArrivalAirport.Code == airport {
+			if strings.ToUpper(strings.TrimSpace(f.Legs[i].ArrivalAirport.Code)) == airport {
 				return true
 			}
 		}
 	}
-	return len(flts) > 0
+	return false
 }
 
 // routesThroughDestination returns true when at least one flight in the result
@@ -220,7 +221,7 @@ func buildHiddenCityHack(in DetectorInput, beyond string, beyondPrice, directPri
 
 	if in.CarryOnOnly {
 		risks = append(risks, "Carry-on only is the simplest setup for this strategy")
-		steps = append([]string{"Book a carry-on-only fare"}, steps...)
+		steps = append([]string{"Book a carry-on-only ticket"}, steps...)
 	} else {
 		risks = append(risks, bagsWarning)
 		steps = append([]string{"If you need checked baggage, ask the check-in agent to short-check it to the intermediate stop and collect it before exiting"}, steps...)

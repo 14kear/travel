@@ -783,10 +783,10 @@ func TestResolveFlexDatesViaCalendar_noFlexCandidates(t *testing.T) {
 	}
 
 	input := OptimizeInput{
-		FlexDays:   3,
-		Origin:     "HEL",
+		FlexDays:    3,
+		Origin:      "HEL",
 		Destination: "BCN",
-		DepartDate: "2026-06-15",
+		DepartDate:  "2026-06-15",
 	}
 
 	var used atomic.Int64
@@ -930,7 +930,7 @@ func TestPriceCandidate_carryOnOnly(t *testing.T) {
 		origin:   "HEL",
 		dest:     "BCN",
 		flights: []models.FlightResult{
-			{Price: 150, Currency: "EUR"},
+			{Price: 150, Currency: "EUR", Legs: []models.FlightLeg{{AirlineCode: "FR", Airline: "Ryanair"}}},
 		},
 	}
 	input := OptimizeInput{
@@ -938,8 +938,11 @@ func TestPriceCandidate_carryOnOnly(t *testing.T) {
 		CarryOnOnly: true,
 	}
 	priceCandidate(c, input)
-	if c.allInCost <= 0 {
-		t.Error("allInCost should be positive for carry-on only")
+	if c.allInCost != 165 {
+		t.Errorf("allInCost should include LCC cabin carry-on fee, got %.0f", c.allInCost)
+	}
+	if c.bagCost != 15 {
+		t.Errorf("bagCost should include cabin carry-on fee, got %.0f", c.bagCost)
 	}
 }
 
@@ -947,15 +950,15 @@ func TestPriceCandidate_carryOnOnly(t *testing.T) {
 
 func TestCandidateToOption_prePricedGroundLegType(t *testing.T) {
 	c := &candidate{
-		searched:  true,
-		prePriced: true,
-		origin:    "PRG",
-		dest:      "VIE",
+		searched:   true,
+		prePriced:  true,
+		origin:     "PRG",
+		dest:       "VIE",
 		departDate: "2026-06-15",
-		baseCost:  50,
-		currency:  "EUR",
-		strategy:  "Train (CD/OBB)",
-		hackTypes: []string{"rail_competition"},
+		baseCost:   50,
+		currency:   "EUR",
+		strategy:   "Train (CD/OBB)",
+		hackTypes:  []string{"rail_competition"},
 	}
 	opt := candidateToOption(c, 1, OptimizeInput{Origin: "PRG", Destination: "VIE", Currency: "EUR"})
 	if len(opt.Legs) == 0 {

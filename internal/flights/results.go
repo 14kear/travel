@@ -51,6 +51,9 @@ func filterFlightResults(flights []models.FlightResult, opts SearchOptions) []mo
 		filtered = append(filtered, f)
 	}
 
+	if opts.CabinClass == models.Business || opts.CabinClass == models.First {
+		filtered = filterPremiumCabinCompatibleFlights(filtered)
+	}
 	if len(opts.Airlines) > 0 {
 		filtered = filterFlightsByAirline(filtered, opts.Airlines)
 	}
@@ -62,6 +65,41 @@ func filterFlightResults(flights []models.FlightResult, opts SearchOptions) []mo
 	}
 
 	return filtered
+}
+
+var noPremiumCabinAirlines = map[string]bool{
+	"F9": true, // Frontier
+	"NK": true, // Spirit
+	"WN": true, // Southwest Business Select is a fare bundle, not a separate cabin.
+	"G4": true, // Allegiant
+	"SY": true, // Sun Country
+	"XP": true, // Avelo
+	"MX": true, // Breeze
+}
+
+func filterPremiumCabinCompatibleFlights(flights []models.FlightResult) []models.FlightResult {
+	if len(flights) == 0 {
+		return nil
+	}
+
+	filtered := flights[:0]
+	for _, f := range flights {
+		if flightUsesNoPremiumCabinAirline(f) {
+			continue
+		}
+		filtered = append(filtered, f)
+	}
+	return filtered
+}
+
+func flightUsesNoPremiumCabinAirline(f models.FlightResult) bool {
+	for _, leg := range f.Legs {
+		code := strings.ToUpper(strings.TrimSpace(leg.AirlineCode))
+		if noPremiumCabinAirlines[code] {
+			return true
+		}
+	}
+	return false
 }
 
 func filterFlightsByAirline(flights []models.FlightResult, airlines []string) []models.FlightResult {

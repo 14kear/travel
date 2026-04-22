@@ -65,6 +65,45 @@ func TestFilterFlightsByAirline_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestFilterFlightResults_BusinessDropsNoPremiumCabinAirlines(t *testing.T) {
+	flights := []models.FlightResult{
+		{
+			Price: 100,
+			Legs:  []models.FlightLeg{{AirlineCode: "F9"}},
+		},
+		{
+			Price: 200,
+			Legs:  []models.FlightLeg{{AirlineCode: "AA"}},
+		},
+		{
+			Price: 300,
+			Legs:  []models.FlightLeg{{AirlineCode: "UA"}, {AirlineCode: "NK"}},
+		},
+	}
+
+	got := filterFlightResults(flights, SearchOptions{CabinClass: models.Business})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 premium-compatible flight, got %d", len(got))
+	}
+	if got[0].Legs[0].AirlineCode != "AA" {
+		t.Errorf("expected AA flight to remain, got %s", got[0].Legs[0].AirlineCode)
+	}
+}
+
+func TestFilterFlightResults_EconomyKeepsNoPremiumCabinAirlines(t *testing.T) {
+	flights := []models.FlightResult{
+		{
+			Price: 100,
+			Legs:  []models.FlightLeg{{AirlineCode: "F9"}},
+		},
+	}
+
+	got := filterFlightResults(flights, SearchOptions{CabinClass: models.Economy})
+	if len(got) != 1 {
+		t.Fatalf("expected economy search to keep no-premium airline, got %d", len(got))
+	}
+}
+
 // --- flightArrival ---
 
 func TestFlightArrival_NoLegs(t *testing.T) {

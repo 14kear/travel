@@ -43,6 +43,9 @@ trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claud
 
 ## Setup
 
+If you are setting this up with OpenAI Codex, see [CODEX_QUICKSTART.md](CODEX_QUICKSTART.md)
+for a copy-paste setup prompt and verification commands.
+
 **Tell your AI assistant** (recommended):
 
 > Read https://github.com/MikkoParkkola/trvl and install trvl as my travel MCP server
@@ -489,7 +492,7 @@ trvl deals --type error_fare                           # Error fares only
 
 ### Travel Hacks
 
-Runs 18 detectors in parallel and ranks savings opportunities. Pass `--return` for round-trip hacks. Add `--carry-on` to restrict hidden-city results to carry-on only.
+Runs 18 detectors in parallel and ranks savings opportunities. Pass `--return` for round-trip hacks. Hidden-city is checked even with checked baggage; add `--carry-on` only to tailor baggage guidance.
 
 ```bash
 trvl hacks HEL AMS 2026-04-13                         # One-way hacks
@@ -529,7 +532,7 @@ Home airport and currency are auto-detected from your IP on first search. The AI
 | `min_hotel_stars: 4` | Only 4-star+ hotels in results |
 | `min_hotel_rating: 4.0` | Only well-reviewed properties (20+ reviews required) |
 | `preferred_districts: {"Prague": ["Prague 1"]}` | Hotels in your favorite neighborhoods first |
-| `carry_on_only: true` | Unlocks hidden-city and throwaway-ticket hacks |
+| `carry_on_only: true` | Tailors baggage guidance for hidden-city and throwaway-ticket hacks |
 | `prefer_direct: true` | Nonstop flights only |
 | `budget_per_night_max: 150` | Hotel price cap passed to Google Hotels API |
 | `budget_flight_max: 300` | Flights over budget dropped from results |

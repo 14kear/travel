@@ -1205,10 +1205,8 @@ func TestRoutesThroughDestination_singleLeg(t *testing.T) {
 			},
 		},
 	}
-	// Single-leg flights can't be hidden-city, but function returns true optimistically
-	// when no multi-leg flight with intermediate stop is found.
-	if !routesThroughDestination(result, "AMS") {
-		t.Error("expected true (optimistic) for single-leg flight")
+	if routesThroughDestination(result, "AMS") {
+		t.Error("expected false for single-leg flight")
 	}
 }
 
@@ -1241,9 +1239,8 @@ func TestRoutesThroughDestination_multiLegNoMatch(t *testing.T) {
 			},
 		},
 	}
-	// No intermediate stop at AMS, but optimistic return for non-empty flights.
-	if !routesThroughDestination(result, "AMS") {
-		t.Error("expected true (optimistic fallback)")
+	if routesThroughDestination(result, "AMS") {
+		t.Error("expected false without AMS as an intermediate stop")
 	}
 }
 
