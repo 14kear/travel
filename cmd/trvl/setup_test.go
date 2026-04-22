@@ -123,6 +123,7 @@ func TestSaveKeysTo_WritesFile(t *testing.T) {
 	keys := APIKeys{
 		SeatsAero: "sk_test123",
 		Kiwi:      "kiwi_test456",
+		Duffel:    "duffel_test789",
 	}
 
 	if err := saveKeysTo(path, keys); err != nil {
@@ -143,6 +144,9 @@ func TestSaveKeysTo_WritesFile(t *testing.T) {
 	}
 	if got.Kiwi != keys.Kiwi {
 		t.Errorf("kiwi: got %q, want %q", got.Kiwi, keys.Kiwi)
+	}
+	if got.Duffel != keys.Duffel {
+		t.Errorf("duffel: got %q, want %q", got.Duffel, keys.Duffel)
 	}
 	if got.Distribusion != "" {
 		t.Errorf("distribusion: expected empty, got %q", got.Distribusion)
@@ -197,6 +201,9 @@ func TestSaveKeysTo_OmitsEmptyFields(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if strings.Contains(string(data), "kiwi") {
 		t.Error("empty kiwi field should be omitted from JSON output")
+	}
+	if strings.Contains(string(data), "duffel") {
+		t.Error("empty duffel field should be omitted from JSON output")
 	}
 }
 

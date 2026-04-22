@@ -28,15 +28,15 @@ func flightSearchOutputSchema() interface{} {
 			"flights": schemaArray(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"price":          schemaNum(),
-					"currency":       schemaString(),
-					"duration":       schemaInt(),
-					"stops":          schemaInt(),
-					"provider":       schemaString(),
-					"booking_url":    schemaString(),
-					"all_in_cost":    schemaNumDesc("Total cost including baggage fees adjusted for FF status"),
-					"bag_breakdown":  schemaStringDesc("Baggage cost explanation, e.g. '+€35 checked bag' or 'bags included'"),
-					"self_connect":   schemaBool(),
+					"price":         schemaNum(),
+					"currency":      schemaString(),
+					"duration":      schemaInt(),
+					"stops":         schemaInt(),
+					"provider":      schemaString(),
+					"booking_url":   schemaString(),
+					"all_in_cost":   schemaNumDesc("Total cost including baggage fees adjusted for FF status"),
+					"bag_breakdown": schemaStringDesc("Baggage cost explanation, e.g. '+€35 checked bag' or 'bags included'"),
+					"self_connect":  schemaBool(),
 					"miles_earned": schemaArrayDesc("Estimated miles/points earned per FF programme", map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
@@ -46,7 +46,7 @@ func flightSearchOutputSchema() interface{} {
 						},
 					}),
 					"miles_value": schemaNumDesc("Cents-per-mile value if this flight were redeemed with points"),
-					"warnings":   schemaStringArray(),
+					"warnings":    schemaStringArray(),
 					"legs": schemaArray(map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
@@ -130,7 +130,7 @@ func searchFlightsTool() ToolDef {
 	return ToolDef{
 		Name:        "search_flights",
 		Title:       "Search Flights",
-		Description: "Search flights via Google Flights, and on compatible one-way searches also include Kiwi virtual-interlining results with explicit self-connect warnings. Returns real-time pricing, durations, stops, and leg details for a given route and date. IMPORTANT: call get_preferences before your first search in a conversation to load the user's home airport and flight preferences. If the profile is empty, interview the user first — get_preferences returns instructions. Use home_airports as default origin when the user doesn't specify where from.",
+		Description: "Search flights via Google Flights, Duffel, and compatible Kiwi self-connect options. Returns real-time pricing, durations, stops, and leg details for a given route and date. IMPORTANT: call get_preferences before your first search in a conversation to load the user's home airport and flight preferences. If the profile is empty, interview the user first — get_preferences returns instructions. Use home_airports as default origin when the user doesn't specify where from.",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
@@ -546,7 +546,7 @@ func flightSummary(result *models.FlightSearchResult, origin, dest string) strin
 		}
 	}
 	if selfConnectCount > 0 {
-		summary += fmt.Sprintf(" Includes %d Kiwi self-connect option%s with connection-risk warnings.",
+		summary += fmt.Sprintf(" Includes %d self-connect option%s with connection-risk warnings.",
 			selfConnectCount, pluralSuffix(selfConnectCount))
 	}
 
@@ -559,6 +559,8 @@ func flightProviderSummaryLabel(provider string) string {
 		return "Google Flights"
 	case "kiwi":
 		return "Kiwi"
+	case "duffel":
+		return "Duffel"
 	default:
 		return provider
 	}
@@ -637,4 +639,3 @@ func flightSuggestions(result *models.FlightSearchResult, origin, dest, date str
 
 	return suggestions
 }
-

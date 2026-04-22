@@ -57,7 +57,7 @@ func TestProvidersListCmd_WithProviders(t *testing.T) {
 		ID:       "kiwi",
 		Name:     "Kiwi.com",
 		Category: "flights",
-		Endpoint: "https://api.tequila.kiwi.com",
+		Endpoint: "https://api.example.com",
 		Consent:  &providers.ConsentRecord{Granted: true},
 	})
 	_ = reg.Save(&providers.ProviderConfig{
@@ -75,10 +75,10 @@ func TestProvidersListCmd_WithProviders(t *testing.T) {
 }
 
 func TestProviderConfig_EndpointDomain(t *testing.T) {
-	cfg := providers.ProviderConfig{Endpoint: "https://api.tequila.kiwi.com/v1"}
+	cfg := providers.ProviderConfig{Endpoint: "https://api.example.com/v1"}
 	got := cfg.EndpointDomain()
-	if got != "api.tequila.kiwi.com" {
-		t.Errorf("EndpointDomain = %q, want api.tequila.kiwi.com", got)
+	if got != "api.example.com" {
+		t.Errorf("EndpointDomain = %q, want api.example.com", got)
 	}
 }
 

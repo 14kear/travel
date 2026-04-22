@@ -21,6 +21,7 @@ import (
 type APIKeys struct {
 	SeatsAero    string `json:"seats_aero,omitempty"`
 	Kiwi         string `json:"kiwi,omitempty"`
+	Duffel       string `json:"duffel,omitempty"`
 	Distribusion string `json:"distribusion,omitempty"`
 }
 
@@ -165,18 +166,18 @@ func runSetup(cfg setupConfig) error {
 	if !cfg.nonInteractive {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Optional: API keys for premium providers.")
-		fmt.Fprintln(w, "These extend trvl with award space (Seats.aero), budget flights (Kiwi.com), and bus/coach (Distribusion).")
+		fmt.Fprintln(w, "These extend trvl with award space (Seats.aero), flight search (Duffel), and bus/coach (Distribusion).")
 		fmt.Fprintln(w, "Leave blank to skip any key.")
 
 		keys := loadExistingKeys()
 
 		seatsAero := setupPromptSecret(scanner, w, "Seats.aero API key", keys.SeatsAero)
-		kiwi := setupPromptSecret(scanner, w, "Kiwi.com API key", keys.Kiwi)
+		duffel := setupPromptSecret(scanner, w, "Duffel API token", keys.Duffel)
 		distribusion := setupPromptSecret(scanner, w, "Distribusion API key", keys.Distribusion)
 
-		if seatsAero != "" || kiwi != "" || distribusion != "" {
+		if seatsAero != "" || duffel != "" || distribusion != "" {
 			keys.SeatsAero = coalesce(seatsAero, keys.SeatsAero)
-			keys.Kiwi = coalesce(kiwi, keys.Kiwi)
+			keys.Duffel = coalesce(duffel, keys.Duffel)
 			keys.Distribusion = coalesce(distribusion, keys.Distribusion)
 			if err := saveKeys(keys); err != nil {
 				fmt.Fprintf(w, "Warning: could not save API keys: %v\n", err)

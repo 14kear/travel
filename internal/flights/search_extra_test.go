@@ -200,6 +200,28 @@ func TestParsePrice_SubArrayPrice(t *testing.T) {
 	}
 }
 
+func TestParsePrice_NestedSubArrayPrice(t *testing.T) {
+	raw := []any{[]any{nil, []any{"meta", float64(445)}}}
+	price, currency := parsePrice(raw)
+	if price != 445 {
+		t.Errorf("price = %v, want 445", price)
+	}
+	if currency != "USD" {
+		t.Errorf("currency = %q, want USD", currency)
+	}
+}
+
+func TestParsePrice_NestedCurrencyCode(t *testing.T) {
+	raw := []any{[]any{nil, []any{"EUR", float64(445)}}}
+	price, currency := parsePrice(raw)
+	if price != 445 {
+		t.Errorf("price = %v, want 445", price)
+	}
+	if currency != "EUR" {
+		t.Errorf("currency = %q, want EUR", currency)
+	}
+}
+
 // --- formatDateTime ---
 
 func TestFormatDateTime(t *testing.T) {

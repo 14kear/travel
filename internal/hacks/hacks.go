@@ -182,14 +182,14 @@ import (
 
 // Hack represents a detected travel optimization opportunity.
 type Hack struct {
-	Type        string   `json:"type"`                  // "throwaway", "hidden_city", "positioning", "split", "night_transport", "stopover", "date_flex", "open_jaw", "ferry_positioning", "multi_stop", "currency_arbitrage", "calendar_conflict", "tuesday_booking", "low_cost_carrier", "multimodal_skip_flight", "multimodal_positioning", "multimodal_open_jaw_ground", "multimodal_return_split", "advance_purchase", "group_split", "fare_breakpoint", "destination_airport", "fuel_surcharge", "self_transfer", "regional_pass", "departure_tax", "rail_competition", "back_to_back", "mileage_run", "day_use_hotel"
-	Title       string   `json:"title"`                 // human-readable hack name
-	Description string   `json:"description"`           // explanation for the traveller
-	Savings     float64  `json:"savings"`               // EUR saved vs naive booking
-	Currency    string   `json:"currency"`              // currency for Savings
-	Risks       []string `json:"risks,omitempty"`       // airline ToS, operational risks
-	Steps       []string `json:"steps"`                 // how to execute
-	Citations   []string `json:"citations,omitempty"`   // booking URLs / provider names
+	Type        string   `json:"type"`                // "throwaway", "hidden_city", "positioning", "split", "night_transport", "stopover", "date_flex", "open_jaw", "ferry_positioning", "multi_stop", "currency_arbitrage", "calendar_conflict", "tuesday_booking", "low_cost_carrier", "multimodal_skip_flight", "multimodal_positioning", "multimodal_open_jaw_ground", "multimodal_return_split", "advance_purchase", "group_split", "fare_breakpoint", "destination_airport", "fuel_surcharge", "self_transfer", "regional_pass", "departure_tax", "rail_competition", "back_to_back", "mileage_run", "day_use_hotel"
+	Title       string   `json:"title"`               // human-readable hack name
+	Description string   `json:"description"`         // explanation for the traveller
+	Savings     float64  `json:"savings"`             // EUR saved vs naive booking
+	Currency    string   `json:"currency"`            // currency for Savings
+	Risks       []string `json:"risks,omitempty"`     // airline ToS, operational risks
+	Steps       []string `json:"steps"`               // how to execute
+	Citations   []string `json:"citations,omitempty"` // booking URLs / provider names
 }
 
 // DetectorInput carries all parameters shared across detectors.
@@ -199,7 +199,7 @@ type DetectorInput struct {
 	Date        string  // outbound YYYY-MM-DD
 	ReturnDate  string  // round-trip return YYYY-MM-DD; empty = one-way search
 	Currency    string  // defaults to EUR
-	CarryOnOnly bool    // relevant for hidden-city (checked bags go to final dest)
+	CarryOnOnly bool    // tailors baggage risk wording; hidden-city is still shown when false
 	NaivePrice  float64 // baseline price for savings computation
 	Passengers  int     // number of passengers (group-split fires at 3+)
 }
@@ -223,18 +223,19 @@ type StopoverProgram struct {
 	MaxNights    int
 	Restrictions string
 	URL          string
+	Official     bool
 }
 
 // stopoverPrograms is the static database of airline stopover programs.
 var stopoverPrograms = map[string]StopoverProgram{
-	"AY": {Airline: "Finnair", Hub: "HEL", MaxNights: 5, Restrictions: "Non-Finnish residents only", URL: "https://www.finnair.com/en/stopover"},
-	"FI": {Airline: "Icelandair", Hub: "KEF", MaxNights: 7, Restrictions: "Free for transit passengers", URL: "https://www.icelandair.com/stopover"},
-	"TP": {Airline: "TAP Portugal", Hub: "LIS", MaxNights: 10, Restrictions: "Free; book through TAP website", URL: "https://www.flytap.com/en-us/stopover"},
-	"TK": {Airline: "Turkish Airlines", Hub: "IST", MaxNights: 2, Restrictions: "Free hotel for long layovers (TourIST program)", URL: "https://www.turkishairlines.com/en-int/any-questions/fly-and-smile/"},
-	"QR": {Airline: "Qatar Airways", Hub: "DOH", MaxNights: 4, Restrictions: "Doha Stopover from +1 USD", URL: "https://www.qatarairways.com/en/destinations/qatar/doha-stopover.html"},
-	"EK": {Airline: "Emirates", Hub: "DXB", MaxNights: 4, Restrictions: "Dubai Connect program", URL: "https://www.emirates.com/english/destinations/dubai/stopover/"},
-	"SQ": {Airline: "Singapore Airlines", Hub: "SIN", MaxNights: 3, Restrictions: "Singapore Stopover Holiday program", URL: "https://www.singaporeair.com/en_UK/us/promotions/stopover-holiday/"},
-	"EY": {Airline: "Etihad", Hub: "AUH", MaxNights: 2, Restrictions: "Abu Dhabi Stopover program", URL: "https://www.etihad.com/en-us/destinations/united-arab-emirates/abu-dhabi/stopover"},
+	"AY": {Airline: "Finnair", Hub: "HEL", MaxNights: 5, Restrictions: "Non-Finnish residents only", URL: "https://www.finnair.com/en/stopover", Official: true},
+	"FI": {Airline: "Icelandair", Hub: "KEF", MaxNights: 7, Restrictions: "Free for transit passengers", URL: "https://www.icelandair.com/stopover", Official: true},
+	"TP": {Airline: "TAP Portugal", Hub: "LIS", MaxNights: 10, Restrictions: "Free; book through TAP website", URL: "https://www.flytap.com/en-us/stopover", Official: true},
+	"TK": {Airline: "Turkish Airlines", Hub: "IST", MaxNights: 2, Restrictions: "Free hotel for long layovers (TourIST program)", URL: "https://www.turkishairlines.com/en-int/any-questions/fly-and-smile/", Official: true},
+	"QR": {Airline: "Qatar Airways", Hub: "DOH", MaxNights: 4, Restrictions: "Doha Stopover from +1 USD", URL: "https://www.qatarairways.com/en/destinations/qatar/doha-stopover.html", Official: true},
+	"EK": {Airline: "Emirates", Hub: "DXB", MaxNights: 4, Restrictions: "Dubai Connect program", URL: "https://www.emirates.com/english/destinations/dubai/stopover/", Official: true},
+	"SQ": {Airline: "Singapore Airlines", Hub: "SIN", MaxNights: 3, Restrictions: "Singapore Stopover Holiday program", URL: "https://www.singaporeair.com/en_UK/us/promotions/stopover-holiday/", Official: true},
+	"EY": {Airline: "Etihad", Hub: "AUH", MaxNights: 2, Restrictions: "Abu Dhabi Stopover program", URL: "https://www.etihad.com/en-us/destinations/united-arab-emirates/abu-dhabi/stopover", Official: true},
 }
 
 // detectFn is the signature for individual hack detectors.

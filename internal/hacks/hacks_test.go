@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/MikkoParkkola/trvl/internal/models"
 )
 
 // TestDetectorInput_currency verifies the currency fallback.
@@ -145,6 +147,38 @@ func TestMatchStopoverProgram(t *testing.T) {
 	}
 }
 
+func TestStopoverOpportunityForFlight_DoesNotUseAllowanceFallback(t *testing.T) {
+	f := models.FlightResult{
+		Legs: []models.FlightLeg{
+			{
+				DepartureAirport: models.AirportInfo{Code: "HEL"},
+				ArrivalAirport:   models.AirportInfo{Code: "AMS"},
+				Airline:          "KLM",
+				AirlineCode:      "XX",
+			},
+			{
+				DepartureAirport: models.AirportInfo{Code: "AMS"},
+				ArrivalAirport:   models.AirportInfo{Code: "PRG"},
+				Airline:          "KLM",
+				AirlineCode:      "XX",
+			},
+		},
+	}
+
+	prog, hub, ok := StopoverOpportunityForFlight("HEL", "PRG", f)
+	if ok {
+		t.Fatalf("expected no official stopover fallback, got hub=%q airline=%q", hub, prog.Airline)
+	}
+
+	prog, ok = layoverAllowanceForHub("AMS")
+	if !ok {
+		t.Fatal("expected heuristic layover allowance for AMS")
+	}
+	if prog.Official {
+		t.Fatal("heuristic layover allowance must not be marked as official")
+	}
+}
+
 // TestAdjustReturnDate verifies return date shifting.
 func TestAdjustReturnDate(t *testing.T) {
 	tests := []struct {
@@ -175,17 +209,42 @@ func TestCityFromCode(t *testing.T) {
 	}
 }
 
-// TestHiddenCityExtensions verifies the static map is populated.
+// TestHiddenCityExtensions verifies the legacy compatibility helper no longer
+// drives active hidden-city logic.
 func TestHiddenCityExtensions(t *testing.T) {
-	if len(hiddenCityExtensions) == 0 {
-		t.Fatal("hiddenCityExtensions is empty")
+	if got := HiddenCityExtensionsForDestination("AMS"); got != nil {
+		t.Fatalf("expected no hardcoded hidden-city extensions, got %v", got)
 	}
-	beyonds, ok := hiddenCityExtensions["AMS"]
-	if !ok {
-		t.Fatal("AMS should have hidden-city extensions")
+}
+
+func TestHiddenCityCandidateAirports_AMS_Deterministic(t *testing.T) {
+	first := HiddenCityCandidateAirports("AMS", "LHR", 8)
+	second := HiddenCityCandidateAirports("AMS", "LHR", 8)
+	if len(first) == 0 {
+		t.Fatal("expected non-empty hidden city candidates for AMS")
 	}
-	if len(beyonds) == 0 {
-		t.Error("AMS beyonds should be non-empty")
+	if len(first) != len(second) {
+		t.Fatalf("candidate lengths differ: %d vs %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i] != second[i] {
+			t.Fatalf("candidate ranking is not deterministic at %d: %q vs %q", i, first[i], second[i])
+		}
+		if first[i] == "AMS" || first[i] == "LHR" {
+			t.Fatalf("candidate list should not include origin/hub, got %q", first[i])
+		}
+	}
+}
+
+func TestHiddenCityCandidateAirports_NotLimitedToLegacyHubs(t *testing.T) {
+	cands := HiddenCityCandidateAirports("TLL", "HEL", 12)
+	if len(cands) == 0 {
+		t.Fatal("expected non-empty hidden city candidates for arbitrary destination")
+	}
+	for _, c := range cands {
+		if c == "TLL" || c == "HEL" {
+			t.Fatalf("candidate list should not include origin or requested destination, got %q", c)
+		}
 	}
 }
 

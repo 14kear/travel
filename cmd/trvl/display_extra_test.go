@@ -37,6 +37,13 @@ func TestFlightProviderLabel_Kiwi(t *testing.T) {
 	}
 }
 
+func TestFlightProviderLabel_Duffel(t *testing.T) {
+	f := models.FlightResult{Provider: "duffel"}
+	if got := flightProviderLabel(f); got != "Duffel" {
+		t.Errorf("expected 'Duffel', got %q", got)
+	}
+}
+
 func TestFlightProviderLabel_Unknown(t *testing.T) {
 	f := models.FlightResult{Provider: "some_other_provider"}
 	if got := flightProviderLabel(f); got != "some_other_provider" {

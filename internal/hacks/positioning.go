@@ -107,7 +107,11 @@ func detectPositioning(ctx context.Context, in DetectorInput) []Hack {
 			continue
 		}
 
-		totalCost := altPrice + entry.GroundCost
+		groundCost := entry.GroundCost
+		if converted, cur := ApproxConvertCurrency(entry.GroundCost, "EUR", currency); cur == currency {
+			groundCost = converted
+		}
+		totalCost := altPrice + groundCost
 		savings := directPrice - totalCost
 		if savings < 10 { // require at least EUR 10 net saving
 			continue
@@ -121,7 +125,7 @@ func detectPositioning(ctx context.Context, in DetectorInput) []Hack {
 			Description: fmt.Sprintf(
 				"Fly from %s (%s) instead of %s: flight %.0f + transit %.0f = %.0f total vs %.0f direct. Saves %s %.0f.",
 				entry.Code, entry.City, in.Origin,
-				altPrice, entry.GroundCost, totalCost,
+				altPrice, groundCost, totalCost,
 				directPrice, currency, math.Round(savings),
 			),
 			Risks: []string{

@@ -5,67 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.3] - 2026-04-20
-
-### Added
-- **54 MCP tools** — 4 new tools: `watch_price` (price alert with target threshold), `list_watches`, `check_watches` (re-check all watches for drops), `provider_health` (per-provider success rate, latency, errors)
-- **Provider health logging** — append-only `~/.trvl/health.jsonl` records every provider API call with timing and status. Auto-rotates at 1MB
-- **Singleflight deduplication** — concurrent searches for the same route coalesce into a single API call (flights, hotels, ground)
-
-### Changed
-- **Connection pooling** — MaxIdleConns 100, MaxIdleConnsPerHost 10, IdleConnTimeout 90s for better HTTP connection reuse
-- **File splits** — `tools_hotels.go` 939→652 LOC, `tools_flights.go` 883→640 LOC
-- **Magic number documentation** — all bare numeric constants annotated with "Why N:" reasoning
-- **Legal disclaimer** — expanded to cover all providers, states ToS risk explicitly
-- **Booking.com cold-start** — cookie timeout 5s→12s, eager pre-warm at NewRuntime init
-
-### Fixed
-- **Hotel post-filter** — external provider results (Airbnb, Booking.com) without ratings no longer dropped by MinRating filter
-- **Optimizer currency** — pre-priced ground candidates use input currency instead of hardcoded EUR
-- **All staticcheck warnings** resolved (7 total)
-- **CI coverage threshold** raised from 50% to 75%
-
-## [1.0.0] - 2026-04-20
-
-### Added
-- **50 MCP tools** — `search_hotel_by_name` (cross-provider name-based property lookup with fuzzy matching) and `onboard_profile` (5-phase progressive interview for new users)
-- **Profile-driven search** — traveller profile (TravelMode, CityIntelligence, BookingStrategy, PreferenceElasticity, DestinationRelationship) now drives search behaviour as soft defaults. Flights use preferred airlines/alliance/cabin from booking history. Hotels use star rating, property type, price ceiling, and city-specific neighbourhood preferences. Ground transport uses preferred mode. Explicit parameters always override
-- **LLM-aware onboarding Phase 0** — before asking questions, the LLM states what it already knows/infers about the user and asks to confirm. Confirmed inferences skip redundant questions in later phases
-- **Travel personality model** — captures WHY the user makes decisions: travel modes (solo_remote, with_partner, with_kids, weekend_break), city intelligence (per-city knowledge depth, neighbourhoods, restaurants), booking strategies (machine-readable patterns), price elasticity factors, destination relationship graph (why each city matters)
-- **Eurostar Snap routing** — 14-day rolling window for Snap fares, 9 validated routes from snap.eurostar.com, Antwerp station support
-
-### Changed
-- **Optimizer currency consistency** — pre-priced ground candidates (rail/ferry) now use the input currency instead of hardcoded EUR, enabling correct cross-candidate cost comparison
-- **Hotel post-filter** — external provider results (Airbnb, Booking.com, Hostelworld) without Google-scale ratings now pass through the MinRating filter instead of being dropped. Fixes Paris 121→1 survivor regression for multi-provider searches
-
-### Fixed
-- **All 7 staticcheck warnings resolved** — nil contexts replaced with context.TODO(), impossible nil checks removed, unused functions deleted
-- **Stale branches cleaned** — removed 6 local + 13 remote branches (copilot, dependabot, worktree artifacts). Only main remains
-
-## [0.9.2] - 2026-04-19
-
-### Changed
-- **README overhaul** — updated to reflect 36 hack detectors (was 18), 5 hotel providers (was 3), 574 Go files / 74K LOC / 32 packages / 5400+ tests, added Traveller Profile section
-- **Coverage push** — hacks 65.6→91.9%, providers 75.5→80.0%, trip 68.6→71.4%, cmd/trvl 63.0→63.7%
-- **Traveller Profile** now tracks Eurostar, European Sleeper, FlixBus AMS↔Paris/Prague routes, Club Eurostar and Tallink Club One memberships, Uber+Bolt rides, public holiday tracking for 9 countries
-
-## [0.9.1] - 2026-04-19
-
-### Added
-- **Traveller profile system** — learns from booking history via email parsing + LLM sampling. 3 new MCP tools (`build_profile`, `add_booking`, `interview_trip`) and CLI `trvl profile` command. Profile stores FF statuses, booking history (flights/hotels/Airbnb/ground/rides), accommodation preferences, travel hacks used, family composition, seasonal patterns. Pre-search interviews skip questions the profile already answers
-- **Optimizer: EUR currency normalization** — adds `Currency` field to SearchOptions, maps to Google Flights `gl=` parameter (30 currency→country mappings). Optimizer forces EUR so flights, rail, and ferry candidates compare in the same currency
-- **Back-to-back ticketing: live price comparison** — 4 parallel flight searches compare 2x one-way vs 2x overlapping round-trip. Shows concrete savings with prices and booking URLs. Falls back to advisory on search failure
-- **Booking.com cold-start fix** — background cookie warm-up via `WarmBrowserCookies`. Kooky Keychain read runs concurrently with initialization, eliminating 5-10s sequential blocking on first request
-- **Hotel name similarity guard** — `nameSimilar()` uses word-level Jaccard similarity (≥0.5 threshold) to prevent geo-proximity merging of unrelated nearby hotels
-- Now 48 MCP tools (was 45), 574 Go files, 5400+ tests
-
-### Changed
-- **DRY refactoring** — `newProviderLimiter` replaces 18 identical rate limiters in ground/; `launchProvider` replaces 20 identical goroutine blocks; `resolveAndSearch[T]` generic for FlixBus/RegioJet autocomplete; 12 MCP schema builder helpers replace 597 bare map literals; `validateOriginDest`/`validateDate` consolidate repeated validation
-- **SharedClient singleton** — `batchexec.SharedClient()` replaces duplicate `sync.Once` in flights/
-
-### Fixed
-- **Hotel dedup too aggressive** — `sameHotelCandidate` now requires address match OR proximity (not just either); different addresses → never merge; geo threshold tightened 500m→100m, geo-merge 150m→50m. Paris: 121→1 collapse fixed (now 156→61 post-merge)
-
 ## [0.9.0] - 2026-04-19
 
 ### Added

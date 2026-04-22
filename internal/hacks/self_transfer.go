@@ -85,6 +85,9 @@ func detectSelfTransfer(_ context.Context, in DetectorInput) []Hack {
 		if hub.IATA == origin || hub.IATA == dest {
 			continue
 		}
+		if !isPlausibleSelfTransferHub(origin, dest, hub.IATA) {
+			continue
+		}
 
 		airlineNames := hubAirlineNames(hub.Airlines)
 
@@ -120,6 +123,24 @@ func detectSelfTransfer(_ context.Context, in DetectorInput) []Hack {
 	}
 
 	return hacks
+}
+
+func isPlausibleSelfTransferHub(origin, dest, hub string) bool {
+	direct := airportDistanceKm(origin, dest)
+	originToHub := airportDistanceKm(origin, hub)
+	hubToDest := airportDistanceKm(hub, dest)
+	if direct <= 0 || originToHub <= 0 || hubToDest <= 0 {
+		return false
+	}
+
+	viaTotal := originToHub + hubToDest
+	if viaTotal > direct*1.6 {
+		return false
+	}
+	if originToHub < 200 || hubToDest < 200 {
+		return false
+	}
+	return true
 }
 
 // isDirectLCCRoute returns true if the origin-destination pair is known

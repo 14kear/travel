@@ -221,12 +221,10 @@ func parsePrice(raw any) (float64, string) {
 	// Price is the last element: e.g. [null, 2581] -> 2581
 	if len(arr) > 0 {
 		if priceArr, ok := arr[0].([]any); ok && len(priceArr) > 0 {
-			// Walk backwards to find the first numeric value (price)
-			for i := len(priceArr) - 1; i >= 0; i-- {
-				if f, ok := jsonutil.ToFloat(priceArr[i]); ok && f > 0 {
-					amount = f
-					break
-				}
+			// Google's price block occasionally nests the numeric amount deeper
+			// than one level; search the subtree from right to left.
+			if f, ok := findLastPositiveNumber(priceArr); ok {
+				amount = f
 			}
 		}
 	}
@@ -241,21 +239,12 @@ func parsePrice(raw any) (float64, string) {
 
 	// Fallback: scan for explicit currency code or nested price in the array
 	if amount == 0 {
-		for _, v := range arr {
-			if f, ok := jsonutil.ToFloat(v); ok && f > 0 {
-				amount = f
-				break
-			}
+		if f, ok := findLastPositiveNumber(arr); ok {
+			amount = f
 		}
 	}
 	if currency == "" && amount > 0 {
-		// Look for 3-letter uppercase string in the array
-		for _, v := range arr {
-			if s, ok := v.(string); ok && len(s) == 3 && s >= "A" && s == strings.ToUpper(s) {
-				currency = s
-				break
-			}
-		}
+		currency = findCurrencyCode(arr)
 	}
 
 	// Default currency if still not found
@@ -264,6 +253,42 @@ func parsePrice(raw any) (float64, string) {
 	}
 
 	return amount, currency
+}
+
+func findLastPositiveNumber(raw any) (float64, bool) {
+	if f, ok := jsonutil.ToFloat(raw); ok && f > 0 {
+		return f, true
+	}
+
+	arr, ok := raw.([]any)
+	if !ok {
+		return 0, false
+	}
+
+	for i := len(arr) - 1; i >= 0; i-- {
+		if f, ok := findLastPositiveNumber(arr[i]); ok {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+func findCurrencyCode(raw any) string {
+	if s, ok := raw.(string); ok && len(s) == 3 && s == strings.ToUpper(s) && isKnownCurrency(s) {
+		return s
+	}
+
+	arr, ok := raw.([]any)
+	if !ok {
+		return ""
+	}
+
+	for _, v := range arr {
+		if code := findCurrencyCode(v); code != "" {
+			return code
+		}
+	}
+	return ""
 }
 
 // extractCurrencyFromToken attempts to extract a 3-letter currency code from

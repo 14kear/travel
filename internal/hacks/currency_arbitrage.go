@@ -3,6 +3,7 @@ package hacks
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/flights"
 )
@@ -122,6 +123,51 @@ func detectCurrencyArbitrage(ctx context.Context, in DetectorInput) []Hack {
 // using fixed exchange rates. Intentionally conservative — only used for
 // comparison, not for financial accuracy.
 func toEUR(price float64, currency string) float64 {
+	eur, ok := approxToEUR(price, currency)
+	if !ok {
+		return price
+	}
+	return eur
+}
+
+// ApproxConvertCurrency converts between currencies using the same deterministic
+// fixed-rate table as the arbitrage heuristics. This avoids mixing raw EUR
+// transfer estimates with flight prices in another currency.
+func ApproxConvertCurrency(amount float64, from, to string) (float64, string) {
+	from = strings.ToUpper(strings.TrimSpace(from))
+	to = strings.ToUpper(strings.TrimSpace(to))
+	if amount == 0 || from == "" || to == "" || from == to {
+		return amount, to
+	}
+
+	eur, ok := approxToEUR(amount, from)
+	if !ok {
+		return amount, from
+	}
+	converted, ok := approxFromEUR(eur, to)
+	if !ok {
+		return amount, from
+	}
+	return converted, to
+}
+
+func approxToEUR(amount float64, currency string) (float64, bool) {
+	rate, ok := approxEURRate(currency)
+	if !ok {
+		return 0, false
+	}
+	return amount * rate, true
+}
+
+func approxFromEUR(amount float64, currency string) (float64, bool) {
+	rate, ok := approxEURRate(currency)
+	if !ok || rate == 0 {
+		return 0, false
+	}
+	return amount / rate, true
+}
+
+func approxEURRate(currency string) (float64, bool) {
 	rates := map[string]float64{
 		"EUR": 1.00,
 		"USD": 0.93,
@@ -136,10 +182,8 @@ func toEUR(price float64, currency string) float64 {
 		"TRY": 0.028,
 		"CZK": 0.040,
 		"HRK": 0.133,
+		"RUB": 0.010,
 	}
-	rate, ok := rates[currency]
-	if !ok {
-		return price
-	}
-	return price * rate
+	rate, ok := rates[strings.ToUpper(strings.TrimSpace(currency))]
+	return rate, ok
 }

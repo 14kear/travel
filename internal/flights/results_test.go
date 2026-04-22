@@ -2,6 +2,7 @@ package flights
 
 import (
 	"testing"
+	"time"
 
 	"github.com/MikkoParkkola/trvl/internal/models"
 )
@@ -50,10 +51,10 @@ func TestMergeFlightResults_SortsCheapestAndFiltersStops(t *testing.T) {
 		},
 	}
 
-	merged := mergeFlightResults(googleFlights, kiwiFlights, SearchOptions{
+	merged := mergeFlightResults(SearchOptions{
 		MaxStops: models.OneStop,
 		SortBy:   models.SortCheapest,
-	})
+	}, googleFlights, kiwiFlights)
 
 	if len(merged) != 2 {
 		t.Fatalf("merged count = %d, want 2", len(merged))
@@ -63,5 +64,52 @@ func TestMergeFlightResults_SortsCheapestAndFiltersStops(t *testing.T) {
 	}
 	if merged[1].Price != 200 {
 		t.Fatalf("second price = %.0f, want 200", merged[1].Price)
+	}
+}
+
+func TestParseFlexibleFlightTime(t *testing.T) {
+	tests := []struct {
+		name  string
+		raw   string
+		valid bool
+		want  string
+	}{
+		{name: "rfc3339", raw: "2026-07-01T08:15:00+02:00", valid: true, want: "2026-07-01T08:15:00+02:00"},
+		{name: "flight layout", raw: "2026-07-01T08:15", valid: true, want: "2026-07-01T08:15:00Z"},
+		{name: "date only", raw: "2026-07-01", valid: true, want: "2026-07-01T00:00:00Z"},
+		{name: "invalid", raw: "tomorrow maybe", valid: false},
+	}
+
+	for _, tc := range tests {
+		got, ok := parseFlexibleFlightTime(tc.raw)
+		if ok != tc.valid {
+			t.Fatalf("%s: ok=%v, want %v", tc.name, ok, tc.valid)
+		}
+		if !tc.valid {
+			continue
+		}
+		if got.Format(time.RFC3339) != tc.want {
+			t.Fatalf("%s: got %s, want %s", tc.name, got.Format(time.RFC3339), tc.want)
+		}
+	}
+}
+
+func TestFlightDurationFromLegs(t *testing.T) {
+	legs := []models.FlightLeg{
+		{
+			DepartureTime: "2026-07-01T08:00",
+			ArrivalTime:   "2026-07-01T09:30",
+			Duration:      90,
+		},
+		{
+			DepartureTime:  "2026-07-01T10:15",
+			ArrivalTime:    "2026-07-01T12:00",
+			Duration:       105,
+			LayoverMinutes: 45,
+		},
+	}
+
+	if got := flightDurationFromLegs(legs); got != 240 {
+		t.Fatalf("duration = %d, want 240", got)
 	}
 }

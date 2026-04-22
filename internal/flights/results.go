@@ -11,10 +11,16 @@ import (
 
 const flightTimeLayout = "2006-01-02T15:04"
 
-func mergeFlightResults(googleFlights, kiwiFlights []models.FlightResult, opts SearchOptions) []models.FlightResult {
-	merged := make([]models.FlightResult, 0, len(googleFlights)+len(kiwiFlights))
-	merged = append(merged, googleFlights...)
-	merged = append(merged, kiwiFlights...)
+func mergeFlightResults(opts SearchOptions, providers ...[]models.FlightResult) []models.FlightResult {
+	total := 0
+	for _, providerFlights := range providers {
+		total += len(providerFlights)
+	}
+
+	merged := make([]models.FlightResult, 0, total)
+	for _, providerFlights := range providers {
+		merged = append(merged, providerFlights...)
+	}
 	merged = filterFlightResults(merged, opts)
 	sortFlightResults(merged, opts.SortBy)
 	return merged
@@ -150,6 +156,12 @@ func sortFlightResults(flights []models.FlightResult, sortBy models.SortBy) {
 
 func compareFlightPrices(left, right float64) int {
 	switch {
+	case left <= 0 && right <= 0:
+		return 0
+	case left <= 0:
+		return 1
+	case right <= 0:
+		return -1
 	case left < right:
 		return -1
 	case left > right:
@@ -174,6 +186,50 @@ func compareFlightTimes(left, right time.Time) int {
 	default:
 		return 0
 	}
+}
+
+func parseFlexibleFlightTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		flightTimeLayout,
+		"2006-01-02 15:04",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func flightDurationFromLegs(legs []models.FlightLeg) int {
+	if len(legs) == 0 {
+		return 0
+	}
+
+	start, startOK := parseFlexibleFlightTime(legs[0].DepartureTime)
+	end, endOK := parseFlexibleFlightTime(legs[len(legs)-1].ArrivalTime)
+	if startOK && endOK && end.After(start) {
+		return int(end.Sub(start).Minutes())
+	}
+
+	total := 0
+	for _, leg := range legs {
+		if leg.Duration > 0 {
+			total += leg.Duration
+		}
+		if leg.LayoverMinutes > 0 {
+			total += leg.LayoverMinutes
+		}
+	}
+	return total
 }
 
 func flightDeparture(f models.FlightResult) time.Time {

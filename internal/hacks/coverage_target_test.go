@@ -277,7 +277,7 @@ func TestDetectThrowaway_validInputNoLiveAPI(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDetectHiddenCity_knownHubDestination(t *testing.T) {
-	// AMS is in hiddenCityExtensions — hits live API (returns nil).
+	// Hidden-city candidate generation no longer depends on hardcoded hub lists.
 	h := detectHiddenCity(context.Background(), DetectorInput{
 		Origin:      "HEL",
 		Destination: "AMS",
@@ -287,7 +287,7 @@ func TestDetectHiddenCity_knownHubDestination(t *testing.T) {
 }
 
 func TestDetectHiddenCity_anotherKnownHub(t *testing.T) {
-	// FRA is also in hiddenCityExtensions.
+	// Another deterministic hidden-city candidate generation smoke test.
 	h := detectHiddenCity(context.Background(), DetectorInput{
 		Origin:      "HEL",
 		Destination: "FRA",

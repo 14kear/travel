@@ -498,6 +498,7 @@ func TestFlightProviderSummaryLabel(t *testing.T) {
 		{"google_flights", "Google Flights"},
 		{"Google_Flights", "Google Flights"},
 		{"kiwi", "Kiwi"},
+		{"duffel", "Duffel"},
 		{"KIWI", "Kiwi"},
 		{"other_provider", "other_provider"},
 		{"", ""},
@@ -740,7 +741,7 @@ func TestTierDisplayName(t *testing.T) {
 		{"oneworld", "emerald", "Emerald"},
 		{"star_alliance", "gold", "Alliance Gold"},
 		{"skyteam", "elite_plus", "Elite Plus"},
-		{"unknown", "gold", "Gold"},           // fallback
+		{"unknown", "gold", "Gold"},             // fallback
 		{"unknown", "elite_plus", "Elite Plus"}, // fallback
 	}
 	for _, tt := range tests {

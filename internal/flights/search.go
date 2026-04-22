@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/MikkoParkkola/trvl/internal/batchexec"
+	"github.com/MikkoParkkola/trvl/internal/destinations"
 	"github.com/MikkoParkkola/trvl/internal/models"
 	"golang.org/x/sync/singleflight"
 )
@@ -142,8 +143,21 @@ func searchFlightsCore(ctx context.Context, client *batchexec.Client, origin, de
 		}
 	}
 
-	mergedFlights := mergeFlightResults(googleFlights, kiwiFlights, opts)
-	if googleSucceeded || kiwiSucceeded {
+	var duffelFlights []models.FlightResult
+	var duffelErr error
+	duffelSucceeded := false
+	if duffelSearchEnabled() && hasDuffelToken() {
+		duffelFlights, duffelErr = SearchDuffelFlights(ctx, origin, destination, date, opts)
+		if duffelErr != nil {
+			slog.Warn("duffel flight search failed", "origin", origin, "destination", destination, "date", date, "error", duffelErr)
+		} else {
+			duffelSucceeded = true
+			duffelFlights = normalizeFlightCurrencies(ctx, currency, duffelFlights)
+		}
+	}
+
+	mergedFlights := mergeFlightResults(opts, googleFlights, kiwiFlights, duffelFlights)
+	if googleSucceeded || kiwiSucceeded || duffelSucceeded {
 		return &models.FlightSearchResult{
 			Success:  true,
 			Count:    len(mergedFlights),
@@ -152,8 +166,8 @@ func searchFlightsCore(ctx context.Context, client *batchexec.Client, origin, de
 		}, nil
 	}
 
-	if googleErr != nil && kiwiErr != nil {
-		err := errors.Join(googleErr, kiwiErr)
+	if googleErr != nil && kiwiErr != nil && duffelErr != nil {
+		err := errors.Join(googleErr, kiwiErr, duffelErr)
 		return &models.FlightSearchResult{
 			Error: err.Error(),
 		}, err
@@ -166,10 +180,36 @@ func searchFlightsCore(ctx context.Context, client *batchexec.Client, origin, de
 			Error: kiwiErr.Error(),
 		}, kiwiErr
 	}
+	if duffelErr != nil {
+		return &models.FlightSearchResult{
+			Error: duffelErr.Error(),
+		}, duffelErr
+	}
 
 	return &models.FlightSearchResult{
 		Error: "unreachable flight search state",
 	}, fmt.Errorf("unreachable flight search state")
+}
+
+func normalizeFlightCurrencies(ctx context.Context, targetCurrency string, flights []models.FlightResult) []models.FlightResult {
+	targetCurrency = strings.TrimSpace(strings.ToUpper(targetCurrency))
+	if targetCurrency == "" {
+		return flights
+	}
+
+	for i := range flights {
+		from := strings.TrimSpace(strings.ToUpper(flights[i].Currency))
+		if from == "" || from == targetCurrency || flights[i].Price <= 0 {
+			flights[i].Currency = firstNonEmpty(from, targetCurrency)
+			continue
+		}
+
+		converted, currency := destinations.ConvertCurrency(ctx, flights[i].Price, from, targetCurrency)
+		flights[i].Price = converted
+		flights[i].Currency = currency
+	}
+
+	return flights
 }
 
 func searchGoogleFlightsWithClient(ctx context.Context, client *batchexec.Client, origin, destination, date string, opts SearchOptions) (*models.FlightSearchResult, error) {

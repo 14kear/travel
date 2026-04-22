@@ -133,11 +133,38 @@ func TestExpandCandidates_HiddenCity_AMS(t *testing.T) {
 	}
 }
 
-func TestExpandCandidates_NoHiddenCity_NonHub(t *testing.T) {
+func TestExpandCandidates_HiddenCityUsesDestinationContext(t *testing.T) {
 	input := OptimizeInput{
 		Origin:      "HEL",
-		Destination: "AGP", // Malaga, not a hub
+		Destination: "AGP",
 		DepartDate:  "2026-06-01",
+		FlexDays:    -1,
+	}
+	input.defaults()
+	candidates := expandCandidates(input)
+
+	found := false
+	for _, c := range candidates {
+		for _, h := range c.hackTypes {
+			if h == "hidden_city" {
+				found = true
+				if c.requiredVia != "AGP" {
+					t.Fatalf("hidden_city candidate should require via AGP, got %+v", c)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected hidden_city candidates to be generated from destination context")
+	}
+}
+
+func TestExpandCandidates_HiddenCitySkippedForRoundTrip(t *testing.T) {
+	input := OptimizeInput{
+		Origin:      "LHR",
+		Destination: "AMS",
+		DepartDate:  "2026-06-01",
+		ReturnDate:  "2026-06-08",
 		FlexDays:    -1,
 	}
 	input.defaults()
@@ -146,9 +173,38 @@ func TestExpandCandidates_NoHiddenCity_NonHub(t *testing.T) {
 	for _, c := range candidates {
 		for _, h := range c.hackTypes {
 			if h == "hidden_city" {
-				t.Errorf("unexpected hidden_city candidate for non-hub destination AGP: %+v", c)
+				t.Fatalf("unexpected hidden_city candidate on round-trip search: %+v", c)
 			}
 		}
+	}
+}
+
+func TestExpandCandidates_HiddenCityCarriesExecutionNote(t *testing.T) {
+	input := OptimizeInput{
+		Origin:         "LHR",
+		Destination:    "AMS",
+		DepartDate:     "2026-06-01",
+		FlexDays:       -1,
+		NeedCheckedBag: true,
+	}
+	input.defaults()
+	candidates := expandCandidates(input)
+
+	found := false
+	for _, c := range candidates {
+		if !hasHackType(c.hackTypes, "hidden_city") {
+			continue
+		}
+		found = true
+		if c.requiredVia != "AMS" {
+			t.Errorf("hidden city candidate requiredVia = %q, want AMS", c.requiredVia)
+		}
+		if c.flightNote == "" {
+			t.Error("expected hidden city candidate to carry an execution note")
+		}
+	}
+	if !found {
+		t.Fatal("expected at least one hidden_city candidate for AMS")
 	}
 }
 
@@ -334,6 +390,52 @@ func TestCandidateToOption_FlightWithAirline(t *testing.T) {
 	}
 	if opt.Legs[0].Duration != 240 {
 		t.Errorf("duration: got %d, want 240", opt.Legs[0].Duration)
+	}
+}
+
+func TestDeriveStopoverCandidates(t *testing.T) {
+	candidates := []*candidate{
+		{
+			origin:     "ARN",
+			dest:       "JFK",
+			departDate: "2026-06-01",
+			strategy:   "Direct booking",
+			searched:   true,
+			flights: []models.FlightResult{
+				{
+					Price:    450,
+					Currency: "EUR",
+					Legs: []models.FlightLeg{
+						{
+							DepartureAirport: models.AirportInfo{Code: "ARN"},
+							ArrivalAirport:   models.AirportInfo{Code: "KEF"},
+							AirlineCode:      "FI",
+							Airline:          "Icelandair",
+						},
+						{
+							DepartureAirport: models.AirportInfo{Code: "KEF"},
+							ArrivalAirport:   models.AirportInfo{Code: "JFK"},
+							AirlineCode:      "FI",
+							Airline:          "Icelandair",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	derived := deriveStopoverCandidates(candidates)
+	if len(derived) != 1 {
+		t.Fatalf("expected 1 derived stopover candidate, got %d", len(derived))
+	}
+	if !hasHackType(derived[0].hackTypes, "stopover") {
+		t.Errorf("expected stopover hack type, got %v", derived[0].hackTypes)
+	}
+	if derived[0].flightNote == "" {
+		t.Error("expected stopover candidate to include booking guidance")
+	}
+	if derived[0].strategy == candidates[0].strategy {
+		t.Error("expected stopover strategy label to differ from original strategy")
 	}
 }
 

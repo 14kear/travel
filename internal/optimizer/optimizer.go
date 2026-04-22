@@ -72,10 +72,10 @@ type Leg struct {
 
 // OptimizeResult is the output of the optimization engine.
 type OptimizeResult struct {
-	Success  bool           `json:"success"`
+	Success  bool            `json:"success"`
 	Options  []BookingOption `json:"options"`
 	Baseline *BookingOption  `json:"baseline,omitempty"`
-	Error    string         `json:"error,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 // candidate is an internal search candidate generated during the EXPAND phase.
@@ -85,9 +85,11 @@ type candidate struct {
 	departDate   string
 	returnDate   string
 	strategy     string
+	flightNote   string
 	hackTypes    []string
 	transferCost float64
 	transferTime int // minutes
+	requiredVia  string
 
 	// prePriced marks candidates whose cost is known without a flight search
 	// (e.g. rail corridors, ferry cabins). These skip the SEARCH phase.
@@ -147,6 +149,7 @@ func Optimize(ctx context.Context, input OptimizeInput) (*OptimizeResult, error)
 	// Phase 2: SEARCH candidates with budget.
 	client := batchexec.NewClient()
 	searchCandidates(ctx, candidates, client, input)
+	candidates = append(candidates, deriveStopoverCandidates(candidates)...)
 
 	// Phase 3: PRICE candidates.
 	for _, c := range candidates {
@@ -188,6 +191,10 @@ func validateInput(in OptimizeInput) error {
 func expandCandidates(input OptimizeInput) []*candidate {
 	origin := strings.ToUpper(input.Origin)
 	dest := strings.ToUpper(input.Destination)
+	displayCurrency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if displayCurrency == "" {
+		displayCurrency = "EUR"
+	}
 
 	var candidates []*candidate
 
@@ -205,6 +212,7 @@ func expandCandidates(input OptimizeInput) []*candidate {
 		if alt.IATA == dest {
 			continue
 		}
+		transferCost := convertApproxEURCost(alt.Cost, displayCurrency)
 		candidates = append(candidates, &candidate{
 			origin:       alt.IATA,
 			dest:         dest,
@@ -212,7 +220,7 @@ func expandCandidates(input OptimizeInput) []*candidate {
 			returnDate:   input.ReturnDate,
 			strategy:     fmt.Sprintf("Fly from %s (%s via %s)", alt.City, alt.IATA, alt.Mode),
 			hackTypes:    []string{alt.HackType},
-			transferCost: alt.Cost,
+			transferCost: transferCost,
 			transferTime: alt.Minutes,
 		})
 	}
@@ -222,6 +230,7 @@ func expandCandidates(input OptimizeInput) []*candidate {
 		if alt.IATA == origin {
 			continue
 		}
+		transferCost := convertApproxEURCost(alt.Cost, displayCurrency)
 		candidates = append(candidates, &candidate{
 			origin:       origin,
 			dest:         alt.IATA,
@@ -229,7 +238,7 @@ func expandCandidates(input OptimizeInput) []*candidate {
 			returnDate:   input.ReturnDate,
 			strategy:     fmt.Sprintf("Fly to %s (%s) + %s to %s", alt.City, alt.IATA, alt.Mode, dest),
 			hackTypes:    []string{"destination_airport"},
-			transferCost: alt.Cost,
+			transferCost: transferCost,
 		})
 	}
 
@@ -275,31 +284,35 @@ func expandCandidates(input OptimizeInput) []*candidate {
 		}
 	}
 
-	// 6. Hidden city: search to a beyond-destination via airline hub.
-	// When the destination is a major airline hub, flights to cities
-	// beyond the hub that connect through it can be cheaper.
-	hiddenCityBeyond := map[string][]string{
-		"AMS": {"HEL", "RIX", "TLL", "ARN"}, // KLM hub — search to Nordics/Baltics via AMS
-		"FRA": {"PRG", "WAW", "BUD", "VIE"}, // Lufthansa hub — search to Central/Eastern Europe via FRA
-		"CDG": {"BRU", "GVA", "LIS"},         // Air France hub
-		"MUC": {"PRG", "VIE", "BUD"},         // Lufthansa hub
-		"IST": {"TBS", "SOF", "OTP"},         // Turkish hub
-		"CPH": {"ARN", "HEL", "OSL"},         // SAS hub
-		"ZRH": {"MXP", "VIE", "MUC"},         // Swiss hub
+	// 6. Hidden city: search to a beyond-destination via the requested hub.
+	// Candidate C airports are generated from the live route context instead of
+	// a hardcoded hub list.
+	/* legacy hub list removed from runtime logic
+		"AMS": {"HEL", "RIX", "TLL", "ARN"},                                                                                                   // KLM hub — search to Nordics/Baltics via AMS
+		"FRA": {"PRG", "WAW", "BUD", "VIE"},                                                                                                   // Lufthansa hub — search to Central/Eastern Europe via FRA
+		"CDG": {"BRU", "GVA", "LIS"},                                                                                                          // Air France hub
+		"MUC": {"PRG", "VIE", "BUD"},                                                                                                          // Lufthansa hub
+		"IST": {"TBS", "SOF", "OTP"},                                                                                                          // Turkish hub
+		"CPH": {"ARN", "HEL", "OSL"},                                                                                                          // SAS hub
+		"ZRH": {"MXP", "VIE", "MUC"},                                                                                                          // Swiss hub
+		"CAN": {"URC", "KHG", "KRL", "YIN", "LHW", "XIY", "CKG", "TFU", "KMG", "PEK", "PKX", "ALA", "TAS", "FRU", "OSS", "TBS", "EVN", "BAK"}, // China Southern / westbound hub
 	}
 
-	if beyondCities, ok := hiddenCityBeyond[dest]; ok {
-		for _, beyond := range beyondCities {
+	*/
+	if input.ReturnDate == "" {
+		for _, beyond := range hacks.HiddenCityCandidateAirports(dest, origin, 12) {
 			if beyond == origin {
 				continue
 			}
 			candidates = append(candidates, &candidate{
-				origin:     origin,
-				dest:       beyond,
-				departDate: input.DepartDate,
-				returnDate: input.ReturnDate,
-				strategy:   fmt.Sprintf("Hidden city: book to %s, exit at %s", beyond, dest),
-				hackTypes:  []string{"hidden_city"},
+				origin:      origin,
+				dest:        beyond,
+				departDate:  input.DepartDate,
+				returnDate:  input.ReturnDate,
+				strategy:    fmt.Sprintf("Hidden city: book to %s, exit at %s", beyond, dest),
+				flightNote:  hiddenCityExecutionNote(input, dest, beyond),
+				hackTypes:   []string{"hidden_city"},
+				requiredVia: dest,
 			})
 		}
 	}
@@ -321,7 +334,7 @@ func expandCandidates(input OptimizeInput) []*candidate {
 				returnDate:   input.ReturnDate,
 				strategy:     fmt.Sprintf("Zero-tax departure from %s (%s) — saves €%.0f/person", alt.City, alt.IATA, taxEUR),
 				hackTypes:    []string{"departure_tax", "positioning"},
-				transferCost: alt.Cost,
+				transferCost: convertApproxEURCost(alt.Cost, displayCurrency),
 				transferTime: alt.Minutes,
 			})
 		}
@@ -340,8 +353,8 @@ func expandCandidates(input OptimizeInput) []*candidate {
 			strategy:   fmt.Sprintf("Take train (%s) — fares from €%.0f", strings.Join(operators, ", "), minFare),
 			hackTypes:  []string{"rail_competition", "ground_alternative"},
 			prePriced:  true,
-			baseCost:   minFare,
-			currency:   input.Currency,
+			baseCost:   convertApproxEURCost(minFare, displayCurrency),
+			currency:   displayCurrency,
 			searched:   true,
 		})
 	}
@@ -356,8 +369,8 @@ func expandCandidates(input OptimizeInput) []*candidate {
 			strategy:   fmt.Sprintf("Overnight ferry (%s) — saves €%.0f vs hotel", operator, hotelSavings),
 			hackTypes:  []string{"ferry_cabin_hotel"},
 			prePriced:  true,
-			baseCost:   cabinEUR,
-			currency:   input.Currency,
+			baseCost:   convertApproxEURCost(cabinEUR, displayCurrency),
+			currency:   displayCurrency,
 			searched:   true,
 		})
 	}
@@ -376,6 +389,16 @@ func shiftDate(date string, days int) string {
 		return ""
 	}
 	return t.AddDate(0, 0, days).Format("2006-01-02")
+}
+
+func convertApproxEURCost(amount float64, currency string) float64 {
+	if amount <= 0 {
+		return 0
+	}
+	if converted, cur := hacks.ApproxConvertCurrency(amount, "EUR", currency); cur == currency {
+		return converted
+	}
+	return amount
 }
 
 // searchCandidates executes flight searches for candidates within the API budget.
@@ -446,6 +469,9 @@ func searchCandidates(ctx context.Context, candidates []*candidate, client *batc
 			if err != nil || result == nil || !result.Success || len(result.Flights) == 0 {
 				return
 			}
+			if c.requiredVia != "" && !hacks.FlightRoutesThroughAirport(result.Flights, c.requiredVia) {
+				return
+			}
 
 			c.searched = true
 			c.flights = result.Flights
@@ -456,6 +482,33 @@ func searchCandidates(ctx context.Context, candidates []*candidate, client *batc
 	}
 
 	wg.Wait()
+}
+
+func deriveStopoverCandidates(candidates []*candidate) []*candidate {
+	var derived []*candidate
+	for _, c := range candidates {
+		if !c.searched || c.prePriced || len(c.flights) == 0 {
+			continue
+		}
+		if hasHackType(c.hackTypes, "hidden_city") || hasHackType(c.hackTypes, "stopover") {
+			continue
+		}
+
+		best := cheapestFlight(c.flights)
+		prog, hub, ok := hacks.StopoverOpportunityForFlight(c.origin, c.dest, best)
+		if !ok {
+			continue
+		}
+
+		cloned := *c
+		cloned.hackTypes = append([]string(nil), c.hackTypes...)
+		cloned.hackTypes = appendHackTypeUnique(cloned.hackTypes, "stopover")
+		hubName := hacks.StopoverCityName(hub)
+		cloned.strategy = fmt.Sprintf("Official stopover in %s with %s", hubName, prog.Airline)
+		cloned.flightNote = fmt.Sprintf("Book directly with %s and request a stopover in %s for up to %d nights", prog.Airline, hubName, prog.MaxNights)
+		derived = append(derived, &cloned)
+	}
+	return derived
 }
 
 // resolveFlexDatesViaCalendar uses a single CalendarGraph API call to get
@@ -715,6 +768,7 @@ func candidateToOption(c *candidate, rank int, input OptimizeInput) BookingOptio
 			Currency: best.Currency,
 			Airline:  airline,
 			Duration: duration,
+			Notes:    c.flightNote,
 		})
 	}
 
@@ -769,4 +823,31 @@ func convertFFStatuses(statuses []FFStatus) []baggage.FFStatus {
 		}
 	}
 	return out
+}
+
+func hasHackType(hackTypes []string, want string) bool {
+	for _, h := range hackTypes {
+		if h == want {
+			return true
+		}
+	}
+	return false
+}
+
+func appendHackTypeUnique(hackTypes []string, add string) []string {
+	if hasHackType(hackTypes, add) {
+		return hackTypes
+	}
+	return append(hackTypes, add)
+}
+
+func hiddenCityExecutionNote(input OptimizeInput, hub, beyond string) string {
+	note := fmt.Sprintf("Exit at %s instead of continuing to %s.", hub, beyond)
+	if input.CarryOnOnly {
+		return note + " Carry-on only is the simplest setup."
+	}
+	if input.NeedCheckedBag {
+		return note + " If you need checked baggage, ask for short-check to the hub and collect it before exiting."
+	}
+	return note + " Verify the routing carefully before booking because the final segment will be skipped."
 }

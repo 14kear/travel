@@ -12,11 +12,11 @@
 
 # trvl — The Travel MCP Server
 
-![trvl demo](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/demo.gif?v=1.0.5)
+![trvl demo](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/demo.gif?v=0.3.2)
 
-> **54 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
+> **45 travel tools for your AI assistant — flights, hotels, trains, buses, ferries, price alerts, travel hacks, weather forecasts, baggage rules, airport lounges, destination intel. Free. API-first.**
 >
-> Also works as a standalone CLI with 44 commands.
+> Also works as a standalone CLI with 43 commands.
 
 ### What it looks like
 
@@ -39,19 +39,15 @@
 > ```
 > Want me to check nearby restaurants or events that weekend?
 
-trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights, Google Hotels, Trivago, Airbnb, Booking.com, Hostelworld, Ferryhopper, and European ground transport data. It searches, optimizes, and applies travel hacks automatically — no personal API keys required, no monthly fees, API-first by default, with optional browser-assisted fallbacks only for a few protected providers.
+trvl is an [MCP server](https://modelcontextprotocol.io/) + CLI that gives Claude, Cursor, Windsurf, and any MCP-compatible AI assistant direct access to Google Flights, Google Hotels, Trivago, Airbnb, Ferryhopper, and European ground transport data. It searches, optimizes, and applies travel hacks automatically — no personal API keys required, no monthly fees, API-first by default, with optional browser-assisted fallbacks only for a few protected providers.
 
 ## Setup
 
-**One command — your AI does everything:**
-
-> Read https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md and set up trvl
-
-That's it. Your AI will install the binary, wire the MCP server, install the skill, build your travel profile, and verify everything works. Takes under a minute. Works in Claude Code, Cursor, Windsurf, Codex, and any AI with terminal access.
-
-**Or tell your AI assistant:**
+**Tell your AI assistant** (recommended):
 
 > Read https://github.com/MikkoParkkola/trvl and install trvl as my travel MCP server
+
+Your agent will install the binary, wire itself up, and verify the connection. Works in Claude Code, Cursor, Windsurf, Codex, and any AI with terminal access.
 
 **Or install manually:**
 
@@ -102,29 +98,28 @@ claude mcp add trvl --transport stdio -- trvl mcp
 
 ### 3. (Optional) Teach your AI about trvl
 
-If you used the one-command setup above, the skill is already installed. Otherwise, install the bundled skill that teaches Claude how to use trvl optimally:
+Point your AI assistant to the reference docs so it knows all 45 tools:
+
+```
+https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md
+```
+
+Or the compact version for context-limited models:
+
+```
+https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt
+```
+
+For Claude Code, you can also install the bundled skill that teaches Claude how to use trvl optimally:
 
 ```bash
-# Install the bundled skill (Claude Code)
 mkdir -p ~/.claude/skills
 curl -fsSL "https://raw.githubusercontent.com/MikkoParkkola/trvl/main/.claude/skills/trvl.md" -o "$HOME/.claude/skills/trvl.md"
 ```
 
-Reference docs for other clients: [AGENTS.md](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/AGENTS.md) (full) · [llms.txt](https://raw.githubusercontent.com/MikkoParkkola/trvl/main/llms.txt) (compact)
+### 4. Ask your AI to search
 
-### 4. Build your travel profile
-
-trvl learns how you travel. On first use, the AI runs a short interview (4 phases, ~2 minutes) to understand your home airports, travel style, favourite cities, and booking strategies. It can also scan your email for past bookings.
-
-```
-Tell trvl to build my travel profile
-```
-
-The profile makes every subsequent search smarter — it skips questions it already knows the answer to, applies your preferences automatically, and suggests destinations based on your patterns.
-
-### 5. Ask your AI to search
-
-That's it. Your AI assistant now has 54 travel tools available. Just ask naturally:
+That's it. Your AI assistant now has 45 travel tools available. Just ask naturally:
 
 - *"Search flights from JFK to Tokyo on July 1st, business class"*
 - *"Find hotels in Paris for July 1-5, at least 4 stars"*
@@ -178,9 +173,6 @@ That's it. Your AI assistant now has 54 travel tools available. Just ask natural
 | **add_trip_leg** | Add a flight, hotel, or ground leg to a saved trip | Trip ID, type, details |
 | **mark_trip_booked** | Mark a trip leg as booked | Trip ID, leg index |
 | **get_baggage_rules** | Look up carry-on and checked baggage allowances for airlines | AY carry-on + checked bag rules |
-| **build_profile** | Build a traveller profile from booking history (email parsing + LLM) | Scans emails for past bookings |
-| **add_booking** | Add a booking to the traveller profile | Flight, hotel, ground, or ride |
-| **interview_trip** | Generate pre-search interview questions based on profile knowledge | Skip questions the profile already answers |
 
 ## Search Filters
 
@@ -232,7 +224,7 @@ That's it. Your AI assistant now has 54 travel tools available. Just ask natural
 |---------|---------|
 | **Structured content** | Typed JSON (`structuredContent`) alongside human-readable summaries |
 | **Content annotations** | `audience: ["user"]` for summaries, `audience: ["assistant"]` for data |
-| **Output schemas** | Full JSON Schema validation for all 54 tool responses |
+| **Output schemas** | Full JSON Schema validation for all 45 tool responses |
 | **Prompts** | `plan-trip`, `find-cheapest-dates`, `compare-hotels`, `where-should-i-go` |
 | **Resources** | Airport codes (50 major hubs), flight/hotel usage guides, price-watch subscriptions |
 | **Tool description orchestration** | `find_trip_window` instructs the LLM to fetch calendar data first, then pass busy intervals in — works on every MCP client. See [docs/MCP-ORCHESTRATION.md](docs/MCP-ORCHESTRATION.md) |
@@ -243,7 +235,7 @@ That's it. Your AI assistant now has 54 travel tools available. Just ask natural
 
 ## Travel Hack Detectors
 
-`detect_travel_hacks` and `trvl hacks` run 36 detectors in parallel. Each one is independent and has a 20-second timeout:
+`detect_travel_hacks` and `trvl hacks` run 18 detectors in parallel. Each one is independent and has a 20-second timeout:
 
 | Detector | What it finds |
 |----------|--------------|
@@ -265,24 +257,6 @@ That's it. Your AI assistant now has 54 travel tools available. Just ask natural
 | **multimodal_positioning** | Ground transport to a hub + cheaper flight (train/ferry/bus) |
 | **multimodal_open_jaw_ground** | Mix ground and air for open-jaw itineraries |
 | **multimodal_return_split** | Different modes for outbound vs. return leg |
-| **advance_purchase** | Identify routes where booking 14-21+ days ahead drops the fare significantly |
-| **group_split** | Split a group across separate bookings for lower per-person fares |
-| **rail_fly_arbitrage** | Train to a hub + flight cheaper than direct flight |
-| **fare_breakpoint** | Move date by 1-2 days to cross a fare-class boundary |
-| **destination_airport** | Fly to a secondary airport in the same city |
-| **throwaway_ground** | Book a throwaway ground leg to unlock a cheaper bundle |
-| **eurostar_return** | Eurostar return tickets cheaper than two one-ways |
-| **cross_border_rail** | Cross-border rail cheaper than domestic + domestic |
-| **ferry_cabin** | Overnight ferry with cabin saves a hotel night |
-| **eu261** | Long connection triggers EU261 compensation rights |
-| **self_transfer** | Build your own connection via two separate tickets |
-| **regional_pass** | Day/week rail pass cheaper than point-to-point tickets |
-| **departure_tax** | Avoid high departure taxes by originating from a different country |
-| **rail_competition** | Competitive rail route cheaper than flying |
-| **back_to_back** | Two overlapping round-trips cheaper than flexible one-ways |
-| **mileage_run** | Cheap fare earns disproportionate frequent-flyer miles |
-| **day_use** | Day-use hotel for long layovers instead of a full night |
-| **error_fare** | Flag abnormally cheap fares (potential error fares or flash sales) |
 
 ## Ground Transport Providers
 
@@ -317,7 +291,7 @@ Two providers (NS, Digitransit/VR) use public API keys that are embedded in the 
 | Flight search | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bus/train/ferry search | ✅ (20 providers: FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, European Sleeper, Snälltåget, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) | ❌ | ❌ | ❌ | ❌ |
 | Price tracking | ✅ (watches with alerts) | ❌ | ❌ | ❌ | ❌ |
-| Hotel search | ✅ (5 providers: Google Hotels, Trivago, Airbnb, Booking.com, Hostelworld) | ❌ | ❌ | ❌ | ❌ |
+| Hotel search | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Hotel reviews | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Trip cost calculator | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Explore destinations | ✅ | ❌ | ✅ (web only) | ✅ (web) | ✅ |
@@ -347,7 +321,7 @@ See [Quick Setup step 3](#3-optional-teach-your-ai-about-trvl) above for AGENTS.
 
 ## CLI Usage
 
-trvl also works as a standalone CLI tool with 44 commands:
+trvl also works as a standalone CLI tool with 40 commands:
 
 All search commands accept `--currency <CODE>` (e.g. `--currency EUR`) to convert displayed prices. trvl detects the actual API currency and converts at the display layer — no hardcoded currencies.
 
@@ -515,7 +489,7 @@ trvl deals --type error_fare                           # Error fares only
 
 ### Travel Hacks
 
-Runs 36 detectors in parallel and ranks savings opportunities. Pass `--return` for round-trip hacks. Add `--carry-on` to restrict hidden-city results to carry-on only.
+Runs 18 detectors in parallel and ranks savings opportunities. Pass `--return` for round-trip hacks. Add `--carry-on` to restrict hidden-city results to carry-on only.
 
 ```bash
 trvl hacks HEL AMS 2026-04-13                         # One-way hacks
@@ -574,25 +548,6 @@ trvl points-value --cash 450 --points 20000 --program finnair-plus
 trvl points-value --list
 ```
 
-### Traveller Profile
-
-Build a personal travel profile from your booking history. The profile learns your patterns — preferred airlines, favourite destinations, accommodation preferences, travel hacks — and uses them to skip redundant interview questions and personalize searches.
-
-```bash
-trvl profile                                          # Show your travel profile
-trvl profile summary                                  # Quick stats
-trvl profile add --type flight --provider KLM --ref ZHS9BM  # Add a booking manually
-trvl profile import-email                             # Build profile from email history (LLM-assisted)
-```
-
-The profile stores:
-- **Frequent flyer status**: Alliance tiers, programme memberships
-- **Booking history**: Flights, hotels, Airbnb, ground transport, rides
-- **Preferences**: Preferred airlines, apartment vs hotel, favourite neighbourhoods
-- **Travel hacks used**: Fare tricks you've applied before
-- **Family composition**: Travelling companions, unaccompanied minor experience
-- **Seasonal patterns**: When you typically travel
-
 ## How It Works
 
 Google's travel frontend uses an internal gRPC-over-HTTP protocol called **batchexecute**. `trvl` speaks this protocol natively:
@@ -639,16 +594,16 @@ The AI uses these to give you actionable recommendations: "Book here: [link]". N
 | | |
 |---|---|
 | **Binary** | Single static ~15MB for API-first flows. Optional protected-provider fallbacks may use local browser/python tooling. |
-| **Data** | Real-time from Google Flights + 5 hotel sources (Google Hotels, Trivago, Airbnb, Booking.com, Hostelworld) + 20 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, European Sleeper, Snälltåget, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) + 5 free destination APIs |
+| **Data** | Real-time from Google Flights + 3 hotel sources (Google Hotels, Trivago, Airbnb) + 20 ground providers (FlixBus, RegioJet, Eurostar, DB, ÖBB, NS, VR, SNCF, Trainline, Transitous, Renfe, European Sleeper, Snälltåget, Tallink, Viking Line, Eckerö Line, Finnlines, Stena Line, DFDS, Ferryhopper) + 5 free destination APIs |
 | **Auth** | No personal API keys required. Two providers (NS, Digitransit/VR) use public keys embedded in the binary. Optional browser/cookie fallbacks are available for protected providers when explicitly enabled. |
-| **MCP** | Full v2025-11-25 — 54 tools (incl. 4 profile tools, 3 price watch tools, provider health), 7 prompts, resources, structured content, progress notifications, resource subscriptions, tool description orchestration |
-| **CLI** | 44 commands (+ 7 watch subcommands) with table/JSON output, color, shell completion |
+| **MCP** | Full v2025-11-25 — 45 tools, 7 prompts, resources, structured content, progress notifications, resource subscriptions, tool description orchestration |
+| **CLI** | 43 commands (+ 7 watch subcommands) with table/JSON output, color, shell completion |
 | **Booking links** | Every flight and hotel result includes a direct Google booking link |
-| **Travel hacks** | 36 detectors (throwaway, hidden-city, positioning, ferry, multi-modal, stopover, date-flex, error fare, back-to-back, rail competition, and more) |
-| **Personal profile** | Learns from your booking history (email parsing + LLM). Remembers FF status, luggage needs, favourite properties, departure preferences, travel hacks used, accommodation preferences, family composition. Pre-search interviews skip questions the profile already answers. |
+| **Travel hacks** | 18 detectors (throwaway, hidden-city, positioning, ferry, multi-modal, stopover, date-flex, and more) |
+| **Personal profile** | Remembers your FF status, luggage needs, favourite hotels, departure preferences |
 | **Output** | Pretty tables with color (default) or JSON (`--format json`) |
 | **Platforms** | Linux, macOS (amd64, arm64). Windows CI in progress. |
-| **Code** | 622 Go files, 203K LOC, 32 packages, 6400+ tests, 82% coverage |
+| **Code** | 145 Go files, ~44K LOC, 16 packages, 1100+ tests |
 | **License** | PolyForm Noncommercial 1.0 |
 
 ## Attribution
@@ -662,9 +617,7 @@ Built on the shoulders of:
 
 ## Legal
 
-`trvl` is a **personal-use tool** that accesses public-facing web APIs from Google Flights, Google Hotels, and other travel providers. It does not bypass authentication, access protected content, or circumvent rate limits. Request patterns are rate-limited to be indistinguishable from manual browsing (0.5-2 req/s per provider).
-
-**Important:** Automated access may violate some providers' Terms of Service. This tool is licensed under PolyForm Noncommercial 1.0 — commercial use, operation as a service, or redistribution of scraped data is prohibited. You are responsible for ensuring your use complies with applicable terms and laws in your jurisdiction. Same approach as [fli](https://github.com/punitarani/fli) (1K+ stars, MIT licensed).
+`trvl` accesses Google's public-facing internal APIs. It does not bypass authentication, access protected content, or circumvent rate limits. Same approach as [fli](https://github.com/punitarani/fli) (1K+ stars, MIT licensed).
 
 ## Ecosystem
 
@@ -673,7 +626,7 @@ trvl is part of a suite of MCP tools:
 | Tool | Description |
 |------|-------------|
 | [mcp-gateway](https://github.com/MikkoParkkola/mcp-gateway) | Universal MCP gateway — compact 12-15 tool surface replaces 100+ registrations |
-| **[trvl](https://github.com/MikkoParkkola/trvl)** | **AI travel agent — 50+ MCP tools for flights, hotels, ground transport** |
+| **[trvl](https://github.com/MikkoParkkola/trvl)** | **AI travel agent — 45 MCP tools for flights, hotels, ground transport** |
 | [nab](https://github.com/MikkoParkkola/nab) | Web content extraction — fetch any URL with cookies + anti-bot bypass |
 | [axterminator](https://github.com/MikkoParkkola/axterminator) | macOS GUI automation — 35 MCP tools via Accessibility API |
 

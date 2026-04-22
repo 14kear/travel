@@ -8,9 +8,9 @@ import (
 	"github.com/MikkoParkkola/trvl/internal/flights"
 )
 
-// hubStopoverAllowance lists airlines known to allow free multi-day stopovers
-// at their hubs. Key = hub IATA code, value = max free stopover nights.
-// This is a subset focused on European routing hubs.
+// hubStopoverAllowance lists airlines known to allow multi-day layovers at
+// their hubs. This is heuristic knowledge and must not be presented as an
+// official stopover program unless there is a matching official source.
 var hubStopoverAllowance = map[string]struct {
 	Airline  string
 	MaxNight int
@@ -27,9 +27,8 @@ var hubStopoverAllowance = map[string]struct {
 	"DXB": {Airline: "Emirates", MaxNight: 4},
 }
 
-// multistopRoutings lists known pairs (origin, final destination) where
-// routing through a hub gives a significant layover opportunity.
-// Key: destination; values: possible hubs on the way from common origins.
+// multistopHubs keeps a light destination-specific prior for hubs that often
+// produce useful long-layover itineraries. It is advisory only.
 var multistopHubs = map[string][]string{
 	"PRG": {"AMS", "FRA", "MUC", "CDG"},
 	"VIE": {"AMS", "FRA", "MUC"},
@@ -51,22 +50,19 @@ var multistopHubs = map[string][]string{
 }
 
 // minLayoverMinutesForStopover is the minimum layover duration (in minutes)
-// for the stopover to be worth flagging as a city visit opportunity.
-const minLayoverMinutesForStopover = 240 // 4 hours
+// for the layover to be worth flagging as a city-visit opportunity.
+const minLayoverMinutesForStopover = 360 // 6 hours
 
-// detectMultiStop identifies round-trips that route through an airline hub
-// with a long enough layover to make a meaningful city visit.
+// detectMultiStop identifies itineraries with a long enough intermediate hub
+// stop to make a deliberate long layover practical. This is not the same as
+// an official stopover program.
 func detectMultiStop(ctx context.Context, in DetectorInput) []Hack {
 	if !in.valid() || in.Date == "" {
 		return nil
 	}
 
-	hubs, ok := multistopHubs[in.Destination]
-	if !ok {
-		return nil
-	}
+	hubs := multistopHubs[in.Destination]
 
-	// Baseline: direct/cheapest round-trip or one-way.
 	opts := flights.SearchOptions{}
 	if in.ReturnDate != "" {
 		opts.ReturnDate = in.ReturnDate
@@ -86,19 +82,21 @@ func detectMultiStop(ctx context.Context, in DetectorInput) []Hack {
 			if seenHubs[hub] {
 				continue
 			}
-			// Must be an intermediate stop (not the final destination).
 			if i == len(f.Legs)-1 {
 				continue
 			}
 			if hub == in.Origin || hub == in.Destination {
 				continue
 			}
-			// Must be a known multi-stop hub.
-			if !sliceContains(hubs, hub) {
+
+			prog, official := stopoverProgramForHub(hub, leg.AirlineCode)
+			if !official {
+				prog, official = layoverAllowanceForHub(hub)
+			}
+			if !sliceContains(hubs, hub) && !official {
 				continue
 			}
 
-			// Check layover duration.
 			nextLeg := f.Legs[i+1]
 			layover := layoverMinutes(leg.ArrivalTime, nextLeg.DepartureTime)
 			if layover < minLayoverMinutesForStopover {
@@ -107,51 +105,66 @@ func detectMultiStop(ctx context.Context, in DetectorInput) []Hack {
 
 			seenHubs[hub] = true
 
-			info, hasInfo := hubStopoverAllowance[hub]
 			airlineName := leg.Airline
-			if hasInfo {
-				airlineName = info.Airline
-			}
 			maxNights := 0
-			if hasInfo {
-				maxNights = info.MaxNight
+			if prog.Airline != "" {
+				airlineName = prog.Airline
+				maxNights = prog.MaxNights
 			}
 
 			var layoverDesc string
-			if layover >= 1440 {
-				layoverDesc = fmt.Sprintf("~%d-day layover", layover/1440)
-			} else {
-				layoverDesc = fmt.Sprintf("~%dh layover", layover/60)
+			switch {
+			case layover >= 1440:
+				layoverDesc = fmt.Sprintf("about %d days", layover/1440)
+			default:
+				layoverDesc = fmt.Sprintf("about %d hours", layover/60)
 			}
 
 			steps := []string{
-				fmt.Sprintf("Book %s→%s routing via %s with %s", in.Origin, in.Destination, hub, airlineName),
-				fmt.Sprintf("On outbound: exit at %s (%s) — explore the city", hub, layoverDesc),
+				fmt.Sprintf("Book %s -> %s via %s with %s", in.Origin, in.Destination, hub, airlineName),
+				fmt.Sprintf("If timings, airport access, and visa rules allow, use the %s layover at %s as a deliberate long stop", layoverDesc, hub),
 				"Ensure you have any required transit visa for " + hub,
 			}
-			if maxNights > 0 {
-				steps = append(steps, fmt.Sprintf("Ask %s for a free stopover extension (up to %d nights)", airlineName, maxNights))
+			if prog.Official && maxNights > 0 {
+				steps = append(steps, fmt.Sprintf("Ask %s for an official stopover extension of up to %d nights", airlineName, maxNights))
+			} else if maxNights > 0 {
+				steps = append(steps, fmt.Sprintf("Check with %s whether your fare allows extending the layover at %s for up to %d nights", airlineName, hub, maxNights))
+			}
+
+			citations := []string{
+				googleFlightsURL(in.Destination, in.Origin, in.Date),
+			}
+			if prog.Official && prog.URL != "" {
+				citations = append(citations, prog.URL)
+			}
+
+			description := fmt.Sprintf(
+				"Your %s -> %s routing via %s has %s at %s (%s). This can make a planned long layover practical on one itinerary.",
+				in.Origin, in.Destination, hub, layoverDesc, hub, airlineName,
+			)
+			if prog.Official {
+				description = fmt.Sprintf(
+					"Your %s -> %s routing via %s has %s at %s (%s), and %s has an official stopover program there.",
+					in.Origin, in.Destination, hub, layoverDesc, hub, airlineName, airlineName,
+				)
+			}
+
+			risks := []string{
+				"Long layovers do not automatically mean an official free stopover program exists",
+				"Any stopover extension must be requested at booking and may depend on fare rules",
+				"Visa required for some hub countries depending on your nationality",
+				"Airline schedule changes may shorten your layover without notice",
 			}
 
 			hacks = append(hacks, Hack{
-				Type:     "multi_stop",
-				Title:    fmt.Sprintf("Two-city trip: visit %s on the way to %s", hubCityName(hub), in.Destination),
-				Currency: currency,
-				Savings:  0, // This is a value-add, not a price saving
-				Description: fmt.Sprintf(
-					"Your %s→%s routing via %s has a %s at %s (%s). "+
-						"Extend it into a free city stop — two destinations, one ticket price.",
-					in.Origin, in.Destination, hub, layoverDesc, hub, airlineName,
-				),
-				Risks: []string{
-					"Stopover extension must be requested at booking — not all fare classes allow it",
-					"Visa required for some hub countries depending on your nationality",
-					"Airline schedule change may shorten your layover without notice",
-				},
-				Steps: steps,
-				Citations: []string{
-					googleFlightsURL(in.Destination, in.Origin, in.Date),
-				},
+				Type:        "multi_stop",
+				Title:       fmt.Sprintf("Two-city trip: visit %s on the way to %s", hubCityName(hub), in.Destination),
+				Currency:    currency,
+				Savings:     0,
+				Description: description,
+				Risks:       risks,
+				Steps:       steps,
+				Citations:   citations,
 			})
 		}
 	}

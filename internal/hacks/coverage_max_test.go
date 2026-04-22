@@ -831,6 +831,9 @@ func TestKnownArbitrageAirlines_integrity(t *testing.T) {
 // --- hiddenCityExtensions data integrity ---
 
 func TestHiddenCityExtensions_keysAreHubs(t *testing.T) {
+	if len(hiddenCityExtensions) == 0 {
+		return
+	}
 	for hub, beyonds := range hiddenCityExtensions {
 		if len(hub) != 3 {
 			t.Errorf("hidden city hub %q is not a 3-letter code", hub)

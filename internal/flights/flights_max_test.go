@@ -671,7 +671,7 @@ func TestMergeFlightResults_Dedup(t *testing.T) {
 	kiwi := []models.FlightResult{
 		{Price: 180, Duration: 130, Provider: "kiwi"},
 	}
-	got := mergeFlightResults(google, kiwi, SearchOptions{})
+	got := mergeFlightResults(SearchOptions{}, google, kiwi)
 	if len(got) != 2 {
 		t.Errorf("expected 2 merged flights, got %d", len(got))
 	}
@@ -686,7 +686,7 @@ func TestMergeFlightResults_WithFilters(t *testing.T) {
 		{Price: 100, Duration: 120, Legs: []models.FlightLeg{{DepartureTime: "2026-07-01T10:00"}}},
 		{Price: 600, Duration: 120, Legs: []models.FlightLeg{{DepartureTime: "2026-07-01T10:00"}}},
 	}
-	got := mergeFlightResults(all, nil, SearchOptions{MaxPrice: 500})
+	got := mergeFlightResults(SearchOptions{MaxPrice: 500}, all, nil)
 	if len(got) != 1 {
 		t.Errorf("expected 1 flight after merge+filter, got %d", len(got))
 	}
@@ -1199,6 +1199,18 @@ func TestCompareFlightPrices(t *testing.T) {
 	}
 	if got := compareFlightPrices(100, 100); got != 0 {
 		t.Errorf("compareFlightPrices(100, 100) = %d, want 0", got)
+	}
+}
+
+func TestCompareFlightPrices_UnknownPricesSortLast(t *testing.T) {
+	if got := compareFlightPrices(0, 445); got != 1 {
+		t.Errorf("compareFlightPrices(0, 445) = %d, want 1", got)
+	}
+	if got := compareFlightPrices(445, 0); got != -1 {
+		t.Errorf("compareFlightPrices(445, 0) = %d, want -1", got)
+	}
+	if got := compareFlightPrices(0, 0); got != 0 {
+		t.Errorf("compareFlightPrices(0, 0) = %d, want 0", got)
 	}
 }
 

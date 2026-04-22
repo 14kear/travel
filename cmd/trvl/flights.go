@@ -103,7 +103,10 @@ Examples:
 
 			// Cache best result for `trvl share --last`.
 			if result != nil && result.Success && len(result.Flights) > 0 {
-				f := result.Flights[0]
+				f, ok := cheapestPricedFlight(result.Flights)
+				if !ok {
+					f = result.Flights[0]
+				}
 				airline := ""
 				if len(f.Legs) > 0 {
 					airline = f.Legs[0].Airline
@@ -215,7 +218,7 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 	allInData := make([]allInInfo, len(result.Flights))
 	showAllIn := false
 	prefs, _ := preferences.Load() //nolint:errcheck // default prefs on error
-	if prefs != nil { // all-in is self-gating: column only appears when allIn != basePrice for any flight
+	if prefs != nil {              // all-in is self-gating: column only appears when allIn != basePrice for any flight
 		needCheckedBag := !prefs.CarryOnOnly
 		needCarryOn := true
 		var ffStatuses []baggage.FFStatus
@@ -299,11 +302,9 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 
 	// Summary: cheapest flight
 	if len(result.Flights) > 0 {
-		cheapest := result.Flights[0]
-		for _, f := range result.Flights[1:] {
-			if f.Price > 0 && f.Price < cheapest.Price {
-				cheapest = f
-			}
+		cheapest, ok := cheapestPricedFlight(result.Flights)
+		if !ok {
+			cheapest = result.Flights[0]
 		}
 		airline := ""
 		if len(cheapest.Legs) > 0 {
@@ -335,6 +336,21 @@ func printFlightsTable(ctx context.Context, origin, destination, targetCurrency 
 	return nil
 }
 
+func cheapestPricedFlight(flights []models.FlightResult) (models.FlightResult, bool) {
+	var cheapest models.FlightResult
+	found := false
+	for _, f := range flights {
+		if f.Price <= 0 {
+			continue
+		}
+		if !found || f.Price < cheapest.Price {
+			cheapest = f
+			found = true
+		}
+	}
+	return cheapest, found
+}
+
 func flightProviderLabel(f models.FlightResult) string {
 	switch strings.ToLower(strings.TrimSpace(f.Provider)) {
 	case "":
@@ -343,6 +359,8 @@ func flightProviderLabel(f models.FlightResult) string {
 		return "Google"
 	case "kiwi":
 		return "Kiwi"
+	case "duffel":
+		return "Duffel"
 	default:
 		return f.Provider
 	}
@@ -515,11 +533,9 @@ func maybeShowFlightHackTips(ctx context.Context, origins, dests []string, depar
 	dest := dests[0]
 
 	// Determine cheapest price and currency for NaivePrice.
-	cheapest := result.Flights[0]
-	for _, f := range result.Flights[1:] {
-		if f.Price > 0 && f.Price < cheapest.Price {
-			cheapest = f
-		}
+	cheapest, ok := cheapestPricedFlight(result.Flights)
+	if !ok {
+		cheapest = result.Flights[0]
 	}
 
 	currency := cheapest.Currency

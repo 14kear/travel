@@ -41,6 +41,58 @@ func TestBuildHiddenCityHack(t *testing.T) {
 	}
 }
 
+func TestBuildHiddenCityHack_CheckedBagGuidance(t *testing.T) {
+	in := DetectorInput{
+		Origin:      "HEL",
+		Destination: "BCN",
+		Date:        "2026-05-01",
+		CarryOnOnly: false,
+	}
+	h := buildHiddenCityHack(in, "PMI", 120, 180, "EUR", "VY")
+
+	foundShortCheckStep := false
+	foundBagRisk := false
+	for _, step := range h.Steps {
+		if strings.Contains(step, "short-check") {
+			foundShortCheckStep = true
+			break
+		}
+	}
+	for _, risk := range h.Risks {
+		if strings.Contains(risk, "short-check") {
+			foundBagRisk = true
+			break
+		}
+	}
+	if !foundShortCheckStep {
+		t.Error("expected checked-bag hidden-city guidance to mention short-checking")
+	}
+	if !foundBagRisk {
+		t.Error("expected checked-bag hidden-city risk to mention short-checking")
+	}
+}
+
+func TestBuildHiddenCityHack_CarryOnGuidance(t *testing.T) {
+	in := DetectorInput{
+		Origin:      "HEL",
+		Destination: "BCN",
+		Date:        "2026-05-01",
+		CarryOnOnly: true,
+	}
+	h := buildHiddenCityHack(in, "PMI", 120, 180, "EUR", "VY")
+
+	foundCarryOnStep := false
+	for _, step := range h.Steps {
+		if strings.Contains(step, "carry-on-only ticket") {
+			foundCarryOnStep = true
+			break
+		}
+	}
+	if !foundCarryOnStep {
+		t.Error("expected carry-on hidden-city guidance to keep carry-on-only step")
+	}
+}
+
 func TestBuildNightHack(t *testing.T) {
 	in := DetectorInput{
 		Origin:      "PRG",

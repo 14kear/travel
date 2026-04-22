@@ -124,7 +124,7 @@ The --accept-tos flag bypasses the interactive confirmation prompt, which is
 useful for scripted/non-interactive environments.
 
 Examples:
-  echo '{"id":"kiwi","name":"Kiwi.com","endpoint":"https://api.tequila.kiwi.com"}' | trvl providers enable kiwi --accept-tos
+  echo '{"id":"example","name":"Example Provider","endpoint":"https://api.example.com"}' | trvl providers enable example --accept-tos
   trvl providers enable kiwi`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
