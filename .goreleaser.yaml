@@ -42,8 +42,8 @@ changelog:
 
 release:
   github:
-    owner: MikkoParkkola
-    name: trvl
+    owner: 14kear
+    name: travel
   prerelease: auto
   draft: false
   name_template: "v{{ .Version }}"
@@ -56,7 +56,7 @@ release:
 
     ```bash
     # One-liner
-    curl -fsSL https://github.com/MikkoParkkola/trvl/releases/download/v{{ .Version }}/trvl_{{ .Version }}_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
+    curl -fsSL https://github.com/14kear/travel/releases/download/v{{ .Version }}/trvl_{{ .Version }}_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /usr/local/bin trvl
 
     # Homebrew
     brew install MikkoParkkola/tap/trvl
@@ -69,11 +69,11 @@ brews:
   - ids:
       - trvl
     repository:
-      owner: MikkoParkkola
+      owner: 14kear
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/MikkoParkkola/trvl
+    homepage: https://github.com/14kear/travel
     description: "AI travel agent — 54 MCP tools for flights, hotels, ground transport, price alerts. Free, no API keys."
     license: "PolyForm-Noncommercial-1.0.0"
     install: |
@@ -83,19 +83,19 @@ brews:
 
 dockers:
   - image_templates:
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
+      - "ghcr.io/14kear/travel:{{ .Version }}-amd64"
     use: buildx
     dockerfile: Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title=trvl"
       - "--label=org.opencontainers.image.description=Google Flights + Hotels from your terminal"
-      - "--label=org.opencontainers.image.url=https://github.com/MikkoParkkola/trvl"
-      - "--label=org.opencontainers.image.source=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.url=https://github.com/14kear/travel"
+      - "--label=org.opencontainers.image.source=https://github.com/14kear/travel"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.licenses=MIT"
   - image_templates:
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
+      - "ghcr.io/14kear/travel:{{ .Version }}-arm64"
     use: buildx
     goarch: arm64
     dockerfile: Dockerfile
@@ -103,17 +103,17 @@ dockers:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title=trvl"
       - "--label=org.opencontainers.image.description=Google Flights + Hotels from your terminal"
-      - "--label=org.opencontainers.image.url=https://github.com/MikkoParkkola/trvl"
-      - "--label=org.opencontainers.image.source=https://github.com/MikkoParkkola/trvl"
+      - "--label=org.opencontainers.image.url=https://github.com/14kear/travel"
+      - "--label=org.opencontainers.image.source=https://github.com/14kear/travel"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.licenses=MIT"
 
 docker_manifests:
-  - name_template: "ghcr.io/mikkoparkkola/trvl:{{ .Version }}"
+  - name_template: "ghcr.io/14kear/travel:{{ .Version }}"
     image_templates:
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/mikkoparkkola/trvl:latest"
+      - "ghcr.io/14kear/travel:{{ .Version }}-amd64"
+      - "ghcr.io/14kear/travel:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/14kear/travel:latest"
     image_templates:
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-amd64"
-      - "ghcr.io/mikkoparkkola/trvl:{{ .Version }}-arm64"
+      - "ghcr.io/14kear/travel:{{ .Version }}-amd64"
+      - "ghcr.io/14kear/travel:{{ .Version }}-arm64"

@@ -232,7 +232,7 @@ func formatLastSearchMarkdown(ls *LastSearch) string {
 // Tool count is enforced by TestPublicDocsAdvertiseCurrentCounts
 // against the live MCP server registration (see cmd/trvl/public_claims_test.go).
 func trvlFooter() string {
-	return "*Found by [trvl](https://github.com/MikkoParkkola/trvl) — 41 MCP tools, no API keys*\n"
+	return "*Found by [trvl](https://github.com/MikkoParkkola/trvl) — 54 MCP tools, no API keys*\n"
 }
 
 // extractTripRoute derives origin, destination, dates, and nights from trip legs.
@@ -337,7 +337,7 @@ func createGist(md string) error {
 // --- Last search cache ---
 
 func lastSearchPath() string {
-	home, _ := os.UserHomeDir()
+	home := appHomeDir()
 	return filepath.Join(home, ".trvl", "last_search.json")
 }
 
