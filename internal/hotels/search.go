@@ -207,7 +207,22 @@ func SearchHotelsWithClient(ctx context.Context, client *batchexec.Client, locat
 	if sfErr != nil {
 		return nil, sfErr
 	}
-	return v.(*models.HotelSearchResult), nil
+	return cloneHotelSearchResult(v.(*models.HotelSearchResult)), nil
+}
+
+func cloneHotelSearchResult(in *models.HotelSearchResult) *models.HotelSearchResult {
+	if in == nil {
+		return nil
+	}
+
+	out := *in
+	if in.Hotels != nil {
+		out.Hotels = append([]models.HotelResult(nil), in.Hotels...)
+	}
+	if in.ProviderStatuses != nil {
+		out.ProviderStatuses = append([]models.ProviderStatus(nil), in.ProviderStatuses...)
+	}
+	return &out
 }
 
 // searchHotelsCore performs the actual hotel search without singleflight wrapping.
